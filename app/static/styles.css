@@ -307,7 +307,9 @@ details.advanced[open] > summary::before { content: "▾ "; }
   position: absolute; left: 0; top: 0; transform-origin: 0 0;
   will-change: transform;
 }
-.stage svg { display: block; }
+/* visible, not hidden: if a graph ever paints a hair outside its declared box,
+   we would rather show it than silently crop the map */
+.stage svg { display: block; overflow: visible; }
 /* highlight for the search box */
 .stage .pm-hit ellipse, .stage .pm-hit polygon, .stage .pm-hit path {
   stroke: #0071e3 !important; stroke-width: 3px !important;

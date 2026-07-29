@@ -533,18 +533,43 @@
       return;
     }
 
-    // Graphviz sizes the root in points; the viewBox is the honest geometry.
-    const viewBox = (svg.getAttribute("viewBox") || "").split(/[\s,]+/).map(Number);
-    const width = viewBox.length === 4 && viewBox[2] ? viewBox[2] : svg.clientWidth || 800;
-    const height = viewBox.length === 4 && viewBox[3] ? viewBox[3] : svg.clientHeight || 600;
-
-    svg.setAttribute("width", width);
-    svg.setAttribute("height", height);
     svg.removeAttribute("style");
-
-    state.natural = { w: width, h: height };
     stage.appendChild(document.importNode(svg, true));
-    state.svg = stage.firstElementChild;
+    const mounted = stage.firstElementChild;
+    state.svg = mounted;
+
+    // Trusting the declared geometry is not safe: a missing or unreadable
+    // viewBox used to leave the canvas at a fallback size that had nothing to
+    // do with the drawing, and the map got cut off. Measuring the real content
+    // once it is in the DOM cannot disagree with what is actually painted.
+    const declared = (mounted.getAttribute("viewBox") || "").split(/[\s,]+/).map(Number);
+    let width = declared.length === 4 && declared[2] > 0 ? declared[2] : 0;
+    let height = declared.length === 4 && declared[3] > 0 ? declared[3] : 0;
+
+    let box = null;
+    try {
+      box = mounted.getBBox();
+    } catch {
+      box = null; // getBBox throws when nothing is rendered yet
+    }
+    if (box && box.width > 0 && box.height > 0) {
+      const pad = 4;
+      width = box.width + pad * 2;
+      height = box.height + pad * 2;
+      mounted.setAttribute(
+        "viewBox",
+        `${box.x - pad} ${box.y - pad} ${width} ${height}`
+      );
+    }
+    if (!width || !height) {
+      width = width || 800;
+      height = height || 600;
+    }
+
+    mounted.setAttribute("width", width);
+    mounted.setAttribute("height", height);
+    mounted.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    state.natural = { w: width, h: height };
 
     $("empty").style.display = "none";
     $("mapSearch").value = "";
