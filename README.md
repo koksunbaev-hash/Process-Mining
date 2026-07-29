@@ -95,6 +95,20 @@ when data arrives as a stream (ERP, IoT, a conveyor line, voice input).
 | `POST /api/v1/logs/{id}/conformance` | fitness / precision against a discovered model |
 | `GET /api/v1/logs/{id}/map` | the image itself, embeddable in `<img src=...>` |
 
+**Automated intake** — a source system pushes its own business events in, in batches, and
+nobody uploads anything by hand.
+
+```
+POST /api/event-logs/import/     multipart CSV + export_id + checksum
+```
+
+Delivery is idempotent in two independent ways: an event whose `event_id` is already
+stored is counted as a duplicate rather than imported again, and replaying a batch with
+the same `Idempotency-Key` returns the original response. That is what makes a retry after
+a timeout safe. Events are routed into separate logs per `case_type`, because orders and
+production batches are different processes and one map over both would describe a process
+that does not exist. Contract and limits: [docs/EVENT-LOG-INTAKE.md](docs/EVENT-LOG-INTAKE.md).
+
 Auth is `X-API-Key: <key>` or `Authorization: Bearer <key>`. Leave `PM_API_KEYS` empty to
 disable auth — local development only.
 
@@ -261,9 +275,9 @@ The image is ~1 GB (pm4py pulls in scipy and matplotlib). For an air-gapped host
 
 Read this section before building on top of it.
 
-- **Appending events is not idempotent.** `POST /logs/{id}/events` has no deduplication and
-  events carry no id, so a retried request or a re-run importer will duplicate events and
-  quietly skew every metric. Fine for manual uploads, not safe for automated ingestion yet.
+- **Deduplication needs an `event_id`.** Events that carry one can never be stored twice;
+  events without one (plain file uploads) are always appended, because there is no honest
+  way to tell a re-delivery from a genuine repeat of the same activity in the same case.
 - **SQLite means one node.** The `LogRepository` interface is ready for Postgres but the
   implementation does not exist. Do not run multiple replicas against one database file —
   note that `deploy/k8s.yaml` ships `replicas: 2`, which you must fix before using it.

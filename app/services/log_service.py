@@ -6,6 +6,7 @@ be reused by a CLI, a worker or a gRPC front-end lives here.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from typing import Any
 
@@ -136,10 +137,86 @@ class LogService:
         record = self.require(log_id, tenant)
         profile = self.mappings.get(request.mapping_profile or record.mapping_profile)
         frame = ingestion.events_to_frame(request.events, profile=profile)
-        updated = self.repository.append(log_id, frame, tenant)
+        updated, _, _ = self.append_frame(log_id, frame, tenant)
+        return updated
+
+    def append_frame(
+        self, log_id: str, frame: pd.DataFrame, tenant: str | None = None
+    ) -> tuple[LogRecord, int, int]:
+        """Appends a canonical frame, skipping events already stored.
+
+        Returns ``(record, accepted, duplicates)``. Events without an
+        ``event_id`` are always accepted - we have no way to recognise them,
+        and inventing one from the row contents would silently drop legitimate
+        repeats (the same activity really can happen twice in a case).
+        """
+        deduplicated, duplicates = self._drop_known(log_id, frame)
+        if deduplicated.empty:
+            record = self.require(log_id, tenant)
+            return record, 0, duplicates
+
+        self._guard_size(deduplicated)
+        updated = self.repository.append(log_id, deduplicated, tenant)
         self.cache.invalidate_prefix(log_id)
         updated.updated_at = utcnow()
-        return updated
+        return updated, int(len(deduplicated)), duplicates
+
+    def _drop_known(self, log_id: str, frame: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+        if frame.empty or model.EVENT_ID not in frame.columns:
+            return frame, 0
+
+        identified = [v for v in frame[model.EVENT_ID].tolist() if v]
+        if not identified:
+            return frame, 0
+
+        # Two sources of duplication: already in storage, or repeated inside
+        # this very batch. Both have to go, or the unique index rejects the
+        # whole insert.
+        known = self.repository.known_event_ids(log_id, identified)
+        before = len(frame)
+        keep_mask = []
+        seen: set[str] = set()
+        for value in frame[model.EVENT_ID].tolist():
+            if not value:
+                keep_mask.append(True)
+                continue
+            if value in known or value in seen:
+                keep_mask.append(False)
+                continue
+            seen.add(value)
+            keep_mask.append(True)
+
+        filtered = frame[pd.Series(keep_mask, index=frame.index)]
+        return filtered, before - int(len(filtered))
+
+    def get_or_create_stream_log(
+        self, *, source: str, case_type: str, mapping_profile: str | None = None
+    ) -> LogRecord:
+        """The log that events from ``source`` with this ``case_type`` land in.
+
+        The id is derived from the pair, so a source system never has to know
+        or store a log id - it just keeps posting, and the events find their
+        way into the same log. Separate case types get separate logs on
+        purpose: mixing orders and production batches into one process map
+        produces a picture of a process that does not exist.
+        """
+        digest = hashlib.blake2b(
+            f"{source}|{case_type}".encode(), digest_size=10
+        ).hexdigest()
+        existing = self.repository.get(digest, None)
+        if existing is not None:
+            return existing
+
+        profile = self.mappings.get(mapping_profile)
+        record = LogRecord(
+            log_id=digest,
+            name=f"{source} · {case_type}" if case_type else source,
+            tenant=source,
+            mapping_profile=profile.id,
+            metadata={"source": source, "case_type": case_type, "ingested": True},
+            frame=model.empty_frame(),
+        )
+        return self.repository.create(record)
 
     def delete(self, log_id: str, tenant: str | None = None) -> bool:
         self.cache.invalidate_prefix(log_id)

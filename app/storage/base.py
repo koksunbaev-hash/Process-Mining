@@ -81,5 +81,21 @@ class LogRepository(abc.ABC):
     @abc.abstractmethod
     def delete(self, log_id: str, tenant: str | None = None) -> bool: ...
 
+    # ---- idempotent ingestion -------------------------------------------
+    # Both default to "I know nothing", so a backend that does not care about
+    # replay protection stays valid: it simply never reports a duplicate.
+
+    def known_event_ids(self, log_id: str, event_ids: list[str]) -> set[str]:
+        """Subset of ``event_ids`` already stored in this log."""
+        return set()
+
+    def get_receipt(self, key: str) -> dict[str, Any] | None:
+        """The stored answer for an already-processed idempotency key."""
+        return None
+
+    def save_receipt(self, key: str, payload: dict[str, Any]) -> None:
+        """Remembers the answer, so replaying a batch replays its response."""
+        return None
+
     def health(self) -> dict[str, Any]:
         return {"backend": type(self).__name__, "ok": True}

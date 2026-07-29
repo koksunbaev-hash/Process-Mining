@@ -11,6 +11,12 @@ from app.schemas.common import Base
 class EventIn(Base):
     """One raw event. ``activity`` may be free text - the mapping profile normalizes it."""
 
+    event_id: str | None = Field(
+        None,
+        max_length=128,
+        description="Stable id from the source system. Supplying it makes delivery "
+        "idempotent: re-sending the same event is ignored instead of duplicated.",
+    )
     case_id: str = Field(..., min_length=1, max_length=256, description="Process instance id")
     activity: str = Field(..., min_length=1, max_length=512)
     timestamp: datetime | None = Field(None, description="ISO-8601. Defaults to server time (UTC)")

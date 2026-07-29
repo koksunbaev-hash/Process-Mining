@@ -47,6 +47,14 @@
       <section class="card">
         <div class="card-head" data-i18n="upload.title">Event log</div>
         <div class="card-body">
+          <div class="control">
+            <label for="storedLog" data-i18n="logs.source">Source</label>
+            <select id="storedLog">
+              <option value="" data-i18n="logs.file">Upload a file</option>
+            </select>
+          </div>
+
+          <div id="uploadArea">
           <div id="dropzone" class="dropzone" tabindex="0" role="button"
                aria-describedby="dzHint">
             <span class="dz-icon" aria-hidden="true">⬆</span>
@@ -63,6 +71,7 @@
           </div>
 
           <button type="button" class="link-btn" id="loadSample" data-i18n="upload.sample">Try sample log</button>
+          </div>
         </div>
       </section>
 

@@ -172,6 +172,8 @@
     } else {
       renderEmptyTables();
     }
+    // Stored-log labels embed counts, so they are language-dependent too.
+    if ($("storedLog").options.length > 1) loadStoredLogs();
   }
 
   // -------------------------------------------------------------- theme
@@ -310,6 +312,82 @@
     });
   }
 
+  // -------------------------------------------------------- stored logs
+  /* Logs pushed in by a source system (see /api/event-logs/import/) never pass
+   * through the file picker, so without this list they would be invisible in
+   * the UI - analysable only by hand-crafting API calls. */
+  async function loadStoredLogs() {
+    const key = $("apiKey").value.trim();
+    let items = [];
+    try {
+      const response = await fetch("/api/v1/logs?limit=100", {
+        headers: key ? { "X-API-Key": key } : {},
+      });
+      if (!response.ok) return;
+      items = (await response.json()).items || [];
+    } catch {
+      return;
+    }
+
+    const select = $("storedLog");
+    const current = select.value;
+    while (select.options.length > 1) select.remove(1);
+
+    items.forEach((item) => {
+      const option = document.createElement("option");
+      option.value = item.log_id;
+      option.textContent =
+        item.name + " — " +
+        t("logs.events", { n: formatNumber(item.events), c: formatNumber(item.cases) });
+      select.appendChild(option);
+    });
+    if (current && Array.from(select.options).some((o) => o.value === current)) {
+      select.value = current;
+    }
+    toggleSourceMode();
+  }
+
+  function toggleSourceMode() {
+    const stored = Boolean($("storedLog").value);
+    $("uploadArea").style.display = stored ? "none" : "";
+  }
+
+  /** Reshapes the stateful endpoints into the same body /mine returns, so
+   *  every render function below works unchanged for both paths. */
+  async function runStoredLog(logId, headers) {
+    const filters = buildFilters();
+    const body = {
+      algorithm: $("algorithm").value,
+      format: "svg",
+      noise_threshold: parseFloat($("noise").value),
+      render: { rankdir: $("rankdir").value },
+    };
+    if (filters) body.filters = JSON.parse(filters);
+
+    const json = { ...headers, "Content-Type": "application/json" };
+    const [discover, statistics, bottlenecks, variants] = await Promise.all([
+      fetch(`/api/v1/logs/${logId}/discover`, {
+        method: "POST", headers: json, body: JSON.stringify(body),
+      }),
+      fetch(`/api/v1/logs/${logId}/statistics`, { headers }),
+      fetch(`/api/v1/logs/${logId}/bottlenecks?limit=10`, { headers }),
+      fetch(`/api/v1/logs/${logId}/variants?limit=10`, { headers }),
+    ]);
+
+    if (!discover.ok) return { ok: false, response: discover, body: await discover.json() };
+
+    return {
+      ok: true,
+      body: {
+        result: await discover.json(),
+        statistics: statistics.ok ? await statistics.json() : {},
+        bottlenecks: bottlenecks.ok ? await bottlenecks.json() : {},
+        variants: variants.ok ? await variants.json() : {},
+        warnings: [],
+      },
+    };
+  }
+
   // ---------------------------------------------------------------- run
   function buildFilters() {
     const coverage = parseFloat($("coverage").value);
@@ -319,7 +397,8 @@
   }
 
   async function run() {
-    if (!state.file) {
+    const storedId = $("storedLog").value;
+    if (!storedId && !state.file) {
       notify(t("error.noFile"));
       $("dropzone").classList.add("dragover");
       setTimeout(() => $("dropzone").classList.remove("dragover"), 700);
@@ -331,6 +410,11 @@
     button.disabled = true;
     button.textContent = t("actions.running");
     clearError();
+
+    if (storedId) {
+      await runStored(storedId, button);
+      return;
+    }
 
     const form = new FormData();
     form.append("file", state.file);
@@ -384,7 +468,32 @@
 
     setStatus("online");
     $("apiKey").classList.remove("needed");
+    renderResult(body, button);
+  }
 
+  async function runStored(logId, button) {
+    const key = $("apiKey").value.trim();
+    const headers = key ? { "X-API-Key": key } : {};
+    let outcome;
+    try {
+      outcome = await runStoredLog(logId, headers);
+    } catch {
+      showError(t("error.network"));
+      setStatus("offline");
+      resetButton(button);
+      return;
+    }
+    if (!outcome.ok) {
+      const err = outcome.body && outcome.body.error;
+      showError((err && err.message) || t("error.generic"), err && err.code);
+      resetButton(button);
+      return;
+    }
+    setStatus("online");
+    renderResult(outcome.body, button);
+  }
+
+  function renderResult(body, button) {
     const image = body.result && body.result.image;
     if (!image) {
       showError(t("error.noImage"));
@@ -801,6 +910,8 @@
     state.data = null;
     state.svg = null;
     setFile(null);
+    $("storedLog").value = "";
+    toggleSourceMode();
     $("stage").textContent = "";
     $("empty").style.display = "grid";
     $("mapMeta").textContent = "";
@@ -838,6 +949,7 @@
       if (event.target.value.trim()) {
         event.target.classList.remove("needed");
         if ($("status").dataset.state === "auth") setStatus("online");
+        loadStoredLogs();
       }
     });
 
@@ -860,12 +972,13 @@
     $("coverage").addEventListener("input", updateCoverageOutput);
     $("run").addEventListener("click", run);
     $("clear").addEventListener("click", resetAll);
+    $("storedLog").addEventListener("change", toggleSourceMode);
 
     wireDropzone();
     wireTabs();
     wireMap();
     renderEmptyTables();
-    checkHealth();
+    checkHealth().then(loadStoredLogs);
   }
 
   if (document.readyState === "loading") {

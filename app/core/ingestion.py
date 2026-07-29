@@ -224,6 +224,7 @@ def events_to_frame(events: Iterable[Any], *, profile: MappingProfile) -> pd.Dat
     for event in events:
         activity, _, _ = profile.normalize(event.activity)
         row: dict[str, Any] = {
+            model.EVENT_ID: getattr(event, "event_id", None),
             model.CASE: str(event.case_id),
             model.ACTIVITY: activity,
             model.ACTIVITY_RAW: event.activity,

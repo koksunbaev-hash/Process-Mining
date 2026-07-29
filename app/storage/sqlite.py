@@ -56,6 +56,7 @@ events_table = Table(
     metadata_obj,
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("log_id", String(64), nullable=False),
+    Column("event_id", String(128), nullable=True),
     Column("case_id", String(256), nullable=False),
     Column("activity", String(512), nullable=False),
     Column("activity_raw", String(512), nullable=True),
@@ -66,6 +67,26 @@ events_table = Table(
 )
 Index("ix_events_log_case", events_table.c.log_id, events_table.c.case_id)
 Index("ix_events_log_ts", events_table.c.log_id, events_table.c.timestamp)
+# Partial + unique: events without a source id (file uploads) stay unconstrained,
+# while events that carry one can never be stored twice for the same log.
+Index(
+    "uq_events_log_event_id",
+    events_table.c.log_id,
+    events_table.c.event_id,
+    unique=True,
+    sqlite_where=events_table.c.event_id.isnot(None),
+)
+
+# Remembers what a given idempotency key already answered, so a source system
+# that retries a batch after a timeout gets the original counts back instead of
+# importing everything a second time.
+receipts_table = Table(
+    "import_receipts",
+    metadata_obj,
+    Column("key", String(128), primary_key=True),
+    Column("payload_json", JSON, nullable=False),
+    Column("created_at", DateTime, nullable=False),
+)
 
 EXTRA_KEY = "attributes_json"
 
@@ -85,6 +106,25 @@ class SqliteLogRepository(LogRepository):
         with self._engine.begin() as conn:
             conn.exec_driver_sql("PRAGMA journal_mode=WAL")
             conn.exec_driver_sql("PRAGMA synchronous=NORMAL")
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Adds columns that older databases predate.
+
+        ``create_all`` only creates missing tables - it never alters existing
+        ones, so a database written before ``event_id`` existed would keep
+        failing inserts until the column is added by hand.
+        """
+        with self._engine.begin() as conn:
+            columns = {
+                row[1] for row in conn.exec_driver_sql("PRAGMA table_info(events)").fetchall()
+            }
+            if columns and "event_id" not in columns:
+                conn.exec_driver_sql("ALTER TABLE events ADD COLUMN event_id VARCHAR(128)")
+                conn.exec_driver_sql(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_events_log_event_id "
+                    "ON events (log_id, event_id) WHERE event_id IS NOT NULL"
+                )
 
     # ---- helpers -------------------------------------------------------
     @staticmethod
@@ -93,9 +133,11 @@ class SqliteLogRepository(LogRepository):
         rows: list[dict[str, Any]] = []
         for record in frame.to_dict(orient="records"):
             attributes = {k: record.get(k) for k in extras if pd.notna(record.get(k))}
+            event_id = record.get(model.EVENT_ID)
             rows.append(
                 {
                     "log_id": log_id,
+                    "event_id": None if event_id is None or pd.isna(event_id) else str(event_id),
                     "case_id": str(record[model.CASE]),
                     "activity": str(record[model.ACTIVITY]),
                     "activity_raw": record.get(model.ACTIVITY_RAW),
@@ -115,6 +157,7 @@ class SqliteLogRepository(LogRepository):
         with self._engine.connect() as conn:
             rows = conn.execute(
                 select(
+                    events_table.c.event_id,
                     events_table.c.case_id,
                     events_table.c.activity,
                     events_table.c.activity_raw,
@@ -133,6 +176,7 @@ class SqliteLogRepository(LogRepository):
         records: list[dict[str, Any]] = []
         for row in rows:
             item = {
+                model.EVENT_ID: row["event_id"],
                 model.CASE: row["case_id"],
                 model.ACTIVITY: row["activity"],
                 model.ACTIVITY_RAW: row["activity_raw"],
@@ -260,6 +304,43 @@ class SqliteLogRepository(LogRepository):
             conn.execute(delete(events_table).where(events_table.c.log_id == log_id))
             conn.execute(delete(logs_table).where(logs_table.c.log_id == log_id))
         return True
+
+    # ---- idempotent ingestion -------------------------------------------
+    def known_event_ids(self, log_id: str, event_ids: list[str]) -> set[str]:
+        wanted = [e for e in event_ids if e]
+        if not wanted:
+            return set()
+        found: set[str] = set()
+        with self._engine.connect() as conn:
+            # SQLite caps variables per statement; chunk to stay well under it.
+            for start in range(0, len(wanted), 500):
+                chunk = wanted[start : start + 500]
+                rows = conn.execute(
+                    select(events_table.c.event_id).where(
+                        events_table.c.log_id == log_id,
+                        events_table.c.event_id.in_(chunk),
+                    )
+                ).all()
+                found.update(row[0] for row in rows)
+        return found
+
+    def get_receipt(self, key: str) -> dict[str, Any] | None:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(receipts_table.c.payload_json).where(receipts_table.c.key == key)
+            ).first()
+        return dict(row[0]) if row else None
+
+    def save_receipt(self, key: str, payload: dict[str, Any]) -> None:
+        with self._lock, self._engine.begin() as conn:
+            conn.execute(delete(receipts_table).where(receipts_table.c.key == key))
+            conn.execute(
+                insert(receipts_table).values(
+                    key=key,
+                    payload_json=json.loads(json.dumps(payload, default=str)),
+                    created_at=utcnow(),
+                )
+            )
 
     def health(self) -> dict[str, Any]:
         try:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from typing import Any
 
 import pandas as pd
 
@@ -14,6 +15,7 @@ from app.storage.base import LogRecord, LogRepository, utcnow
 class InMemoryLogRepository(LogRepository):
     def __init__(self) -> None:
         self._items: dict[str, LogRecord] = {}
+        self._receipts: dict[str, dict[str, Any]] = {}
         self._lock = threading.RLock()
 
     def create(self, record: LogRecord) -> LogRecord:
@@ -53,3 +55,21 @@ class InMemoryLogRepository(LogRepository):
                 return False
             self._items.pop(log_id, None)
             return True
+
+    # ---- idempotent ingestion -------------------------------------------
+    def known_event_ids(self, log_id: str, event_ids: list[str]) -> set[str]:
+        with self._lock:
+            record = self._items.get(log_id)
+            if record is None or record.frame.empty:
+                return set()
+            stored = {v for v in record.frame[model.EVENT_ID].tolist() if v}
+            return stored.intersection(e for e in event_ids if e)
+
+    def get_receipt(self, key: str) -> dict[str, Any] | None:
+        with self._lock:
+            payload = self._receipts.get(key)
+            return dict(payload) if payload else None
+
+    def save_receipt(self, key: str, payload: dict[str, Any]) -> None:
+        with self._lock:
+            self._receipts[key] = dict(payload)

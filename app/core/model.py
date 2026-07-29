@@ -17,7 +17,12 @@ RESOURCE = "resource"
 LIFECYCLE = "lifecycle"
 ACTIVITY_RAW = "activity_raw"
 
-CANONICAL_COLUMNS = [CASE, ACTIVITY, ACTIVITY_RAW, TIMESTAMP, RESOURCE, LIFECYCLE]
+# Optional, and the reason appending can be made idempotent: when a source
+# system supplies a stable id per event, re-delivering the same batch is a
+# no-op instead of silently doubling every metric.
+EVENT_ID = "event_id"
+
+CANONICAL_COLUMNS = [EVENT_ID, CASE, ACTIVITY, ACTIVITY_RAW, TIMESTAMP, RESOURCE, LIFECYCLE]
 
 # pm4py / XES standard names
 PM4PY_CASE = "case:concept:name"
@@ -57,7 +62,7 @@ def normalize_dtypes(frame: pd.DataFrame) -> pd.DataFrame:
     if getattr(frame[TIMESTAMP].dtype, "tz", None) is not None:
         frame[TIMESTAMP] = frame[TIMESTAMP].dt.tz_localize(None)
 
-    for column in (CASE, ACTIVITY, ACTIVITY_RAW, RESOURCE, LIFECYCLE):
+    for column in (EVENT_ID, CASE, ACTIVITY, ACTIVITY_RAW, RESOURCE, LIFECYCLE):
         series = frame[column].astype("object")
         frame[column] = [None if pd.isna(v) else str(v) for v in series]
 
