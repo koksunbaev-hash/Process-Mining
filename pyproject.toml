@@ -1,0 +1,36 @@
+[project]
+name = "process-mining-service"
+version = "1.0.0"
+description = "Process Mining as a Service - stateless HTTP API around pm4py"
+requires-python = ">=3.11"
+readme = "README.md"
+
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.29",
+  "pydantic>=2.6",
+  "pydantic-settings>=2.2",
+  "python-multipart>=0.0.9",
+  "pandas>=2.2",
+  "numpy>=1.26",
+  "pm4py>=2.7.11",
+  "graphviz>=0.20",
+  "PyYAML>=6.0",
+  "SQLAlchemy>=2.0",
+]
+
+[project.optional-dependencies]
+voice = ["openai-whisper>=20231117", "soundfile>=0.12"]
+postgres = ["psycopg[binary]>=3.1"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "httpx>=0.27", "ruff>=0.4", "mypy>=1.9"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

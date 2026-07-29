@@ -1,0 +1,25 @@
+services:
+  process-mining:
+    build: .
+    image: process-mining-service:1.0.0
+    container_name: process-mining
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      PM_STORAGE_BACKEND: sqlite
+      PM_SQLITE_PATH: /srv/data/pm.db
+      PM_ARTIFACT_DIR: /srv/data/artifacts
+    volumes:
+      - pm-data:/srv/data
+      - ./config:/srv/config:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  pm-data:

@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(curl -s http://127.0.0.1:8000/health/ready)",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/v1/mine -H 'X-API-Key: dev-key-change-me' -F file=@examples/sample_log.csv -F algorithm=dfg_performance -F format=svg -F include_statistics=true -o __TRACKED_VAR__/mine_out.json -w '%{http_code}\\\\n')",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/v1/mine -H \"X-API-Key: dev-key-change-me\" -F \"file=@examples/sample_log.csv\" -F \"algorithm=dfg_performance\" -F \"format=svg\" -F \"include_statistics=true\")",
+      "Read(//c/Users/dtlab/AppData/Local/Temp/claude/**)",
+      "Bash(python -c ' *)",
+      "Bash(node -e ' *)",
+      "Bash(node --check app/static/app.js)",
+      "Bash(node --check app/static/i18n.js)",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/v1/mine -H \"X-API-Key: dev-key-change-me\" -F \"file=@examples/sample_log.csv\" -F \"algorithm=dfg_performance\" -F \"format=svg\" -F \"rankdir=TB\" -F \"include_statistics=true\")",
+      "Bash(.venv/Scripts/python.exe -m pytest -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_api.py::test_full_lifecycle -q)",
+      "Bash(rm .claude/launch.json)",
+      "Bash(rmdir .claude)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(docker info *)",
+      "Bash(docker build *)",
+      "Bash(docker run *)",
+      "Bash(docker exec *)",
+      "Bash(curl -s http://127.0.0.1:8010/health/ready)",
+      "PowerShell(docker exec pm-test ls -1 /srv/app/static; Write-Output \"=== health ===\"; \\(Invoke-WebRequest -Uri http://127.0.0.1:8010/health/ready -UseBasicParsing\\).Content)",
+      "PowerShell(docker rm -f pm-test)"
+    ]
+  }
+}

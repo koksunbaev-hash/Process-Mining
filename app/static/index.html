@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title data-i18n="meta.title">Process Mining Console</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231d1d1f'/><text x='16' y='22' font-size='14' font-family='sans-serif' font-weight='bold' fill='white' text-anchor='middle'>PM</text></svg>">
+</head>
+<body>
+
+<header class="header">
+  <div class="brand">
+    <div class="logo">PM</div>
+    <span data-i18n="brand.name">Process Mining</span>
+  </div>
+  <div class="tools-top">
+    <span id="status" class="status" data-state="checking">
+      <span class="dot"></span><span id="statusText" data-i18n="status.checking">Checking service…</span>
+    </span>
+    <label class="visually-hidden" for="apiKey" data-i18n="apikey.placeholder">API key</label>
+    <input id="apiKey" class="field-top" type="password" autocomplete="off"
+           data-i18n-placeholder="apikey.placeholder" data-i18n-title="apikey.title"
+           placeholder="API key">
+    <label class="visually-hidden" for="language" data-i18n="language.title">Interface language</label>
+    <select id="language" class="select-top" data-i18n-title="language.title">
+      <option value="en">English</option>
+      <option value="ru">Русский</option>
+      <option value="kk">Қазақша</option>
+    </select>
+    <button id="themeToggle" class="icon-btn" type="button" data-i18n-title="theme.title" aria-label="Toggle theme">◐</button>
+  </div>
+</header>
+
+<main class="main">
+
+  <section class="hero">
+    <div class="eyebrow" data-i18n="hero.eyebrow">Event log analytics</div>
+    <h1 data-i18n="hero.title">See the process clearly.</h1>
+    <p data-i18n="hero.lead">Upload an event log and pm4py reveals the real path, the pauses, and the steps worth fixing.</p>
+  </section>
+
+  <div class="workbench">
+
+    <!-- ------------------------------------------------------- sidebar -->
+    <div>
+      <section class="card">
+        <div class="card-head" data-i18n="upload.title">Event log</div>
+        <div class="card-body">
+          <div id="dropzone" class="dropzone" tabindex="0" role="button"
+               aria-describedby="dzHint">
+            <span class="dz-icon" aria-hidden="true">⬆</span>
+            <span class="dz-title" data-i18n="upload.drop">Drop a file here or click to browse</span>
+            <span id="dzHint" class="dz-hint" data-i18n="upload.hint">CSV, TSV, XES(.gz), JSON or JSONL · up to 64 MB</span>
+            <input id="file" type="file" accept=".csv,.tsv,.txt,.xes,.gz,.json,.jsonl,.ndjson">
+          </div>
+
+          <div id="fileChip" class="file-chip">
+            <span class="fc-name" id="fileName"></span>
+            <span class="fc-size" id="fileSize"></span>
+            <button type="button" class="fc-remove" id="fileRemove"
+                    data-i18n-title="upload.remove" aria-label="Remove">×</button>
+          </div>
+
+          <button type="button" class="link-btn" id="loadSample" data-i18n="upload.sample">Try sample log</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head" data-i18n="controls.title">Analysis</div>
+        <div class="card-body">
+
+          <div class="control">
+            <label for="algorithm" data-i18n="controls.algorithm">Algorithm</label>
+            <select id="algorithm">
+              <option value="dfg_performance" data-i18n="algo.dfg_performance">Directly-follows · performance</option>
+              <option value="dfg_frequency" data-i18n="algo.dfg_frequency">Directly-follows · frequency</option>
+              <option value="petri_net_inductive" data-i18n="algo.petri_net_inductive">Petri net · inductive</option>
+              <option value="petri_net_heuristics" data-i18n="algo.petri_net_heuristics">Petri net · heuristics</option>
+              <option value="process_tree" data-i18n="algo.process_tree">Process tree</option>
+              <option value="bpmn" data-i18n="algo.bpmn">BPMN</option>
+            </select>
+          </div>
+
+          <div class="control">
+            <label for="rankdir" data-i18n="controls.direction">Layout</label>
+            <select id="rankdir">
+              <option value="LR" data-i18n="dir.LR">Left to right</option>
+              <option value="TB" data-i18n="dir.TB">Top to bottom</option>
+            </select>
+          </div>
+
+          <details class="advanced" id="advanced">
+            <summary data-i18n="controls.advanced">Advanced options</summary>
+
+            <div class="control">
+              <label for="profile" data-i18n="controls.profile">Activity profile</label>
+              <select id="profile">
+                <option value="" data-i18n="controls.profileAuto">Auto (default)</option>
+              </select>
+            </div>
+
+            <div class="control">
+              <label for="noise" data-i18n="controls.noise">Noise filter</label>
+              <div class="range-row">
+                <input id="noise" type="range" min="0" max="0.5" step="0.05" value="0">
+                <output id="noiseOut">0%</output>
+              </div>
+              <div class="hint" data-i18n="controls.noiseHint">Drops rare behaviour. Only affects inductive / heuristics miners.</div>
+            </div>
+
+            <div class="control">
+              <label for="coverage" data-i18n="controls.coverage">Variant coverage</label>
+              <div class="range-row">
+                <input id="coverage" type="range" min="0.5" max="1" step="0.05" value="1">
+                <output id="coverageOut" data-i18n="controls.coverageAll">All variants</output>
+              </div>
+              <div class="hint" data-i18n="controls.coverageHint">Keep only the top variants covering this share of cases.</div>
+            </div>
+          </details>
+
+          <div class="actions">
+            <button class="btn grow" id="run" data-i18n="actions.run">Run analysis</button>
+            <button class="btn secondary" id="clear" data-i18n="actions.clear">Reset</button>
+          </div>
+
+          <div id="error" class="message error" role="alert"></div>
+          <div id="warnings" class="message warn"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ------------------------------------------------------- results -->
+    <div>
+      <section class="metrics">
+        <div class="metric">
+          <div class="label" data-i18n="metrics.events">Events</div>
+          <div class="value" id="mEvents">—</div>
+          <div class="sub" id="mEventsSub" data-i18n="metrics.waiting">Waiting for data</div>
+        </div>
+        <div class="metric">
+          <div class="label" data-i18n="metrics.cases">Cases</div>
+          <div class="value" id="mCases">—</div>
+          <div class="sub" id="mCasesSub" data-i18n="metrics.instances">Process instances</div>
+        </div>
+        <div class="metric">
+          <div class="label" data-i18n="metrics.cycle">Median cycle</div>
+          <div class="value" id="mCycle">—</div>
+          <div class="sub" id="mP95">p95: —</div>
+        </div>
+        <div class="metric">
+          <div class="label" data-i18n="metrics.rework">Rework</div>
+          <div class="value" id="mRework">—</div>
+          <div class="sub" id="mReworkSub" data-i18n="metrics.repeated">Cases with a repeated step</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="panel-head">
+          <div class="tabs" role="tablist">
+            <button class="tab" role="tab" id="tabMap" aria-selected="true"
+                    aria-controls="panelMap" data-tab="map" data-i18n="tabs.map">Process map</button>
+            <button class="tab" role="tab" id="tabVariants" aria-selected="false"
+                    aria-controls="panelVariants" data-tab="variants">
+              <span data-i18n="tabs.variants">Variants</span><span class="count" id="cVariants"></span>
+            </button>
+            <button class="tab" role="tab" id="tabBottlenecks" aria-selected="false"
+                    aria-controls="panelBottlenecks" data-tab="bottlenecks">
+              <span data-i18n="tabs.bottlenecks">Bottlenecks</span><span class="count" id="cBottlenecks"></span>
+            </button>
+            <button class="tab" role="tab" id="tabActivities" aria-selected="false"
+                    aria-controls="panelActivities" data-tab="activities">
+              <span data-i18n="tabs.activities">Activities</span><span class="count" id="cActivities"></span>
+            </button>
+          </div>
+
+          <div class="panel-tools" id="mapTools">
+            <label class="visually-hidden" for="mapSearch" data-i18n="map.search">Find activity…</label>
+            <input id="mapSearch" class="map-search" type="search"
+                   data-i18n-placeholder="map.search" placeholder="Find activity…">
+            <div class="zoom-tools">
+              <button id="zoomOut" data-i18n-title="map.zoomOut" data-i18n-aria="map.zoomOut">−</button>
+              <button id="zoomReset" data-i18n-title="map.reset" data-i18n-aria="map.reset">1:1</button>
+              <button id="zoomIn" data-i18n-title="map.zoomIn" data-i18n-aria="map.zoomIn">+</button>
+              <button id="fitMap" data-i18n-title="map.fit" data-i18n-aria="map.fit">⤢</button>
+              <button id="fullscreen" data-i18n-title="map.fullscreen" data-i18n-aria="map.fullscreen">⛶</button>
+            </div>
+            <div class="zoom-tools">
+              <button id="dlSvg" data-i18n-title="map.downloadSvg" data-i18n-aria="map.downloadSvg">SVG</button>
+              <button id="dlPng" data-i18n-title="map.downloadPng" data-i18n-aria="map.downloadPng">PNG</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- map -->
+        <div class="tabpanel active" id="panelMap" role="tabpanel" aria-labelledby="tabMap">
+          <div id="viewport" class="viewport">
+            <div id="stage" class="stage"></div>
+            <div id="empty" class="empty">
+              <div>
+                <strong data-i18n="map.empty.title">Your process map will appear here</strong>
+                <span data-i18n="map.empty.text">Pick an event log, then run the analysis.</span>
+              </div>
+            </div>
+            <div id="zoomReadout" class="zoom-readout">100%</div>
+          </div>
+          <div class="map-foot">
+            <span data-i18n="map.hint">Scroll to zoom · drag to pan · double-click to fit</span>
+            <span id="mapMeta"></span>
+          </div>
+        </div>
+
+        <!-- variants -->
+        <div class="tabpanel" id="panelVariants" role="tabpanel" aria-labelledby="tabVariants">
+          <div class="table-wrap">
+            <table class="data">
+              <thead><tr>
+                <th data-i18n="variants.rank">#</th>
+                <th data-i18n="variants.sequence">Path</th>
+                <th data-i18n="variants.cases">Cases</th>
+                <th data-i18n="variants.share">Share</th>
+                <th data-i18n="variants.median">Median</th>
+                <th data-i18n="variants.mean">Mean</th>
+              </tr></thead>
+              <tbody id="variantsBody"></tbody>
+            </table>
+            <div class="table-empty" id="variantsEmpty" data-i18n="variants.empty">No variants yet.</div>
+          </div>
+        </div>
+
+        <!-- bottlenecks -->
+        <div class="tabpanel" id="panelBottlenecks" role="tabpanel" aria-labelledby="tabBottlenecks">
+          <div class="table-wrap">
+            <table class="data">
+              <thead><tr>
+                <th data-i18n="bottlenecks.transition">Transition</th>
+                <th data-i18n="bottlenecks.occurrences">Count</th>
+                <th data-i18n="bottlenecks.median">Median wait</th>
+                <th data-i18n="bottlenecks.p95">p95</th>
+                <th data-i18n="bottlenecks.total">Total time</th>
+                <th data-i18n="bottlenecks.share">Share of time</th>
+              </tr></thead>
+              <tbody id="bottlenecksBody"></tbody>
+            </table>
+            <div class="table-empty" id="bottlenecksEmpty" data-i18n="bottlenecks.empty">No bottlenecks yet.</div>
+            <div id="reworkBlock" hidden>
+              <div class="subhead" data-i18n="bottlenecks.reworkTitle">Repeated activities</div>
+              <table class="data">
+                <thead><tr>
+                  <th data-i18n="bottlenecks.reworkActivity">Activity</th>
+                  <th data-i18n="bottlenecks.reworkCases">Cases</th>
+                  <th data-i18n="bottlenecks.reworkTotal">Repetitions</th>
+                </tr></thead>
+                <tbody id="reworkBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- activities -->
+        <div class="tabpanel" id="panelActivities" role="tabpanel" aria-labelledby="tabActivities">
+          <div class="table-wrap">
+            <table class="data">
+              <thead><tr>
+                <th data-i18n="activities.activity">Activity</th>
+                <th data-i18n="activities.occurrences">Events</th>
+                <th data-i18n="activities.cases">Cases</th>
+                <th data-i18n="activities.share">Share of events</th>
+                <th data-i18n="activities.wait">Avg wait after</th>
+              </tr></thead>
+              <tbody id="activitiesBody"></tbody>
+            </table>
+            <div class="table-empty" id="activitiesEmpty" data-i18n="activities.empty">No activities yet.</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <section class="glossary">
+    <div><h2 data-i18n="glossary.title">Read the numbers.</h2></div>
+    <div>
+      <h3 data-i18n="glossary.p95.term">p95</h3>
+      <p data-i18n="glossary.p95.text">95% of cases finish within this time. The slowest 5% take longer.</p>
+    </div>
+    <div>
+      <h3 data-i18n="glossary.share.term">Share of time</h3>
+      <p data-i18n="glossary.share.text">The percentage of total process time consumed by a single transition.</p>
+    </div>
+    <div>
+      <h3 data-i18n="glossary.rework.term">Rework</h3>
+      <p data-i18n="glossary.rework.text">An activity repeated inside the same case - often a signal of defects or waiting.</p>
+    </div>
+    <div>
+      <h3 data-i18n="glossary.variant.term">Variant</h3>
+      <p data-i18n="glossary.variant.text">One distinct end-to-end path through the process.</p>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <a href="/docs" target="_blank" rel="noopener" data-i18n="footer.docs">API docs</a>
+    <a href="/health/ready" target="_blank" rel="noopener" data-i18n="footer.health">Health</a>
+    <span id="version"></span>
+  </footer>
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="/ui/i18n.js"></script>
+<script src="/ui/app.js"></script>
+</body>
+</html>

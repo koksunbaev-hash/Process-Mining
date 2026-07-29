@@ -1,0 +1,12 @@
+{
+  "name": "demo via JSON",
+  "mapping_profile": "bakery",
+  "tenant": "openegiz",
+  "events": [
+    {"case_id": "B-9001", "activity": "начали замес теста", "timestamp": "2026-06-01T05:00:00Z", "resource": "Айгуль"},
+    {"case_id": "B-9001", "activity": "добавили ингредиенты", "timestamp": "2026-06-01T05:09:00Z", "resource": "Айгуль"},
+    {"case_id": "B-9001", "activity": "поставили на расстой", "timestamp": "2026-06-01T05:15:00Z", "resource": "Айгуль"},
+    {"case_id": "B-9001", "activity": "загрузили в печь", "timestamp": "2026-06-01T06:30:00Z", "resource": "Данияр"},
+    {"case_id": "B-9001", "activity": "вынимаем готовый хлеб", "timestamp": "2026-06-01T07:05:00Z", "resource": "Данияр"}
+  ]
+}

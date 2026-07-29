@@ -1,0 +1,53 @@
+# Activity normalization profiles.
+#
+# Rules are evaluated top-down, first match wins:
+#   exact    - full case-insensitive string equality (fastest, most precise)
+#   patterns - regular expressions (case-insensitive)
+#   keywords - substring match on the lowercased text
+#
+# fallback    - activity used when nothing matched
+# passthrough - if true, unmatched text is kept as-is instead of using fallback
+#
+# The file is hot-reloaded: edit it and the next request picks it up.
+
+profiles:
+  bakery:
+    description: "Bakery production line (OpenEgiz). Russian voice / manual input."
+    fallback: other_activity
+    passthrough: false
+    rules:
+      - activity: start_mixing
+        keywords: ["замес", "меси", "тесто нача"]
+      - activity: add_ingredients
+        keywords: ["ингредиент", "добав", "засып", "мука", "дрожж"]
+      - activity: proving
+        keywords: ["расстой", "подъем", "подъём", "брожен"]
+      - activity: load_oven
+        keywords: ["печ", "выпек", "загруз"]
+      - activity: unload_oven
+        keywords: ["вынима", "вынул", "достал", "готов", "выгруз"]
+      - activity: quality_check
+        keywords: ["контрол", "провер", "качеств", "брак"]
+      - activity: packaging
+        keywords: ["упаков", "фасов"]
+      - activity: shipment
+        keywords: ["отгруз", "доставк", "отправ"]
+
+  support_desk:
+    description: "Generic ticket flow, English labels."
+    fallback: other_activity
+    passthrough: true
+    rules:
+      - activity: ticket_created
+        exact: ["create", "created", "new ticket"]
+        keywords: ["open ticket", "registered"]
+      - activity: assigned
+        keywords: ["assign", "triage"]
+      - activity: in_progress
+        keywords: ["progress", "working", "investigat"]
+      - activity: waiting_customer
+        keywords: ["pending customer", "waiting for customer", "on hold"]
+      - activity: resolved
+        keywords: ["resolve", "fixed", "done"]
+      - activity: closed
+        keywords: ["close", "archived"]

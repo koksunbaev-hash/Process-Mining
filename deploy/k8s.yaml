@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: process-mining
+  labels: { app: process-mining }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: process-mining }
+  template:
+    metadata:
+      labels: { app: process-mining }
+    spec:
+      containers:
+        - name: api
+          image: process-mining-service:1.0.0
+          ports:
+            - containerPort: 8000
+          env:
+            - name: PM_ENVIRONMENT
+              value: prod
+            - name: PM_STORAGE_BACKEND
+              value: sqlite            # switch to postgres before scaling past 1 replica
+            - name: PM_SQLITE_PATH
+              value: /data/pm.db
+            - name: PM_API_KEYS
+              valueFrom:
+                secretKeyRef: { name: process-mining-secrets, key: api-keys }
+          resources:
+            requests: { cpu: "500m", memory: "512Mi" }
+            limits:   { cpu: "2",    memory: "2Gi" }
+          livenessProbe:
+            httpGet: { path: /health/live, port: 8000 }
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /health/ready, port: 8000 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: config, mountPath: /srv/config, readOnly: true }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: process-mining-data }
+        - name: config
+          configMap: { name: process-mining-activities }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: process-mining
+spec:
+  selector: { app: process-mining }
+  ports:
+    - port: 80
+      targetPort: 8000

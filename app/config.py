@@ -1,0 +1,100 @@
+"""Application settings.
+
+Everything is configured through environment variables prefixed with ``PM_``
+(or a local ``.env`` file). Nothing in the codebase reads ``os.environ``
+directly - always go through :func:`get_settings`.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_prefix="PM_",
+        extra="ignore",
+        case_sensitive=False,
+    )
+
+    # ---- Core ----
+    app_name: str = "process-mining-service"
+    version: str = "1.0.0"
+    environment: Literal["local", "dev", "staging", "prod"] = "local"
+    debug: bool = False
+    api_prefix: str = "/api/v1"
+    host: str = "0.0.0.0"
+    port: int = 8000
+
+    # ---- Security ----
+    api_keys: str = ""
+    cors_origins: str = "*"
+
+    # ---- Limits ----
+    max_upload_mb: int = 64
+    max_events_per_log: int = 2_000_000
+    job_ttl_seconds: int = 3600
+    render_timeout_seconds: int = 60
+    max_concurrent_jobs: int = 4
+
+    # ---- Storage ----
+    storage_backend: Literal["memory", "sqlite"] = "sqlite"
+    sqlite_path: Path = Path("./data/pm.db")
+    artifact_dir: Path = Path("./data/artifacts")
+
+    # ---- Domain mapping ----
+    mapping_config: Path = Path("./config/activities.yaml")
+    default_mapping_profile: str = "generic"
+
+    # ---- Voice (optional module) ----
+    voice_enabled: bool = False
+    whisper_model: str = "turbo"
+    whisper_language: str = "ru"
+    max_audio_seconds: int = 300
+
+    # ---- Observability ----
+    log_level: str = "INFO"
+    log_json: bool = True
+
+    @field_validator("api_keys", "cors_origins", mode="before")
+    @classmethod
+    def _coerce_csv(cls, value: object) -> str:
+        if isinstance(value, (list, tuple)):
+            return ",".join(str(v) for v in value)
+        return str(value or "")
+
+    @property
+    def api_key_set(self) -> set[str]:
+        return {k.strip() for k in self.api_keys.split(",") if k.strip()}
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()] or ["*"]
+
+    @property
+    def auth_enabled(self) -> bool:
+        return bool(self.api_key_set)
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1024 * 1024
+
+    def ensure_dirs(self) -> None:
+        self.artifact_dir.mkdir(parents=True, exist_ok=True)
+        self.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+@lru_cache
+def get_settings() -> Settings:
+    settings = Settings()
+    settings.ensure_dirs()
+    return settings
+
+
+__all__ = ["Settings", "get_settings", "Field"]
