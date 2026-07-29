@@ -1,58 +1,42 @@
 # Process Mining Service
 
-Микросервис для process mining. Принимает журнал событий (CSV / TSV / XES / JSON) или
-поток событий по HTTP и возвращает модели процесса, метрики, варианты, узкие места и
-оценку соответствия (conformance).
+HTTP API around [pm4py](https://pm4py.fit.fraunhofer.de/). Feed it an event log, get back a
+process map, KPIs, path variants, bottlenecks and conformance scores.
 
-Это переработка прототипа на Streamlit (`main.py`, 965 строк в одном файле) в сервис,
-который можно подключить к любому количеству ваших проектов через API.
+*[Русская версия](README.ru.md)*
 
----
+Process mining answers three questions about a business process: how it **actually** runs
+(not how the flowchart says it does), where reality diverges from the intended model, and
+where the time is going. This service does all three over HTTP so that any number of your
+projects can use it without embedding pm4py themselves.
 
-## 1. Что изменилось по сравнению с прототипом
-
-| Было (Streamlit) | Стало (микросервис) |
-|---|---|
-| Один файл на 965 строк: UI + CSS + бизнес-логика вперемешку | Слои: `api` → `services` → `core` → `storage`, каждый заменяем отдельно |
-| Работает только через браузер, руками | HTTP API + OpenAPI-схема + готовые клиенты на Python и TypeScript |
-| Лог живёт в `st.session_state` и умирает при рестарте | SQLite (или in-memory для тестов), интерфейс репозитория готов под Postgres |
-| Whisper грузится всегда, ~1–6 ГБ RAM | Голос — отдельный модуль за флагом `PM_VOICE_ENABLED`, по умолчанию выключен |
-| Ключевые слова пекарни зашиты в код | YAML-профили активностей, горячая перезагрузка без деплоя |
-| Только DFG + Petri Net | DFG (частоты и длительности), Petri Net (inductive / heuristics), Process Tree, BPMN, conformance |
-| Только картинка | И картинка (SVG / PNG / DOT), **и JSON-граф** — рисуйте чем хотите |
-| Ошибка `PermissionError` при рендере | Рендер во временный каталог + таймаут |
-| Нет авторизации, лимитов, логов | API-ключи, лимиты размера, structured JSON-логи, request-id, health-проб |
-| Тестов нет | pytest: маппинг, парсинг, метрики, полный жизненный цикл API |
+Every model comes back **twice**: as a rendered SVG/PNG for reports, and as a
+renderer-agnostic JSON graph (nodes + edges + metrics) you can draw with D3, Cytoscape or
+React Flow.
 
 ---
 
-## 2. Быстрый старт
-
-### Docker (рекомендуется)
+## Quick start
 
 ```bash
-cp .env.example .env          # поменяйте PM_API_KEYS
+cp .env.example .env          # set PM_API_KEYS
 docker compose up -d --build
-
-open http://localhost:8000/docs   # интерактивная документация
-open http://localhost:8000/       # демо-интерфейс
 ```
 
-### Локально
+Then open <http://localhost:8000/> for the web console, or <http://localhost:8000/docs>
+for the OpenAPI browser.
+
+Without Docker you need the `graphviz` binary on PATH (`apt install graphviz`,
+`brew install graphviz`, `choco install graphviz`) and then:
 
 ```bash
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-
-# нужен системный graphviz (бинарь dot):
-#   Windows: choco install graphviz     macOS: brew install graphviz
-#   Ubuntu:  sudo apt install graphviz
-
 cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Проверка за один вызов
+One call to check everything works end to end:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/mine \
@@ -62,239 +46,240 @@ curl -X POST http://localhost:8000/api/v1/mine \
   -F "format=svg" | jq -r '.result.image' > map.svg
 ```
 
-Или полный смоук-тест:
+Or the full smoke test, which exercises upload → stats → bottlenecks → render → delete:
 
 ```bash
-python clients/python/pm_client.py --base-url http://localhost:8000 --api-key dev-key-change-me
+python clients/python/pm_client.py --api-key dev-key-change-me
 ```
 
 ---
 
-## 3. Два способа использования
+## Input format
 
-**Stateless — один запрос, полный ответ, ничего не хранится.**
-Подходит большинству проектов: загрузили файл, получили модель и метрики.
+Three columns are mandatory: **case id**, **activity**, **timestamp**. Everything else is
+optional. Column names are auto-detected (`batch_id`, `order`, `ticket` → case id;
+`step`, `action`, `task` → activity; and so on), and you can override the guess explicitly.
 
-```
-POST /api/v1/mine     (multipart: file + параметры)
+```csv
+batch_id,step,event_time,operator
+B-0001,start_mixing,2026-06-01 07:00:00,Danijar
+B-0001,add_ingredients,2026-06-01 07:07:00,Danijar
 ```
 
-**Stateful — лог живёт на сервере, события можно дописывать.**
-Подходит, когда данные приходят потоком (голос, ERP, IoT, конвейер).
-
-```
-POST   /api/v1/logs                  создать лог
-POST   /api/v1/logs/{id}/events      дописать события
-POST   /api/v1/logs/{id}/discover    построить модель
-GET    /api/v1/logs/{id}/statistics  KPI
-GET    /api/v1/logs/{id}/bottlenecks узкие места
-GET    /api/v1/logs/{id}/variants    частые маршруты
-POST   /api/v1/logs/{id}/conformance fitness / precision
-GET    /api/v1/logs/{id}/map         картинка прямо в <img>
-```
+Accepted: CSV, TSV, XES (plain or `.gz`), JSON, JSONL.
 
 ---
 
-## 4. Что за что отвечает
+## Two ways to use it
+
+**Stateless** — one request in, full answer out, nothing is stored. This is what most
+callers want.
 
 ```
-app/
-├── main.py              сборка приложения: здесь и только здесь всё связывается воедино
-├── config.py            все настройки из переменных окружения PM_*, никаких os.environ по коду
-├── deps.py              зависимости FastAPI: проверка API-ключа, доступ к сервисам
-├── errors.py            доменные исключения и единственное место, где они станут HTTP-ответом
-├── middleware.py        request-id, лог доступа, ранняя отбраковка слишком больших тел
-├── logging_config.py    JSON-логи с корреляцией запросов
-│
-├── api/v1/              HTTP-слой. Тонкий: провалидировать → вызвать сервис → отдать
-│   ├── logs.py          создание/чтение/дополнение/удаление логов
-│   ├── mining.py        discovery, статистика, варианты, узкие места, conformance, /mine
-│   ├── jobs.py          опрос фоновых задач
-│   ├── profiles.py      список профилей активностей и их перезагрузка
-│   ├── voice.py         опциональный голосовой ввод (Whisper)
-│   └── health.py        /health/live и /health/ready для Docker и Kubernetes
-│
-├── schemas/             контракты API (Pydantic). Меняете здесь — меняется и OpenAPI
-│
-├── services/            сценарии использования, не знают ничего про HTTP
-│   ├── log_service.py   жизненный цикл лога
-│   ├── mining_service.py дискавери + аналитика + кеш
-│   └── transcription.py  аудио → текст → активность (ленивая загрузка Whisper)
-│
-├── core/                чистая предметная логика, ни FastAPI, ни БД
-│   ├── model.py         канонический формат лога и починка таймзон
-│   ├── ingestion.py     CSV / XES / JSON → канонический формат, автоопределение колонок
-│   ├── mapping.py       нормализация названий активностей по YAML-профилям
-│   ├── filtering.py     фильтры лога на чистом pandas
-│   ├── mining.py        единственное место во всём коде, где вызывается pm4py
-│   ├── metrics.py       KPI, варианты, узкие места, переделки (rework)
-│   ├── rendering.py     graphviz → SVG / PNG / DOT, с таймаутом и без блокировок файлов
-│   └── cache.py         LRU + TTL кеш результатов по отпечатку входных данных
-│
-├── storage/             хранение
-│   ├── base.py          интерфейс репозитория
-│   ├── memory.py        для тестов и stateless-режима
-│   └── sqlite.py        для продакшена одного контейнера; на Postgres меняется URL
-│
-├── jobs/manager.py      пул потоков: тяжёлый pm4py никогда не блокирует event loop
-└── static/index.html    демо-клиент: тёмная тема, работает поверх того же API
+POST /api/v1/mine        multipart: file + parameters
 ```
 
-Правило простое: **зависимости идут только внутрь**. `api` знает про `services`,
-`services` знают про `core` и `storage`, а `core` не знает ни про кого. Поэтому логику
-можно вызывать из CLI, воркера или тестов без поднятия HTTP.
+**Stateful** — the log lives on the server and events are appended as they happen. Use this
+when data arrives as a stream (ERP, IoT, a conveyor line, voice input).
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/logs` | create a log from a JSON event list |
+| `POST /api/v1/logs/upload` | create a log from a file |
+| `POST /api/v1/logs/{id}/events` | append events |
+| `POST /api/v1/logs/{id}/discover` | build a model |
+| `POST /api/v1/logs/{id}/discover/async` | same, returns a `job_id` immediately |
+| `GET /api/v1/logs/{id}/statistics` | throughput, activity and resource stats |
+| `GET /api/v1/logs/{id}/variants` | most frequent end-to-end paths |
+| `GET /api/v1/logs/{id}/bottlenecks` | where the time actually goes |
+| `POST /api/v1/logs/{id}/conformance` | fitness / precision against a discovered model |
+| `GET /api/v1/logs/{id}/map` | the image itself, embeddable in `<img src=...>` |
+
+Auth is `X-API-Key: <key>` or `Authorization: Bearer <key>`. Leave `PM_API_KEYS` empty to
+disable auth — local development only.
+
+Full endpoint reference: [docs/API.md](docs/API.md).
 
 ---
 
-## 5. Идеи, которые здесь реализованы (и почему они полезны)
+## Algorithms
 
-**JSON-граф рядом с картинкой.** Любой ответ discovery содержит `graph` — узлы и рёбра
-с частотами и длительностями. Ваш фронтенд может нарисовать это в D3 / Cytoscape /
-React Flow, сделать интерактив, зум и подсветку. SVG остаётся для отчётов и писем.
+| `algorithm` | Output |
+|---|---|
+| `dfg_frequency` | directly-follows graph, edges weighted by count |
+| `dfg_performance` | directly-follows graph, edges weighted by waiting time |
+| `petri_net_inductive` | Petri net, inductive miner (sound by construction) |
+| `petri_net_heuristics` | Petri net, heuristics miner (handles noise) |
+| `process_tree` | process tree |
+| `bpmn` | BPMN diagram |
 
-**Узкие места считаются по суммарному времени, а не по среднему.** Сортировка по
-среднему выносит наверх единичные аномалии. Сортировка по `среднее × количество`
-показывает, где на самом деле теряются часы. Плюс отдельно считаются переделки
-(один и тот же шаг повторяется в кейсе) и самопетли — это классические источники потерь.
+Start with `dfg_performance`: it is the one that shows you where the hours go.
 
-**Фильтры до дискавери, а не после.** `variant_coverage: 0.8` оставит варианты,
-покрывающие 80% кейсов, и «спагетти-диаграмма» превратится в читаемую схему.
-Это самый дешёвый способ сделать карту процесса понятной.
-
-**Кеш по отпечатку.** Ключ = (лог + время его последнего изменения + параметры).
-Дашборд может опрашивать сервис хоть каждую секунду: повторный расчёт Petri Net
-вернётся из кеша за миллисекунды, а после дописывания событий кеш сам инвалидируется.
-
-**Профили активностей в YAML.** «замес» → `start_mixing` больше не живёт в коде.
-Новый проект = новый профиль в конфиге; файл перечитывается на лету.
-
-**Асинхронный режим для больших логов.** `POST /logs/{id}/discover/async` сразу
-возвращает `job_id`, клиент опрашивает `GET /jobs/{id}`. Никаких таймаутов шлюза.
-
-**Conformance.** Fitness и precision показывают, насколько реальность расходится
-с моделью. Это то, ради чего process mining обычно и внедряют.
+Two knobs matter for readability. `noise_threshold` (0–1) drops rare behaviour in the
+inductive and heuristics miners. `filters.variant_coverage: 0.8` keeps only the variants
+covering 80% of cases — the cheapest way to turn a spaghetti diagram into something a
+human can read.
 
 ---
 
-## 6. Конфигурация
+## What you get back
 
-Все переменные с префиксом `PM_`, полный список — в `.env.example`.
+```jsonc
+{
+  "result": {
+    "algorithm": "dfg_performance",
+    "graph": { "nodes": [...], "edges": [...] },   // draw it yourself
+    "image": "<svg .../>",                          // or use this
+    "computed_in_ms": 327
+  },
+  "statistics": { "events": 497, "cases": 60, "throughput_seconds": { "median": 8520 } },
+  "bottlenecks": { "bottlenecks": [...], "rework": [...] },
+  "variants":    { "items": [...] },
+  "warnings": [], "detected_columns": { "case_id": "batch_id" }
+}
+```
 
-| Переменная | По умолчанию | Смысл |
-|---|---|---|
-| `PM_API_KEYS` | пусто | Ключи через запятую. Пусто = авторизация выключена (только для локальной разработки) |
-| `PM_STORAGE_BACKEND` | `sqlite` | `sqlite` или `memory` |
-| `PM_SQLITE_PATH` | `./data/pm.db` | Файл базы |
-| `PM_MAX_UPLOAD_MB` | `64` | Лимит размера файла |
-| `PM_MAX_EVENTS_PER_LOG` | `2000000` | Защита от случайного гигабайта |
-| `PM_MAPPING_CONFIG` | `./config/activities.yaml` | Профили активностей |
-| `PM_MAX_CONCURRENT_JOBS` | `4` | Размер пула потоков под pm4py |
-| `PM_RENDER_TIMEOUT_SECONDS` | `60` | Таймаут graphviz |
-| `PM_VOICE_ENABLED` | `false` | Включает Whisper-эндпоинты |
-| `PM_LOG_JSON` | `true` | JSON-логи (удобно для Loki / ELK) |
+Bottlenecks are ranked by **total** time consumed (`mean × occurrences`), not by mean
+duration. Ranking by mean surfaces rare freak cases; ranking by total surfaces what
+actually costs the business hours.
 
 ---
 
-## 7. Профили активностей
+## Web console
 
-`config/activities.yaml`:
+The service ships a built-in UI at `/` — upload a log, pick an algorithm, get the map plus
+tabs for variants, bottlenecks and activities. Interface language: English, Russian,
+Kazakh. Light and dark themes.
+
+It is a plain static page (`app/static/`) talking to the same public API, no build step and
+no npm. If you want your own frontend, read `app/static/app.js` as the reference client.
+
+---
+
+## Activity profiles
+
+Free-text activity names get normalized through YAML profiles, so `"замес"`, `"месим тесто"`
+and `"start_mixing"` all collapse into one activity. Rules are checked top-down, first match
+wins: `exact` → `patterns` (regex) → `keywords` (substring).
 
 ```yaml
 profiles:
   bakery:
-    description: "Линия выпечки"
     fallback: other_activity
-    passthrough: false        # true = неопознанный текст остаётся как есть
+    passthrough: false        # true = keep unmatched text as-is
     rules:
       - activity: start_mixing
+        exact: ["start_mixing"]
         keywords: ["замес", "меси"]
-      - activity: proving
-        keywords: ["расстой", "брожен"]
-        patterns: ["на\\s+расстой\\w*"]
 ```
 
-Правила проверяются сверху вниз, первое совпадение выигрывает:
-`exact` (точное совпадение) → `patterns` (регулярки) → `keywords` (подстроки).
-Файл перечитывается автоматически при изменении; можно и вручную:
-`POST /api/v1/mapping-profiles/reload`.
+`config/activities.yaml` is re-read automatically when it changes; `POST
+/api/v1/mapping-profiles/reload` forces it.
 
 ---
 
-## 8. Примеры интеграции
+## Configuration
 
-### Python
+Environment variables, all prefixed `PM_`. Full list in `.env.example`.
 
-```python
-from pm_client import ProcessMiningClient
-
-pm = ProcessMiningClient("http://process-mining:8000", api_key="...")
-
-# без хранения
-answer = pm.mine_file("orders.csv", algorithm="dfg_performance", output_format="svg")
-open("map.svg", "w").write(answer["result"]["image"])
-print(answer["bottlenecks"]["bottlenecks"][0])
-
-# с хранением и дописыванием
-log_id = pm.upload_log("orders.csv", mapping_profile="bakery")["log"]["log_id"]
-pm.append_events(log_id, [{"case_id": "B-1", "activity": "упаковали"}])
-print(pm.statistics(log_id)["throughput_seconds"]["median"])
-```
-
-### JavaScript / TypeScript
-
-```ts
-import { ProcessMiningClient } from './pmClient';
-
-const pm = new ProcessMiningClient('http://localhost:8000', apiKey);
-const { result, statistics } = await pm.mineFile(file, {
-  algorithm: 'dfg_frequency',
-  filters: { variant_coverage: 0.8 },
-});
-// result.graph.nodes / result.graph.edges → рисуем сами
-```
-
-### Просто картинка в вёрстке
-
-```html
-<img src="http://localhost:8000/api/v1/logs/LOG_ID/map?algorithm=dfg_performance&format=svg">
-```
+| Variable | Default | Meaning |
+|---|---|---|
+| `PM_API_KEYS` | *empty* | Comma-separated. Empty disables auth |
+| `PM_CORS_ORIGINS` | `*` | Set your real origins in production |
+| `PM_STORAGE_BACKEND` | `sqlite` | `sqlite` or `memory` |
+| `PM_SQLITE_PATH` | `./data/pm.db` | Database file |
+| `PM_MAX_UPLOAD_MB` | `64` | Upload size limit |
+| `PM_MAX_EVENTS_PER_LOG` | `2000000` | Guard against an accidental gigabyte |
+| `PM_MAPPING_CONFIG` | `./config/activities.yaml` | Activity profiles |
+| `PM_MAX_CONCURRENT_JOBS` | `4` | Thread-pool size for pm4py work |
+| `PM_RENDER_TIMEOUT_SECONDS` | `60` | Graphviz timeout |
+| `PM_VOICE_ENABLED` | `false` | Enables the Whisper endpoints |
+| `PM_LOG_JSON` | `true` | JSON logs, for Loki / ELK |
 
 ---
 
-## 9. Разработка
+## Layout
+
+```
+app/
+├── main.py         composition root - everything is wired here, once
+├── config.py       PM_* settings; nothing else reads os.environ
+├── deps.py         FastAPI dependencies: API key, service accessors
+├── api/v1/         HTTP layer. Thin: validate → call a service → serialize
+├── schemas/        Pydantic contracts; edit here and OpenAPI follows
+├── services/       use cases, no HTTP knowledge
+├── core/           pure domain logic, no FastAPI, no DB
+│   ├── ingestion.py   CSV/XES/JSON → canonical frame, column detection
+│   ├── mining.py      the ONLY module that imports pm4py
+│   ├── metrics.py     KPIs, variants, bottlenecks, rework (plain pandas)
+│   ├── rendering.py   graphviz → SVG/PNG/DOT, sandboxed + timed out
+│   └── cache.py       LRU + TTL keyed by a fingerprint of the inputs
+├── storage/        repository interface + memory and sqlite backends
+└── jobs/manager.py thread pool: blocking pm4py never touches the event loop
+```
+
+Dependencies point inward only: `api` → `services` → `core`. `core` knows about nobody, so
+the logic runs from a CLI, a worker or a test without starting HTTP.
+
+Two decisions worth knowing about. **All pm4py calls live in `core/mining.py`** — its public
+API drifts between minor versions, so an upgrade is a one-file change. **Rendering happens
+in a private temp dir** with a timeout, because rendering into the project directory is how
+you get `PermissionError` on Windows and a wedged worker on a pathological graph.
+
+More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+---
+
+## Development
 
 ```bash
-make install     # зависимости
-make dev         # автоперезагрузка
+make install     # dependencies
+make dev         # uvicorn with reload
 make test        # pytest
 make lint        # ruff
-make up / down   # docker compose
 ```
 
-Тесты используют `storage_backend=memory`, поэтому ничего не оставляют после себя.
+Tests run against `storage_backend=memory` and leave nothing behind.
 
 ---
 
-## 10. Продакшен: короткий чек-лист
+## Deployment
 
-1. Задайте `PM_API_KEYS` — без них API открыт всем.
-2. `PM_CORS_ORIGINS` — перечислите свои домены вместо `*`.
-3. Терминируйте TLS на nginx / ingress (пример в `deploy/nginx.conf`).
-4. Воркеров uvicorn ≈ числу ядер; pm4py упирается в CPU.
-5. Больше одной реплики → вынесите хранилище в Postgres, а задачи в Celery/RQ
-   (интерфейсы под это уже разделены).
-6. Собирайте `/health/ready` — там состояние хранилища, кеша, graphviz и задач.
-7. Голосовой модуль включайте отдельным деплоем: у него другой профиль по памяти.
+`docker compose up -d --build` on a VM is the intended setup: no external dependencies,
+SQLite in a named volume, `restart: unless-stopped`, healthcheck built in.
+
+Before going to production: set real `PM_API_KEYS`, replace `PM_CORS_ORIGINS=*` with your
+domains, set `PM_DEBUG=false`, and put TLS in front of it — there is a working reverse proxy
+config in [deploy/nginx.conf](deploy/nginx.conf) with the long timeouts discovery needs.
+
+The image is ~1 GB (pm4py pulls in scipy and matplotlib). For an air-gapped host,
+`docker save | gzip` gives you ~400 MB to copy.
 
 ---
 
-## 11. Известные подводные камни (унаследованные и решённые)
+## Limitations
 
-| Проблема | Как решено |
-|---|---|
-| `PermissionError [Errno 13]` при рендере graphviz | Рендер в приватный `tempfile.mkdtemp()`, после чтения каталог удаляется |
-| `ValueError: Cannot mix tz-aware with tz-naive` | Все таймстемпы приводятся к tz-naive UTC один раз, в `core/model.py` |
-| `'UploadedFile' object has no attribute 'decode'` для XES | Загрузка сохраняется во временный файл, затем `pm4py.read_xes(path)` |
-| Импорты из внутренностей pm4py ломаются между версиями | Только публичный API pm4py, и он изолирован в `core/mining.py` |
-| Плохое качество картинок | По умолчанию SVG (вектор), PNG — с настраиваемым DPI |
-| Долгий расчёт вешает сервер | Пул потоков + асинхронные задачи + таймаут рендера |
+Read this section before building on top of it.
+
+- **Appending events is not idempotent.** `POST /logs/{id}/events` has no deduplication and
+  events carry no id, so a retried request or a re-run importer will duplicate events and
+  quietly skew every metric. Fine for manual uploads, not safe for automated ingestion yet.
+- **SQLite means one node.** The `LogRepository` interface is ready for Postgres but the
+  implementation does not exist. Do not run multiple replicas against one database file —
+  note that `deploy/k8s.yaml` ships `replicas: 2`, which you must fix before using it.
+- **`tenant` is a filter, not isolation.** It scopes queries; it does not enforce that key A
+  cannot read tenant B.
+- **No rate limiting.** Only a request body size cap.
+- **Discovery is CPU-bound and synchronous by default.** Large logs should go through
+  `/discover/async` + `/jobs/{id}` rather than holding an HTTP connection open.
+- **Voice input needs Whisper** (`PM_VOICE_ENABLED=true`, `pip install '.[voice]'`), which
+  wants gigabytes of RAM. It is off by default and lazily imported for that reason.
+
+---
+
+## Docs
+
+- [docs/API.md](docs/API.md) — endpoint reference
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — data flow and design decisions
+- [docs/MIGRATION.md](docs/MIGRATION.md) — porting from the old Streamlit prototype
+- `clients/python/pm_client.py`, `clients/js/pmClient.ts` — copy one file into your project
