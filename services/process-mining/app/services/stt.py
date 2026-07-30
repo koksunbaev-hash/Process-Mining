@@ -16,7 +16,9 @@ import hmac
 import json
 import shutil
 import subprocess
+import tempfile
 import time
+from pathlib import Path
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -47,14 +49,19 @@ class SttService:
         self.settings = settings
 
     # ---- audio ----------------------------------------------------------
-    def decode_to_pcm(self, payload: bytes) -> tuple[bytes, float]:
-        """Any browser recording -> 16 kHz mono int16 PCM.
+    def decode_to_wav(self, payload: bytes) -> tuple[bytes, float]:
+        """Any browser recording -> a 16 kHz mono WAV file.
 
-        The recorder in a browser produces webm/opus or mp4, and the STT
-        server wants raw PCM. ffmpeg reads the container from the byte stream,
-        so we never need to know or trust the file extension.
+        The recorder in a browser produces webm/opus or mp4. The STT server
+        parses what it receives with ``speech_recognition.AudioFile``, which
+        needs a real container - handing it raw PCM fails with "could not be
+        read as PCM WAV". So we hand it a WAV, header and all.
 
-        Returns ``(pcm, duration_seconds)``.
+        ffmpeg writes through a temporary file rather than a pipe on purpose:
+        a WAV header carries the data length, and a streamed header has to
+        guess it. Readers that trust that field then truncate the audio.
+
+        Returns ``(wav_bytes, duration_seconds)``.
         """
         if shutil.which("ffmpeg") is None:
             raise SttError(
@@ -65,46 +72,49 @@ class SttService:
             raise ValidationError("Audio file is empty")
 
         rate = self.settings.stt_sample_rate
+        workdir = Path(tempfile.mkdtemp(prefix="pm_audio_"))
+        target = workdir / "audio.wav"
         try:
-            done = subprocess.run(
-                [
-                    "ffmpeg", "-hide_banner", "-loglevel", "error",
-                    "-i", "pipe:0",
-                    "-f", "s16le", "-acodec", "pcm_s16le",
-                    "-ac", "1", "-ar", str(rate),
-                    "pipe:1",
-                ],
-                input=payload,
-                capture_output=True,
-                timeout=self.settings.stt_timeout_seconds,
-                check=True,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise SttError("Audio decoding timed out", code="AUDIO_DECODE_TIMEOUT") from exc
-        except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or b"").decode("utf-8", errors="replace")[:300]
-            raise SttError(f"Cannot decode audio: {detail}", code="UNSUPPORTED_AUDIO") from exc
+            try:
+                subprocess.run(
+                    [
+                        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                        "-i", "pipe:0",
+                        "-acodec", "pcm_s16le", "-ac", "1", "-ar", str(rate),
+                        str(target),
+                    ],
+                    input=payload,
+                    capture_output=True,
+                    timeout=self.settings.stt_timeout_seconds,
+                    check=True,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise SttError("Audio decoding timed out", code="AUDIO_DECODE_TIMEOUT") from exc
+            except subprocess.CalledProcessError as exc:
+                detail = (exc.stderr or b"").decode("utf-8", errors="replace")[:300]
+                raise SttError(f"Cannot decode audio: {detail}", code="UNSUPPORTED_AUDIO") from exc
 
-        pcm = done.stdout
-        if not pcm:
+            wav = target.read_bytes()
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
+
+        if len(wav) <= 44:  # header only, no samples
             raise SttError("Audio decoded to zero samples", code="EMPTY_AUDIO")
-        duration = len(pcm) / (rate * 2)  # int16 mono
-        return pcm, round(duration, 3)
+        duration = (len(wav) - 44) / (rate * 2)  # int16 mono, minus the header
+        return wav, round(duration, 3)
 
     # ---- transcription --------------------------------------------------
     def transcribe(self, payload: bytes, *, language: str | None = None) -> dict[str, Any]:
-        pcm, duration = self.decode_to_pcm(payload)
+        wav, duration = self.decode_to_wav(payload)
         lang = language or self.settings.stt_language
 
-        query = urllib.parse.urlencode(
-            {"lang": lang, "sample_rate": self.settings.stt_sample_rate, "sample_width": 2}
-        )
+        query = urllib.parse.urlencode({"lang": lang})
         url = f"{self.settings.stt_url.rstrip('/')}/stt?{query}"
         request = urllib.request.Request(
             url,
-            data=pcm,
+            data=wav,
             method="POST",
-            headers={"Content-Type": "application/octet-stream"},
+            headers={"Content-Type": "audio/wav"},
         )
 
         started = time.perf_counter()
