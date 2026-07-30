@@ -94,18 +94,19 @@ services:
   # thing in the stack, and this way it can be swapped, given a GPU or moved to
   # another host without touching anything else.
   stt:
-    image: smartgic/ovos-stt-plugin-fasterwhisper:${STT_IMAGE_TAG:-latest}
+    # `alpha` is the only tag this image publishes - there is no `latest`.
+    image: smartgic/ovos-stt-server-fasterwhisper:${STT_IMAGE_TAG:-alpha}
     restart: unless-stopped
     environment:
-      # `small` is the sweet spot for Russian on a CPU: `base` mishears batch
-      # numbers, `medium` does not fit the latency budget without a GPU.
-      MODEL: ${STT_MODEL:-small}
-      COMPUTE_TYPE: ${STT_COMPUTE_TYPE:-int8}
-      OMP_NUM_THREADS: ${STT_THREADS:-2}
+      TZ: ${TZ:-UTC}
     volumes:
-      # Keeps the downloaded weights across rebuilds - otherwise every
-      # `up --build` re-downloads half a gigabyte.
-      - stt_models:/home/ovos/.cache/huggingface
+      # The model is chosen in this file, not by environment variables: the
+      # image reads it as OVOS config. A user config outranks the one baked
+      # into the image, which asks for medium on 4 threads.
+      - ./services/stt/mycroft.conf:/home/ovos/.config/mycroft/mycroft.conf:ro
+      # Keeps downloaded weights across restarts - otherwise every recreate
+      # re-downloads the model.
+      - stt_models:/home/ovos/.cache
     deploy:
       resources:
         limits:
