@@ -16,7 +16,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import integration
+from app.api import integration, transcriptions
 from app.api.router import api_router, voice_router
 from app.api.v1 import health
 from app.config import Settings, get_settings
@@ -28,6 +28,7 @@ from app.logging_config import configure_logging, get_logger
 from app.middleware import MaxBodySizeMiddleware, RequestContextMiddleware
 from app.services.log_service import LogService
 from app.services.mining_service import MiningService
+from app.services.stt import SttService
 from app.services.transcription import TranscriptionService
 from app.storage import build_repository
 
@@ -75,6 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.log_service = LogService(repository, mappings, settings, cache)
         application.state.mining_service = MiningService(settings, cache)
         application.state.transcription_service = TranscriptionService(settings, mappings)
+        application.state.stt_service = SttService(settings)
 
         log.info(
             "service_started",
@@ -117,8 +119,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     application.include_router(health.router)
     application.include_router(api_router, prefix=settings.api_prefix)
-    # Fixed, unversioned path: source systems were built against it.
+    # Fixed, unversioned paths: source systems were built against them.
     application.include_router(integration.router, prefix="/api")
+    application.include_router(transcriptions.router, prefix="/api")
     if settings.voice_enabled:
         application.include_router(voice_router, prefix=settings.api_prefix)
 

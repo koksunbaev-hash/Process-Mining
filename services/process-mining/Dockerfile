@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1
 FROM python:3.12-slim AS base
 
-# graphviz binary (dot) is required for SVG/PNG rendering
+# graphviz renders the process maps; ffmpeg decodes browser recordings
+# (webm/opus, mp4) into the raw PCM the speech service expects
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        graphviz curl \
+        graphviz curl ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1 \

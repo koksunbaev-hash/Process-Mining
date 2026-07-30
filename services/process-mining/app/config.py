@@ -64,6 +64,20 @@ class Settings(BaseSettings):
     whisper_language: str = "ru"
     max_audio_seconds: int = 300
 
+    # ---- Speech-to-text over HTTP ----
+    # The model runs in its own container (see the `stt` service), so this one
+    # stays small and a GPU can be given to speech alone.
+    stt_url: str = "http://stt:8080"
+    stt_language: str = "ru"
+    stt_timeout_seconds: int = 120
+    stt_sample_rate: int = 16000
+
+    # Callbacks are signed with HMAC-SHA256 over the raw body; the receiver
+    # rejects anything unsigned, so an empty secret disables sending.
+    callback_secret: str = ""
+    callback_timeout_seconds: int = 10
+    callback_retries: int = 3
+
     # ---- Observability ----
     log_level: str = "INFO"
     log_json: bool = True
