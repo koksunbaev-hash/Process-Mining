@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <form method="post" enctype="multipart/form-data" class="form-grid">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <div class="dialog-actions">
+      <button class="primary" type="submit">Сохранить</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

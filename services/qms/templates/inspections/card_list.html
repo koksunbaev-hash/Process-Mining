@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block page_title %}Карты контроля{% endblock %}
+{% block content %}
+<section class="panel"><div class="table-wrap"><table><thead><tr><th>Карта</th><th>Объект</th><th>Пост</th><th>Контролёр</th><th>Результат</th><th>Статус</th></tr></thead><tbody>
+{% for card in cards %}<tr><td><a href="{% url 'inspections:card_detail' card.pk %}">{{ card.card_number }}</a></td><td>{{ card.quality_object.unique_number }}</td><td>{{ card.control_post.name }}</td><td>{{ card.inspector|default:"-" }}</td><td>{{ card.get_overall_result_display }}</td><td>{{ card.get_status_display }}</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endblock %}

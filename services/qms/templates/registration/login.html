@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Вход в QMS{% endblock %}
+{% block content %}
+<section class="login-card">
+  <div class="brand login-brand"><div class="logo">Q</div><div><h1>QMS</h1><p>Управление качеством</p></div></div>
+  <form method="post" class="form-grid">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <label>Логин {{ form.username }}</label>
+    <label>Пароль {{ form.password }}</label>
+    <button class="primary" type="submit">Войти</button>
+  </form>
+</section>
+{% endblock %}

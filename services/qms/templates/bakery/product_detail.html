@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ item.name }}{% endblock %}
+{% block page_title %}{{ item.name }}{% endblock %}
+{% block top_action %}<a class="primary" href="{% url 'bakery:product_edit' item.pk %}">Редактировать</a>{% endblock %}
+{% block content %}
+<div class="tabs">
+  <a href="#info">Общая информация</a><a href="#recipe">Рецептура</a><a href="#orders">Заказы</a><a href="#batches">Производственные партии</a><a href="#history">История изменений</a>
+</div>
+<section class="panel" id="info">
+  <div class="meta-grid">
+    <div><span class="muted">Код</span><strong>{{ item.code }}</strong></div>
+    <div><span class="muted">Категория</span><strong>{{ item.get_category_display }}</strong></div>
+    <div><span class="muted">Единица</span><strong>{{ item.unit }}</strong></div>
+  </div>
+  <p>{{ item.description|default:"Описание не заполнено." }}</p>
+</section>
+<section class="panel" id="recipe">
+  <div class="panel-header"><h3>Рецептура</h3><a class="secondary" href="{% url 'bakery:recipes' %}?product={{ item.pk }}">Открыть рецептуры</a></div>
+  {% for recipe in item.recipes.all %}
+    <h4>{{ recipe.name }} v{{ recipe.version }} на {{ recipe.output_quantity }} {{ recipe.output_unit }}</h4>
+    <div class="table-wrap"><table><tr><th>№</th><th>Ингредиент</th><th>На партию</th><th>На 1 штуку</th><th>Ед.</th><th>Примечание</th></tr>
+    {% for row in recipe.items.all %}<tr><td>{{ row.sequence }}</td><td>{{ row.ingredient.name }}</td><td>{{ row.quantity_for_batch }}</td><td>{{ row.quantity_per_item }}</td><td>{{ row.ingredient.unit }}</td><td>{{ row.notes }}</td></tr>{% endfor %}
+    </table></div>
+  {% empty %}<p class="muted">Рецептура ещё не создана.</p>{% endfor %}
+</section>
+<section class="panel" id="orders"><h3>Заказы</h3>{% for line in item.order_items.all %}<p><a href="{% url 'bakery:order_detail' line.order.pk %}">Заказ №{{ line.order.order_number }}</a> - {{ line.quantity }} {{ line.unit }}</p>{% empty %}<p class="muted">Заказов нет.</p>{% endfor %}</section>
+<section class="panel" id="batches"><h3>Производственные партии</h3>{% for batch in item.batches.all %}<p><a href="{% url 'bakery:batch_detail' batch.pk %}">{{ batch.batch_number }}</a> - {{ batch.current_stage.name }}</p>{% empty %}<p class="muted">Партий нет.</p>{% endfor %}</section>
+<section class="panel" id="history"><h3>История изменений</h3><p class="muted">Создано: {{ item.created_at }}. Обновлено: {{ item.updated_at }}.</p></section>
+{% endblock %}

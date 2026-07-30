@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block page_title %}Отчёты{% endblock %}
+{% block page_subtitle %}Управление качеством производства{% endblock %}
+{% block content %}
+<div class="report-grid">
+  {% for card in report_cards %}
+  <article class="report-card">
+    <div class="report-icon">{{ card.definition.icon }}</div>
+    <div>
+      <h3>{{ card.definition.title }}</h3>
+      <p>{{ card.definition.description }}</p>
+    </div>
+    <div class="report-card-footer">
+      <span class="badge">{{ card.count }} записей</span>
+      <a class="primary" href="{{ card.url }}">Открыть отчёт</a>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% endblock %}

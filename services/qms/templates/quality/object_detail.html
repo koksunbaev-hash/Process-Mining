@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block page_title %}{{ object.unique_number }}{% endblock %}
+{% block page_subtitle %}{{ object.product_name }}{% endblock %}
+{% block content %}
+<div class="content-grid">
+  <section class="panel"><h3>Карточка объекта</h3><p><b>Статус:</b> {{ object.get_quality_status_display }}</p><p><b>Маршрут:</b> {{ object.route|default:"-" }}</p><p><b>Партия:</b> {{ object.batch_number|default:"-" }}</p></section>
+  <section class="panel"><h3>История статусов</h3>{% for h in history %}<p>{{ h.changed_at|date:"d.m.Y H:i" }}: {{ h.previous_status }} → {{ h.new_status }}</p>{% empty %}<p class="muted">История пока пуста.</p>{% endfor %}</section>
+</div>
+<section class="panel"><h3>Связанные задания</h3><div class="table-wrap"><table><tbody>{% for task in object.tasks.all %}<tr><td><a href="{% url 'inspections:task_detail' task.pk %}">{{ task.task_number }}</a></td><td>{{ task.control_post }}</td><td>{{ task.get_status_display }}</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

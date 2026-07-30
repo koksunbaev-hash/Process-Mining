@@ -1,0 +1,84 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}QMS{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+  <link rel="stylesheet" href="/static/css/voice-widget.css">
+  <link rel="stylesheet" href="/static/css/kanban-demo.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+  <script src="{% static 'js/app.js' %}" defer></script>
+  <script src="/static/js/voice-widget.js" defer></script>
+</head>
+<body>
+  {% if user.is_authenticated %}
+  <header class="mobile-header">
+    <button class="menu-toggle" type="button" aria-label="Открыть меню" aria-expanded="false">☰</button>
+    <div class="mobile-brand">
+      <div class="logo">Q</div>
+      <div>
+        <strong>QMS</strong>
+        <span>Управление качеством</span>
+      </div>
+    </div>
+    <a class="mobile-notifications" href="{% url 'notifications:list' %}" aria-label="Уведомления">
+      {% if unread_notifications_count %}{{ unread_notifications_count }}{% else %}0{% endif %}
+    </a>
+  </header>
+  <div class="sidebar-backdrop" data-close-menu></div>
+  <aside class="sidebar" id="sidebar">
+    <button class="sidebar-collapse-toggle" type="button" aria-label="Свернуть меню" title="Свернуть меню">‹</button>
+    <div class="brand">
+      <div class="logo">Q</div>
+      <div>
+        <h1>Bakery QMS</h1>
+        <p>Хлебозавод</p>
+      </div>
+    </div>
+    <nav>
+      <a class="nav-item" href="{% url 'dashboard:index' %}">Панель</a>
+      <a class="nav-item" href="{% url 'bakery:kanban' %}">Производственная доска</a>
+      <a class="nav-item" href="{% url 'bakery:orders' %}">Заказы</a>
+      <a class="nav-item" href="{% url 'bakery:batches' %}">Производственные партии</a>
+      <a class="nav-item" href="{% url 'bakery:products' %}">Продукты</a>
+      <a class="nav-item" href="{% url 'bakery:recipes' %}">Рецептуры</a>
+      <a class="nav-item" href="{% url 'bakery:ingredients' %}">Ингредиенты</a>
+      <a class="nav-item" href="{% url 'nonconformities:list' %}">Проблемы</a>
+      <a class="nav-item" href="{% url 'bakery:voice' %}">Голосовые сообщения</a>
+      <a class="nav-item" href="{% url 'bakery:stock' %}">Склад</a>
+      <a class="nav-item" href="{% url 'bakery:reports' %}">Отчёты</a>
+      <a class="nav-item" href="{% url 'notifications:list' %}">Уведомления{% if unread_notifications_count %} <b>{{ unread_notifications_count }}</b>{% endif %}</a>
+      {% if user.is_superuser or user.profile.role == "admin" or user.profile.role == "manager" or user.profile.role == "director" or user.profile.role == "production_dispatcher" %}
+      <a class="nav-item" href="{% url 'process_mining:dashboard' %}">Process Mining</a>
+      {% endif %}
+      <a class="nav-item" href="{% url 'audit:logs' %}">Журнал действий</a>
+      {% if user.is_staff %}<a class="nav-item" href="/admin/auth/user/">Пользователи</a><a class="nav-item" href="/admin/">Настройки</a>{% endif %}
+    </nav>
+    <div class="user-card">
+      <strong>{{ user.get_full_name|default:user.username }}</strong>
+      <span>{{ user.profile.get_role_display }}</span>
+      <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="link-button">Выйти</button></form>
+    </div>
+  </aside>
+  <button class="sidebar-rail-toggle" type="button" aria-label="Показать меню" title="Показать меню">☰</button>
+  {% endif %}
+  <main class="{% if user.is_authenticated %}main{% else %}login-main{% endif %}">
+    {% if user.is_authenticated %}
+    <header class="topbar">
+      <div>
+        <h2>{% block page_title %}QMS{% endblock %}</h2>
+        <p>{% block page_subtitle %}Управление качеством производства{% endblock %}</p>
+      </div>
+      {% block top_action %}{% endblock %}
+    </header>
+    {% endif %}
+    {% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+  {% if request.user.is_authenticated %}
+    {% include "components/voice_widget.html" %}
+  {% endif %}
+</body>
+</html>

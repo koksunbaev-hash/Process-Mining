@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block page_title %}{{ item.number }}{% endblock %}
+{% block page_subtitle %}{{ item.defect_type.name }}{% endblock %}
+{% block content %}
+<div class="content-grid">
+<section class="panel"><p><b>Объект:</b> {{ item.quality_object }}</p><p><b>Пост:</b> {{ item.control_post }}</p><p><b>Критичность:</b> {{ item.get_criticality_display }}</p><p><b>Описание:</b> {{ item.description }}</p><p><b>Статус:</b> {{ item.get_status_display }}</p></section>
+<section class="panel"><h3>Действия</h3><form method="post" action="{% url 'nonconformities:assign_action' item.pk %}">{% csrf_token %}<input name="title" placeholder="Название действия"><textarea name="action_plan" placeholder="План действий"></textarea><button class="primary">Назначить</button></form><form method="post" action="{% url 'nonconformities:create_reinspection' item.pk %}">{% csrf_token %}<button>Повторный контроль</button></form><form method="post" action="{% url 'nonconformities:close' item.pk %}">{% csrf_token %}<button>Закрыть</button></form></section>
+</div>
+<section class="panel"><h3>Корректирующие действия</h3>{% for action in item.corrective_actions.all %}<p>{{ action.number }} · {{ action.title }} · {{ action.get_status_display }}</p>{% empty %}<p class="muted">Не назначены.</p>{% endfor %}</section>
+{% endblock %}

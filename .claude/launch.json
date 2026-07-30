@@ -1,0 +1,25 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "process-mining-api",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--app-dir",
+        "services/process-mining",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8001",
+        "--reload",
+        "--reload-dir",
+        "services/process-mining/app"
+      ],
+      "port": 8001,
+      "autoPort": false
+    }
+  ]
+}

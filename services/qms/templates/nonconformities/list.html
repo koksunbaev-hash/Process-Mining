@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block page_title %}Несоответствия{% endblock %}
+{% block content %}
+<section class="panel"><div class="table-wrap"><table><thead><tr><th>Номер</th><th>Объект</th><th>Дефект</th><th>Критичность</th><th>Ответственный</th><th>Статус</th></tr></thead><tbody>
+{% for item in items %}<tr><td><a href="{% url 'nonconformities:detail' item.pk %}">{{ item.number }}</a></td><td>{{ item.quality_object.unique_number }}</td><td>{{ item.defect_type.name }}</td><td>{{ item.get_criticality_display }}</td><td>{{ item.responsible_user|default:"-" }}</td><td>{{ item.get_status_display }}</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endblock %}

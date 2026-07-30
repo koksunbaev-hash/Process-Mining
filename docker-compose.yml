@@ -1,20 +1,78 @@
+# The whole stack: the QMS that runs the bakery, and the process-mining
+# service that analyses what it produced.
+#
+# They stay two separate processes on purpose. QMS owns the business data and
+# must not go down because a discovery job on a large log ate the CPU; the
+# analytics service is stateless enough to restart at any time. What is merged
+# is the repository and the lifecycle - one clone, one `docker compose up`.
+#
+#   docker compose up -d --build
+#
+# QMS            -> http://localhost:8000
+# Process mining -> http://localhost:8001
+
 services:
-  process-mining:
-    build: .
-    image: process-mining-service:1.0.0
-    container_name: process-mining
+  db:
+    image: postgres:16-alpine
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    environment:
+      POSTGRES_DB: ${DB_NAME:-qms}
+      POSTGRES_USER: ${DB_USER:-qms}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-qms_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qms:
+    build: ./services/qms
+    restart: unless-stopped
     env_file:
       - .env
     environment:
+      DATABASE_URL: ""
+      DB_ENGINE: postgresql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-qms}
+      DB_USER: ${DB_USER:-qms}
+      DB_PASSWORD: ${DB_PASSWORD:-qms_password}
+      PORT: 8000
+      # Wired to the sibling service by container name - no IPs, no ports on
+      # the host, and it keeps working if you move the stack to another machine.
+      PROCESS_MINING_EVENT_LOG_URL: http://process-mining:8000/api/event-logs/import/
+      PROCESS_MINING_API_TOKEN: ${PM_API_KEYS:?set PM_API_KEYS in .env}
+      PROCESS_MINING_SOURCE: ${PROCESS_MINING_SOURCE:-kms_bakery}
+    ports:
+      - "${QMS_PORT:-8000}:8000"
+    volumes:
+      - qms_static:/app/staticfiles
+      - qms_media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      process-mining:
+        condition: service_started
+
+  process-mining:
+    build: ./services/process-mining
+    restart: unless-stopped
+    environment:
+      PM_ENVIRONMENT: ${PM_ENVIRONMENT:-prod}
+      PM_DEBUG: "false"
+      PM_API_KEYS: ${PM_API_KEYS:?set PM_API_KEYS in .env}
+      PM_CORS_ORIGINS: ${PM_CORS_ORIGINS:-*}
       PM_STORAGE_BACKEND: sqlite
       PM_SQLITE_PATH: /srv/data/pm.db
       PM_ARTIFACT_DIR: /srv/data/artifacts
+    ports:
+      - "${PM_PORT:-8001}:8000"
     volumes:
-      - pm-data:/srv/data
-      - ./config:/srv/config:ro
+      - pm_data:/srv/data
+      - ./services/process-mining/config:/srv/config:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/live"]
       interval: 30s
@@ -22,4 +80,7 @@ services:
       retries: 3
 
 volumes:
-  pm-data:
+  postgres_data:
+  qms_static:
+  qms_media:
+  pm_data:

@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block page_title %}Уведомления{% endblock %}
+{% block content %}
+<section class="panel"><div class="defects-list">{% for item in notifications %}<div class="defect {% if not item.is_read %}unread{% endif %}"><strong>{{ item.title }}</strong><span>{{ item.message }} · {{ item.created_at|date:"d.m.Y H:i" }}</span>{% if not item.is_read %}<form method="post" action="{% url 'notifications:mark_read' item.pk %}">{% csrf_token %}<button>Отметить прочитанным</button></form>{% endif %}</div>{% empty %}<p class="muted">Уведомлений нет.</p>{% endfor %}</div></section>
+{% endblock %}

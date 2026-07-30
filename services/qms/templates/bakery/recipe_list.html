@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Рецептуры{% endblock %}
+{% block page_title %}Рецептуры{% endblock %}
+{% block top_action %}<a class="primary" href="{% url 'bakery:recipe_new' %}">Новая рецептура</a>{% endblock %}
+{% block content %}
+<section class="panel">
+  <form class="filters"><select name="product"><option value="">Все продукты</option>{% for product in products %}<option value="{{ product.pk }}">{{ product.name }}</option>{% endfor %}</select><button class="primary">Фильтр</button></form>
+  <div class="table-wrap"><table><tr><th>Продукт</th><th>Название</th><th>Версия</th><th>Выход</th><th>Статус</th></tr>
+  {% for item in items %}<tr><td>{{ item.product.name }}</td><td><a href="{% url 'bakery:recipe_detail' item.pk %}">{{ item.name }}</a></td><td>{{ item.version }}</td><td>{{ item.output_quantity }} {{ item.output_unit }}</td><td>{{ item.is_active|yesno:"активна,архив" }}</td></tr>{% endfor %}
+  </table></div>
+</section>
+{% endblock %}

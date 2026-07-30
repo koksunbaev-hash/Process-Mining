@@ -1,0 +1,24 @@
+name: Batch workflow tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  batch-workflow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Django check
+        run: python manage.py check
+      - name: Run batch workflow tests
+        run: python manage.py test apps.bakery.tests.batch_workflow
+      - name: Coverage
+        run: |
+          coverage run manage.py test apps.bakery.tests.batch_workflow
+          coverage report --fail-under=85 apps/bakery/models.py apps/bakery/services.py apps/bakery/api.py

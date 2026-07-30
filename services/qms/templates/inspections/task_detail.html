@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block page_title %}{{ task.task_number }}{% endblock %}
+{% block page_subtitle %}{{ task.quality_object }}{% endblock %}
+{% block top_action %}{% if task.card %}<a class="primary" href="{% url 'inspections:card_detail' task.card.pk %}">Открыть карту</a>{% endif %}{% endblock %}
+{% block content %}
+<section class="panel">
+  <p><b>Пост:</b> {{ task.control_post }}</p><p><b>Исполнитель:</b> {{ task.assigned_to|default:"не назначен" }}</p><p><b>Статус:</b> {{ task.get_status_display }}</p>
+  {% if task.status != "completed" %}<form method="post" action="{% url 'inspections:task_start' task.pk %}">{% csrf_token %}<button class="primary">Начать контроль</button></form>{% endif %}
+</section>
+{% endblock %}

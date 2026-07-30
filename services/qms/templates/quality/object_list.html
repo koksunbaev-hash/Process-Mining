@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block page_title %}Объекты контроля{% endblock %}
+{% block top_action %}<a class="primary" href="{% url 'quality:object_create' %}">+ Создать</a>{% endblock %}
+{% block content %}
+<section class="panel">
+  <form class="filters" method="get">
+    <select name="status"><option value="">Все статусы</option>{% for value,label in statuses %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+    <select name="object_type"><option value="">Все типы</option>{% for value,label in types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+    <input name="supplier" placeholder="Поставщик">
+    <button class="primary">Фильтр</button>
+  </form>
+  <div class="table-wrap"><table><thead><tr><th>Номер</th><th>Тип</th><th>Продукция</th><th>Пост</th><th>Статус</th><th>Задания</th></tr></thead><tbody>
+    {% for obj in objects %}<tr><td><a href="{% url 'quality:object_detail' obj.pk %}">{{ obj.unique_number }}</a></td><td>{{ obj.get_object_type_display }}</td><td>{{ obj.product_name }}</td><td>{{ obj.current_control_post|default:"-" }}</td><td><span class="status active">{{ obj.get_quality_status_display }}</span></td><td>{{ obj.tasks.count }}</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endblock %}

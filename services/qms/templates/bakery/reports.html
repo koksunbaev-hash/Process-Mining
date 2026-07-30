@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Отчёты хлебозавода{% endblock %}
+{% block page_title %}Отчёты{% endblock %}
+{% block content %}
+<section class="cards-grid">
+  <div class="stat-card"><span>Партии по этапам</span><strong>{{ stage_rows|length }}</strong></div>
+  <div class="stat-card"><span>Статусы заказов</span><strong>{{ orders_by_status|length }}</strong></div>
+  <div class="stat-card danger"><span>Проблемные этапы</span><strong>{{ problems_by_stage|length }}</strong></div>
+  <div class="stat-card"><span>Складские записи</span><strong>{{ stock|length }}</strong></div>
+</section>
+<section class="panel"><h3>Партии по этапам</h3><table>{% for row in stage_rows %}<tr><td>{{ row.current_stage__name }}</td><td>{{ row.total }}</td></tr>{% endfor %}</table></section>
+<section class="panel"><h3>Готовая продукция</h3><table>{% for item in stock %}<tr><td>{{ item.product.name }}</td><td>{{ item.batch.batch_number }}</td><td>{{ item.quantity }} {{ item.unit }}</td></tr>{% endfor %}</table></section>
+{% endblock %}

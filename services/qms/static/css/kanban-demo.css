@@ -1,0 +1,67 @@
+.kanban-demo-panel {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 12px;
+}
+
+.kanban-demo-box {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.kanban-demo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.kanban-demo-grid label,
+.kanban-demo-switches label {
+  color: var(--muted);
+  font-weight: 800;
+  display: grid;
+  gap: 6px;
+}
+
+.kanban-demo-switches,
+.kanban-demo-actions,
+.kanban-demo-status,
+.kanban-demo-stage-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.kanban-demo-status span,
+.kanban-demo-stage-stats span {
+  background: #eef4ff;
+  border: 1px solid #d8e5ff;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-weight: 800;
+}
+
+.kanban-card-demo {
+  border: 2px dashed #2f5bd8;
+  background: #f7fbff;
+}
+
+.status.demo {
+  background: #e9f7ef;
+  color: #176b3a;
+}
+
+.secondary.danger {
+  border-color: #f0b9b9;
+  color: #9d1c1c;
+}
+
+@media (max-width: 900px) {
+  .kanban-demo-grid {
+    grid-template-columns: 1fr;
+  }
+}

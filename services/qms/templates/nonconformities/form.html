@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block page_title %}Новое несоответствие{% endblock %}
+{% block content %}
+<section class="panel narrow"><form method="post" class="form-grid">{% csrf_token %}<p>Карта: {{ card.card_number }}</p><select name="defect_type" required>{% for d in defect_types %}<option value="{{ d.pk }}">{{ d.name }} · {{ d.get_criticality_display }}</option>{% endfor %}</select><textarea name="description" required placeholder="Описание дефекта"></textarea><input name="affected_quantity" value="1"><button class="primary">Зарегистрировать</button></form></section>
+{% endblock %}

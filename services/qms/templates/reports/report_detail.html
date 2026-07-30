@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block page_title %}{{ report.definition.title }}{% endblock %}
+{% block page_subtitle %}{{ report.definition.description }}{% endblock %}
+{% block content %}
+<section class="panel">
+  <form method="get" class="filters report-filters">
+    {% for field in form %}
+      <label>{{ field.label }} {{ field }}</label>
+    {% endfor %}
+    <div class="filter-actions">
+      <button class="primary" type="submit">Применить</button>
+      <a class="secondary" href="{% url 'reports:detail' report.slug %}">Сбросить</a>
+    </div>
+  </form>
+</section>
+
+<div class="cards-grid compact">
+  {% for label, value in report.summary %}
+  <article class="stat-card"><span>{{ label }}</span><strong>{{ value }}</strong></article>
+  {% endfor %}
+</div>
+
+{% if report.note %}
+<section class="panel"><p class="muted">{{ report.note }}</p></section>
+{% endif %}
+
+{% if report.chart %}
+<section class="panel">
+  <div class="panel-header"><h3>Диаграмма</h3></div>
+  {{ report.chart.labels|json_script:"reportChartLabels" }}
+  {{ report.chart.values|json_script:"reportChartValues" }}
+  <canvas id="reportChart"></canvas>
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-header">
+    <h3>Предварительный просмотр</h3>
+    <span class="badge">{{ report.rows|length }} записей</span>
+  </div>
+  <div class="export-actions">
+    <a class="secondary" href="{% url 'reports:export' report.slug 'csv' %}?{{ request.GET.urlencode }}">Скачать CSV</a>
+    <a class="secondary excel" href="{% url 'reports:export' report.slug 'xlsx' %}?{{ request.GET.urlencode }}">Скачать Excel</a>
+    <a class="secondary pdf" href="{% url 'reports:export' report.slug 'pdf' %}?{{ request.GET.urlencode }}">Скачать PDF</a>
+  </div>
+  {% if report.rows_page %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr>{% for header in report.headers %}<th>{{ header }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in report.rows_page %}
+        <tr>
+          {% for cell in row %}<td>{{ cell|default:"-" }}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><h3>По выбранным фильтрам данные не найдены</h3></div>
+  {% endif %}
+  {% if report.page_obj.has_other_pages %}
+  <div class="pagination">
+    {% if report.page_obj.has_previous %}<a href="?page={{ report.page_obj.previous_page_number }}&{{ request.GET.urlencode }}">Назад</a>{% endif %}
+    <span>Страница {{ report.page_obj.number }} из {{ report.page_obj.paginator.num_pages }}</span>
+    {% if report.page_obj.has_next %}<a href="?page={{ report.page_obj.next_page_number }}&{{ request.GET.urlencode }}">Вперёд</a>{% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

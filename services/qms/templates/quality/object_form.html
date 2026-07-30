@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block page_title %}Новый объект контроля{% endblock %}
+{% block content %}
+<section class="panel narrow"><form method="post" class="form-grid">{% csrf_token %}{{ form.as_p }}<button class="primary">Создать объект</button></form></section>
+{% endblock %}

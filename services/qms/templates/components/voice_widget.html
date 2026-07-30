@@ -1,0 +1,34 @@
+<div class="voice-widget" data-voice-widget>
+  <button class="voice-widget__fab" type="button" data-voice-open aria-label="Голосовая команда">🎙</button>
+  <section class="voice-widget__panel" data-voice-panel hidden>
+    <header class="voice-widget__header">
+      <strong>Голосовая команда</strong>
+      <button type="button" class="voice-widget__close" data-voice-close aria-label="Закрыть">×</button>
+    </header>
+    <div class="voice-widget__body">
+      <p class="voice-widget__state" data-voice-state>Готов к записи</p>
+      <div class="voice-widget__timer" data-voice-timer>00:00</div>
+      <div class="voice-widget__actions">
+        <button type="button" class="btn primary" data-voice-start>Начать запись</button>
+        <button type="button" class="btn secondary" data-voice-stop hidden>Остановить запись</button>
+      </div>
+      <div class="voice-widget__result" data-voice-result hidden>
+        <label>Текст</label>
+        <div class="voice-widget__text" data-voice-transcript></div>
+        <dl>
+          <div><dt>Партия</dt><dd data-voice-batch>-</dd></div>
+          <div><dt>Текущий этап</dt><dd data-voice-current>-</dd></div>
+          <div><dt>Следующий этап</dt><dd data-voice-next>-</dd></div>
+          <div><dt>Комментарий</dt><dd data-voice-comment>-</dd></div>
+          <div><dt>Уверенность</dt><dd data-voice-confidence>-</dd></div>
+        </dl>
+        <p class="voice-widget__warning" data-voice-warning hidden>Низкая уверенность распознавания. Проверьте команду вручную.</p>
+        <div class="voice-widget__actions">
+          <button type="button" class="btn secondary" data-voice-reject>Отмена</button>
+          <button type="button" class="btn primary" data-voice-confirm>Подтвердить</button>
+        </div>
+      </div>
+      <p class="voice-widget__message" data-voice-message></p>
+    </div>
+  </section>
+</div>

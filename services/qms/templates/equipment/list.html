@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block page_title %}Средства измерений{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="tabs"><a href="?">Все</a><a href="?status=soon">Истекает</a><a href="?status=expired">Просрочено</a></div>
+  <div class="table-wrap"><table><thead><tr><th>Название</th><th>Серийный</th><th>Подразделение</th><th>Следующая поверка</th><th>Статус</th></tr></thead><tbody>
+  {% for item in equipment %}<tr><td>{{ item.name }}</td><td>{{ item.serial_number }}</td><td>{{ item.department }}</td><td>{{ item.next_verification_date|date:"d.m.Y"|default:"-" }}</td><td><span class="status {% if item.verification_expired %}critical{% elif item.verification_expiring_soon %}waiting{% else %}done{% endif %}">{% if item.verification_expired %}Истекла{% elif item.verification_expiring_soon %}Скоро истекает{% else %}Действующая{% endif %}</span></td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endblock %}

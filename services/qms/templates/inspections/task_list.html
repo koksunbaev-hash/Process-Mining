@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block page_title %}Задания на контроль{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="tabs">
+    <a href="?tab=new">Новые</a><a href="?tab=in_progress">В работе</a><a href="?tab=overdue">Просроченные</a><a href="?tab=reinspection">Повторный контроль</a><a href="?tab=completed">Завершённые</a>
+  </div>
+  <div class="table-wrap"><table><thead><tr><th>Номер</th><th>Объект</th><th>Пост</th><th>Контролёр</th><th>Срок</th><th>Статус</th></tr></thead><tbody>
+  {% for task in tasks %}<tr class="{% if task.is_overdue %}row-danger{% endif %}"><td><a href="{% url 'inspections:task_detail' task.pk %}">{{ task.task_number }}</a></td><td>{{ task.quality_object.unique_number }}</td><td>{{ task.control_post.name }}</td><td>{{ task.assigned_to|default:"-" }}</td><td>{{ task.due_at|date:"d.m.Y H:i"|default:"-" }}</td><td><span class="status active">{{ task.get_status_display }}</span></td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endblock %}

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block page_title %}Маршруты контроля{% endblock %}
+{% block content %}
+<section class="panel"><div class="table-wrap"><table><thead><tr><th>Код</th><th>Название</th><th>Этапы</th></tr></thead><tbody>
+{% for route in routes %}<tr><td>{{ route.code }}</td><td>{{ route.name }}</td><td>{% for step in route.steps.all %}<span class="badge">{{ step.sequence }}. {{ step.control_post.name }}</span> {% endfor %}</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Производственная доска{% endblock %}
+{% block page_title %}Производственная доска{% endblock %}
+{% block page_subtitle %}Очередь | Замес | Формовка | Расстойка | Печь | Склад | Готово{% endblock %}
+{% block top_action %}<a class="primary" href="{% url 'bakery:kanban' %}">Обновить</a>{% endblock %}
+{% block content %}
+<script>document.body.classList.add("kanban-mode");</script>
+<div class="kanban-page">
+  <section class="kanban-toolbar">
+    <form class="kanban-filters">
+      <input name="q" value="{{ request.GET.q }}" placeholder="Общий поиск">
+      <select name="product"><option value="">Все продукты</option>{% for p in products %}<option value="{{ p.pk }}" {% if request.GET.product == p.pk|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>
+      <select name="customer"><option value="">Все клиенты</option>{% for c in customers %}<option value="{{ c.pk }}" {% if request.GET.customer == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select>
+      <input name="date" value="{{ request.GET.date }}" type="date">
+      <select name="status"><option value="">Все статусы</option>{% for v,l in statuses %}<option value="{{ v }}" {% if request.GET.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <select name="priority"><option value="">Все приоритеты</option>{% for v,l in priorities %}<option value="{{ v }}" {% if request.GET.priority == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <select name="demo">
+        <option value="work" {% if demo_filter == "work" %}selected{% endif %}>Рабочие</option>
+        <option value="demo" {% if demo_filter == "demo" %}selected{% endif %}>Демо</option>
+        <option value="all" {% if demo_filter == "all" %}selected{% endif %}>Все</option>
+      </select>
+      <button class="primary">Применить</button>
+    </form>
+  </section>
+
+  {% if can_manage_demo %}
+  <section class="kanban-demo-panel" data-kanban-demo>
+    <button class="secondary" type="button" data-demo-toggle>Демо процесса</button>
+    <div class="kanban-demo-box" data-demo-box hidden>
+      <div class="kanban-demo-grid">
+        <label>Количество партий<input data-demo-count type="number" min="1" max="200" value="100"></label>
+        <label>Скорость
+          <select data-demo-speed>
+            <option value="5">медленно: 5 секунд</option>
+            <option value="2" selected>нормально: 2 секунды</option>
+            <option value="0.5">быстро: 500 мс</option>
+            <option value="0.1">очень быстро: 100 мс</option>
+          </select>
+        </label>
+        <label>Режим
+          <select data-demo-mode>
+            <option value="wave" selected>группами</option>
+            <option value="sequential">по очереди</option>
+            <option value="random">случайно</option>
+            <option value="fast">ускоренно</option>
+          </select>
+        </label>
+      </div>
+      <div class="kanban-demo-switches">
+        <label><input type="checkbox" data-demo-pauses> паузы</label>
+        <label><input type="checkbox" data-demo-problems> проблемы</label>
+        <label><input type="checkbox" data-demo-returns> возвраты</label>
+      </div>
+      <div class="kanban-demo-actions">
+        <button class="primary" type="button" data-demo-create>Создать демо</button>
+        <button class="primary" type="button" data-demo-start>Запустить</button>
+        <button class="secondary" type="button" data-demo-pause>Пауза</button>
+        <button class="secondary" type="button" data-demo-resume>Продолжить</button>
+        <button class="secondary" type="button" data-demo-stop>Остановить</button>
+        <button class="secondary danger" type="button" data-demo-reset>Сбросить</button>
+      </div>
+      <div class="kanban-demo-status">
+        <strong data-demo-state>Демо не создано</strong>
+        <span data-demo-progress>0%</span>
+        <span data-demo-total>0 партий</span>
+        <span data-demo-done>0 готово</span>
+      </div>
+      <div class="kanban-demo-stage-stats" data-demo-stage-stats></div>
+      <p class="muted" data-demo-error></p>
+    </div>
+  </section>
+  {% endif %}
+
+  <div data-kanban-board-shell>
+    {% include "bakery/kanban_board.html" %}
+  </div>
+</div>
+<script src="/static/js/kanban-demo.js"></script>
+{% endblock %}

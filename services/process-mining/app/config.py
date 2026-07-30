@@ -14,6 +14,12 @@ from typing import Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Defaults are anchored to the service directory, not to the current working
+# directory. Otherwise `uvicorn` started from a parent folder - which is what
+# happens in a monorepo - would look for ./config/activities.yaml next to
+# wherever the shell happened to be, and silently fall back to no profiles.
+SERVICE_ROOT = Path(__file__).resolve().parent.parent
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -45,11 +51,11 @@ class Settings(BaseSettings):
 
     # ---- Storage ----
     storage_backend: Literal["memory", "sqlite"] = "sqlite"
-    sqlite_path: Path = Path("./data/pm.db")
-    artifact_dir: Path = Path("./data/artifacts")
+    sqlite_path: Path = SERVICE_ROOT / "data" / "pm.db"
+    artifact_dir: Path = SERVICE_ROOT / "data" / "artifacts"
 
     # ---- Domain mapping ----
-    mapping_config: Path = Path("./config/activities.yaml")
+    mapping_config: Path = SERVICE_ROOT / "config" / "activities.yaml"
     default_mapping_profile: str = "generic"
 
     # ---- Voice (optional module) ----

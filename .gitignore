@@ -1,11 +1,23 @@
 __pycache__/
 *.pyc
+*.pyo
 .venv/
-data/
+venv/
 .env
+.env.local
+
+# runtime state, never source
+data/
+db.sqlite3
+media/
+staticfiles/
+*.log
+
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+htmlcov/
 
 # smoke-test artifact
 process_map.svg

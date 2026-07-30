@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Журнал действий{% endblock %}
+{% block page_title %}Журнал действий{% endblock %}
+{% block page_subtitle %}История действий пользователей на сайте{% endblock %}
+{% block content %}
+<section class="panel">
+  <form class="filters">
+    <input name="user" value="{{ request.GET.user }}" placeholder="Пользователь">
+    <input name="action" value="{{ request.GET.action }}" placeholder="Действие">
+    <input name="path" value="{{ request.GET.path }}" placeholder="Страница">
+    <input name="date" value="{{ request.GET.date }}" type="date">
+    <button class="primary">Фильтр</button>
+  </form>
+  <div class="table-wrap">
+    <table>
+      <tr><th>Дата</th><th>Пользователь</th><th>Действие</th><th>Объект/страница</th><th>IP</th><th>Данные</th></tr>
+      {% for item in page_obj %}
+      <tr>
+        <td>{{ item.created_at|date:"d.m.Y H:i:s" }}</td>
+        <td>{{ item.user|default:"-" }}</td>
+        <td>{{ item.action }}</td>
+        <td>{{ item.model_name }}: {{ item.object_repr }}</td>
+        <td>{{ item.ip_address|default:"-" }}</td>
+        <td><code>{{ item.changes }}</code></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">Записей пока нет.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  <div class="pagination">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">Назад</a>{% endif %}
+    <span>Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Вперёд</a>{% endif %}
+  </div>
+</section>
+{% endblock %}

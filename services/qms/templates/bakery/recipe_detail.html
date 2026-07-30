@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ recipe.name }}{% endblock %}
+{% block page_title %}{{ recipe.product.name }}: {{ recipe.name }}{% endblock %}
+{% block content %}
+<section class="panel">
+  <form class="filters"><input name="quantity" value="{{ request.GET.quantity }}" placeholder="Количество заказа"><button class="primary">Рассчитать</button></form>
+  {% if requirements %}<div class="message success">Для заказа {{ request.GET.quantity }} {{ recipe.output_unit }} потребуется рассчитанное количество ингредиентов.</div><ul>{% for row in requirements %}<li>{{ row.ingredient.name }}: {{ row.quantity }} {{ row.unit }}</li>{% endfor %}</ul>{% endif %}
+  <div class="table-wrap"><table><tr><th>№</th><th>Ингредиент</th><th>На партию</th><th>На 1 штуку</th><th>Единица</th><th>Примечание</th></tr>
+  {% for row in recipe.items.all %}<tr><td>{{ row.sequence }}</td><td>{{ row.ingredient.name }}</td><td>{{ row.quantity_for_batch }}</td><td>{{ row.quantity_per_item }}</td><td>{{ row.ingredient.unit }}</td><td>{{ row.notes }}</td></tr>{% endfor %}
+  </table></div>
+</section>
+<section class="panel narrow"><h3>Добавить ингредиент</h3><form method="post" class="form-grid">{% csrf_token %}{{ form.as_p }}<button class="primary">Добавить</button></form></section>
+{% endblock %}

@@ -1,0 +1,28 @@
+databases:
+  - name: qms-db
+    plan: free
+    databaseName: qms
+    user: qms
+
+services:
+  - type: web
+    name: qms-demo
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput
+    startCommand: python -m gunicorn config.wsgi:application
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: qms-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: False
+      - key: MAX_UPLOAD_SIZE_MB
+        value: 10
+      - key: MAX_VOICE_MESSAGE_SIZE_MB
+        value: 20
+      - key: WEB_CONCURRENCY
+        value: 2

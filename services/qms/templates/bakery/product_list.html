@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Продукты{% endblock %}
+{% block page_title %}Продукты{% endblock %}
+{% block page_subtitle %}Хлебобулочная продукция, рецептуры и технологические параметры{% endblock %}
+{% block top_action %}<a class="primary" href="{% url 'bakery:product_new' %}">Новый продукт</a>{% endblock %}
+{% block content %}
+<section class="panel">
+  <form class="filters">
+    <input name="q" value="{{ request.GET.q }}" placeholder="Поиск">
+    <select name="category"><option value="">Все категории</option>{% for value,label in categories %}<option value="{{ value }}" {% if request.GET.category == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+    <select name="active"><option value="">Любая активность</option><option value="1">Активные</option><option value="0">Отключённые</option></select>
+    <button class="primary">Найти</button>
+  </form>
+  <div class="table-wrap"><table>
+    <tr><th>Код</th><th>Название</th><th>Категория</th><th>Ед.</th><th>Срок годности</th><th>Статус</th><th></th></tr>
+    {% for item in items %}
+    <tr>
+      <td>{{ item.code }}</td><td><a href="{% url 'bakery:product_detail' item.pk %}">{{ item.name }}</a></td><td>{{ item.get_category_display }}</td>
+      <td>{{ item.unit }}</td><td>{{ item.shelf_life_hours }} ч</td><td><span class="status {% if item.is_active %}done{% else %}waiting{% endif %}">{% if item.is_active %}активен{% else %}отключён{% endif %}</span></td>
+      <td><a class="secondary" href="{% url 'bakery:product_edit' item.pk %}">Редактировать</a></td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% endblock %}

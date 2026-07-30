@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Интеграция Process Mining{% endblock %}
+{% block page_title %}Интеграция Process Mining{% endblock %}
+{% block page_subtitle %}Экспорт бизнес-событий KMS в CSV{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="stats">
+    <div class="stat"><span>Pending</span><strong>{{ counts.pending|default:0 }}</strong></div>
+    <div class="stat"><span>Sent</span><strong>{{ counts.sent|default:0 }}</strong></div>
+    <div class="stat"><span>Failed</span><strong>{{ counts.failed|default:0 }}</strong></div>
+    <div class="stat"><span>Dead letter</span><strong>{{ counts.dead_letter|default:0 }}</strong></div>
+  </div>
+  <p><strong>URL:</strong> {{ url|default:"не настроен" }}</p>
+  <p><strong>Source:</strong> {{ source }}</p>
+  <p><strong>Последняя успешная отправка:</strong> {{ last_success.finished_at|default:"-" }}</p>
+  <p><strong>Последний ответ:</strong> {{ last_export.response_body|default:"-" }}</p>
+  <p><strong>Последняя ошибка:</strong> {{ last_export.last_error|default:"-" }}</p>
+  <form method="post" class="form-actions">{% csrf_token %}
+    <button class="primary" name="action" value="export_now">Отправить сейчас</button>
+    <button class="secondary" name="action" value="retry_failed">Повторить ошибки</button>
+    <button class="secondary" name="action" value="check_connection">Проверить соединение</button>
+    <a class="secondary" href="{% url 'process_mining:download_last_csv' %}">Скачать последний CSV</a>
+  </form>
+</section>
+
+<section class="panel">
+  <h3>Последние экспорты</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Export ID</th><th>Статус</th><th>Событий</th><th>HTTP</th><th>Создан</th><th>Ошибка</th></tr></thead>
+      <tbody>
+        {% for item in exports %}
+        <tr><td>{{ item.export_id }}</td><td>{{ item.status }}</td><td>{{ item.events_count }}</td><td>{{ item.response_status_code|default:"-" }}</td><td>{{ item.created_at|date:"d.m.Y H:i" }}</td><td>{{ item.last_error|truncatechars:80 }}</td></tr>
+        {% empty %}
+        <tr><td colspan="6">Экспортов пока нет.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block page_title %}{% if bakery_dashboard %}Панель хлебозавода{% else %}Оперативная панель{% endif %}{% endblock %}
+{% block page_subtitle %}{% if bakery_dashboard %}Заказы, партии, этапы, склад и проблемы производства{% else %}Текущее состояние контроля качества{% endif %}{% endblock %}
+{% block top_action %}{% if bakery_dashboard %}<a class="primary" href="{% url 'bakery:kanban' %}">Производственная доска</a>{% else %}<a class="primary" href="{% url 'quality:object_create' %}">Новый объект</a>{% endif %}{% endblock %}
+{% block content %}
+{% if bakery_dashboard %}
+<div class="cards-grid">
+  <article class="stat-card"><span>Новые заказы</span><strong>{{ new_orders }}</strong></article>
+  <article class="stat-card"><span>В очереди</span><strong>{{ queue }}</strong></article>
+  <article class="stat-card"><span>В замесе</span><strong>{{ mixing }}</strong></article>
+  <article class="stat-card"><span>На формовке</span><strong>{{ forming }}</strong></article>
+  <article class="stat-card"><span>На расстойке</span><strong>{{ proofing }}</strong></article>
+  <article class="stat-card"><span>В печи</span><strong>{{ oven }}</strong></article>
+  <article class="stat-card"><span>На складе</span><strong>{{ warehouse }}</strong></article>
+  <article class="stat-card"><span>Готово сегодня</span><strong>{{ done_today }}</strong></article>
+  <article class="stat-card warning"><span>Просроченные заказы</span><strong>{{ overdue_orders }}</strong></article>
+  <article class="stat-card danger"><span>Проблемные партии</span><strong>{{ problem_batches }}</strong></article>
+</div>
+<div class="content-grid">
+  <section class="panel"><div class="panel-header"><h3>Партии по этапам</h3></div><canvas id="stageChart"></canvas></section>
+  <section class="panel"><div class="panel-header"><h3>Последние проблемы</h3></div>
+    {% for nc in latest_nc %}<p>{{ nc.number }} - {{ nc.defect_type.name }} {% if nc.bakery_batch %}({{ nc.bakery_batch.batch_number }}){% endif %}</p>{% empty %}<p class="muted">Проблем нет.</p>{% endfor %}
+  </section>
+</div>
+{{ stage_counts|json_script:"stage-data" }}
+<script>
+window.addEventListener("DOMContentLoaded", () => {
+  const rows = JSON.parse(document.getElementById("stage-data").textContent);
+  const ctx = document.getElementById("stageChart");
+  if (ctx && window.Chart) new Chart(ctx, {type: "bar", data: {labels: rows.map(r => r.current_stage__name || "-"), datasets: [{label: "Партии", data: rows.map(r => r.total), backgroundColor: "#2457d6"}]}});
+});
+</script>
+{% else %}
+<div class="cards-grid">
+  <article class="stat-card"><span>Ожидают контроля</span><strong>{{ awaiting }}</strong><small>Объекты</small></article>
+  <article class="stat-card"><span>В работе</span><strong>{{ in_work }}</strong><small>Задания</small></article>
+  <article class="stat-card warning"><span>Просрочено</span><strong>{{ overdue }}</strong><small>Требует внимания</small></article>
+  <article class="stat-card danger"><span>Критические дефекты</span><strong>{{ critical_nc }}</strong><small>Открытые</small></article>
+</div>
+<div class="cards-grid compact">
+  <article class="stat-card"><span>Открытые НС</span><strong>{{ open_nc }}</strong></article>
+  <article class="stat-card warning"><span>Карантин/блок</span><strong>{{ quarantine }}</strong></article>
+  <article class="stat-card"><span>Повторный контроль</span><strong>{{ reinspection }}</strong></article>
+  <article class="stat-card"><span>С первого раза</span><strong>{{ first_pass_rate }}%</strong><small>{{ avg_control_time }}</small></article>
+</div>
+<div class="content-grid">
+  <section class="panel"><div class="panel-header"><h3>Состояние постов контроля</h3><span class="badge">{{ posts|length }} постов</span></div>
+    <div class="table-wrap"><table><thead><tr><th>Пост</th><th>В очереди</th><th>В работе</th><th>Статус</th></tr></thead><tbody>
+      {% for post in posts %}<tr><td>{{ post.name }}</td><td>{{ post.queue_count }}</td><td>{{ post.active_count }}</td><td><span class="status {% if post.active_count %}active{% else %}waiting{% endif %}">{% if post.active_count %}В работе{% else %}Ожидание{% endif %}</span></td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+  <section class="panel"><div class="panel-header"><h3>Последние несоответствия</h3></div>
+    <div class="defects-list">{% for nc in latest_nc %}<a class="defect" href="{% url 'nonconformities:detail' nc.pk %}"><strong>{{ nc.number }} {{ nc.defect_type.name }}</strong><span>{{ nc.quality_object.unique_number }} - {{ nc.get_criticality_display }}</span></a>{% empty %}<p class="muted">Нет открытых записей.</p>{% endfor %}</div>
+  </section>
+</div>
+{% endif %}
+{% endblock %}

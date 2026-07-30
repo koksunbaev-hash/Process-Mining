@@ -1,0 +1,140 @@
+.voice-widget {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 3000;
+  font-family: inherit;
+}
+
+.voice-widget__fab {
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 50%;
+  background: #2f5bd8;
+  color: #fff;
+  box-shadow: 0 14px 35px rgba(15, 35, 75, 0.25);
+  cursor: pointer;
+  font-size: 24px;
+}
+
+.voice-widget__panel {
+  position: absolute;
+  right: 0;
+  bottom: 70px;
+  width: min(380px, calc(100vw - 32px));
+  border: 1px solid #dbe3f2;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(15, 35, 75, 0.22);
+  overflow: hidden;
+}
+
+.voice-widget__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #132642;
+  color: #fff;
+}
+
+.voice-widget__close {
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.voice-widget__body {
+  padding: 16px;
+}
+
+.voice-widget__state,
+.voice-widget__message {
+  margin: 0 0 12px;
+  color: #63708a;
+}
+
+.voice-widget__timer {
+  margin-bottom: 14px;
+  font-size: 28px;
+  font-weight: 800;
+  color: #0c1b33;
+}
+
+.voice-widget__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.voice-widget .btn {
+  min-height: 42px;
+  border-radius: 8px;
+  border: 1px solid #cfd8ea;
+  padding: 0 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.voice-widget .btn.primary {
+  background: #2f5bd8;
+  color: #fff;
+  border-color: #2f5bd8;
+}
+
+.voice-widget .btn.secondary {
+  background: #fff;
+  color: #132642;
+}
+
+.voice-widget__result {
+  margin-top: 16px;
+}
+
+.voice-widget__text {
+  margin: 6px 0 12px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f4f7fb;
+  color: #132642;
+}
+
+.voice-widget dl {
+  margin: 0 0 12px;
+}
+
+.voice-widget dl div {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid #eef2f8;
+}
+
+.voice-widget dt {
+  color: #63708a;
+}
+
+.voice-widget dd {
+  margin: 0;
+  color: #0c1b33;
+  font-weight: 700;
+}
+
+.voice-widget__warning {
+  color: #9a5b00;
+  background: #fff6df;
+  border: 1px solid #ffe2a6;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+@media (max-width: 640px) {
+  .voice-widget {
+    right: 12px;
+    bottom: 12px;
+  }
+}

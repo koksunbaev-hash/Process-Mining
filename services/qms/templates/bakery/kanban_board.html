@@ -1,0 +1,49 @@
+<section class="kanban-board kanban-board-large" data-kanban-board>
+  {% for column in columns %}
+  <div class="kanban-column" data-stage="{{ column.stage.pk }}" data-stage-code="{{ column.stage.code }}">
+    <div class="kanban-head">
+      <strong>{{ column.stage.name }}</strong>
+      <span class="badge" data-kanban-count="{{ column.stage.code }}">{{ column.count }}</span>
+    </div>
+    <form class="kanban-column-search">
+      <input name="stage_q_{{ column.stage.code }}" value="{{ column.query }}" placeholder="Поиск в колонке">
+    </form>
+    <div class="kanban-cards">
+    {% for batch in column.batches %}
+      <article class="kanban-card {% if batch.is_demo %}kanban-card-demo{% endif %}" draggable="true" data-batch="{{ batch.pk }}" data-batch-number="{{ batch.batch_number }}">
+        <div class="kanban-card-title">
+          <strong>Заказ №{{ batch.order_item.order.order_number }}</strong>
+          <span class="status active">{{ batch.current_stage.name }}</span>
+        </div>
+        <h3>{{ batch.product.name }}</h3>
+        <div class="kanban-card-grid">
+          <p><span>Количество</span>{{ batch.planned_quantity }} {{ batch.unit }}</p>
+          <p><span>Партия</span>{{ batch.batch_number }}</p>
+          <p><span>Клиент</span>{{ batch.order_item.order.customer.name }}</p>
+          <p><span>Дата</span>{{ batch.order_item.order.order_date|date:"d.m.Y H:i" }}</p>
+          <p><span>Срок</span>{{ batch.order_item.order.required_date|date:"d.m.Y H:i" }}</p>
+          <p><span>Приоритет</span>{{ batch.order_item.order.get_priority_display }}</p>
+          <p><span>Ответственный</span>{{ batch.assigned_to.get_full_name|default:batch.assigned_to.username|default:"-" }}</p>
+          <p><span>На этапе</span>{{ batch.stage_duration }}</p>
+        </div>
+        <div class="kanban-card-flags">
+          {% if batch.is_demo %}<span class="status demo">DEMO</span>{% endif %}
+          {% if batch.has_blocking_problem %}<span class="status critical">есть проблема</span>{% else %}<span class="status done">без блокировок</span>{% endif %}
+          <span class="badge">голос: {{ batch.voice_messages.count }}</span>
+        </div>
+        <div class="kanban-card-actions">
+          <form method="post" action="{% url 'bakery:move_batch' batch.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button class="primary">Следующий этап</button>
+          </form>
+          <a class="secondary" href="{% url 'bakery:batch_detail' batch.pk %}">Открыть</a>
+        </div>
+      </article>
+    {% empty %}
+      <p class="muted kanban-empty">Нет партий.</p>
+    {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</section>

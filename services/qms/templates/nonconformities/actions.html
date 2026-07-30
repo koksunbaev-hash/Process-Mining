@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block page_title %}Корректирующие действия{% endblock %}
+{% block content %}
+<section class="panel"><table><tbody>{% for action in actions %}<tr><td>{{ action.number }}</td><td>{{ action.title }}</td><td>{{ action.assigned_to|default:"-" }}</td><td>{{ action.get_status_display }}</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

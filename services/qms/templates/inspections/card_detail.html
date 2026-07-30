@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block page_title %}{{ card.card_number }}{% endblock %}
+{% block page_subtitle %}{{ card.quality_object }} · {{ card.control_post }}{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="meta-grid">
+    <span>Контролёр: <b>{{ card.inspector|default:"-" }}</b></span>
+    <span>Начало: <b>{{ card.started_at|date:"d.m.Y H:i"|default:"-" }}</b></span>
+    <span>Статус: <b>{{ card.get_status_display }}</b></span>
+  </div>
+  <form method="post" action="{% url 'inspections:card_save' card.pk %}" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="table-wrap">
+      <table class="inspection-table">
+        <thead>
+          <tr>
+            <th>Параметр</th>
+            <th>Ед.</th>
+            <th>Нижний</th>
+            <th>Номинал</th>
+            <th>Верхний</th>
+            <th>Факт</th>
+            <th>СИ</th>
+            <th>Результат</th>
+            <th>Комментарий</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for result in card.results.all %}
+          <tr data-low="{{ result.template_parameter.lower_limit|default:'' }}" data-high="{{ result.template_parameter.upper_limit|default:'' }}" class="{% if result.is_within_tolerance is False %}row-danger{% elif result.is_within_tolerance %}row-ok{% endif %}">
+            <td>{{ result.parameter.name }}{% if result.template_parameter.is_required %}<b class="danger-text">*</b>{% endif %}</td>
+            <td>{{ result.parameter.unit }}</td>
+            <td>{{ result.template_parameter.lower_limit|default:"-" }}</td>
+            <td>{{ result.template_parameter.nominal_value|default:"-" }}</td>
+            <td>{{ result.template_parameter.upper_limit|default:"-" }}</td>
+            <td>
+              {% if result.parameter.value_type == "number" %}
+              <input class="fact-input" name="result_{{ result.pk }}_numeric_value" value="{{ result.numeric_value|default:'' }}" inputmode="decimal">
+              {% elif result.parameter.value_type == "boolean" or result.parameter.value_type == "conformity" %}
+              <input type="checkbox" name="result_{{ result.pk }}_{% if result.parameter.value_type == 'boolean' %}boolean_value{% else %}conformity_value{% endif %}" {% if result.boolean_value or result.conformity_value %}checked{% endif %}>
+              {% else %}
+              <input name="result_{{ result.pk }}_text_value" value="{{ result.text_value }}">
+              {% endif %}
+            </td>
+            <td>
+              <select name="result_{{ result.pk }}_equipment">
+                <option value="">-</option>
+                {% for item in equipment %}
+                <option value="{{ item.pk }}" {% if result.measuring_equipment_id == item.pk %}selected{% endif %} {% if not item.available_for_use %}disabled{% endif %}>{{ item.name }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td class="result-cell">{% if result.is_within_tolerance is False %}Отклонение{% elif result.is_within_tolerance %}OK{% else %}-{% endif %}</td>
+            <td><input name="result_{{ result.pk }}_comment" value="{{ result.comment }}"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <label>Комментарий к карте<textarea name="comments">{{ card.comments }}</textarea></label>
+
+    <div class="attachment-box">
+      <h3>Вложения</h3>
+      <div class="filters">
+        <label>Тип файла
+          <select name="attachment_type">
+            <option value="photo">Фото</option>
+            <option value="protocol">Протокол</option>
+            <option value="document">Документ</option>
+          </select>
+        </label>
+        <label>Фото или документ
+          <input type="file" name="attachments" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt">
+        </label>
+        <label>Комментарий к вложению
+          <input name="attachment_comment" placeholder="Например: фото визуального осмотра">
+        </label>
+      </div>
+      {% if card.attachments.all %}
+      <div class="defects-list">
+        {% for attachment in card.attachments.all %}
+        <a class="defect" href="{{ attachment.file.url }}" target="_blank">
+          <strong>{{ attachment.title|default:attachment.file.name }}</strong>
+          <span>{{ attachment.file_type }} · {{ attachment.uploaded_at|date:"d.m.Y H:i" }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="dialog-actions"><button class="primary">Сохранить черновик</button></div>
+  </form>
+  <form method="post" action="{% url 'inspections:card_complete' card.pk %}" class="inline-form">
+    {% csrf_token %}
+    <button class="primary">Завершить контроль</button>
+  </form>
+  <a class="secondary" href="{% url 'nonconformities:create_from_card' card.pk %}">Создать несоответствие</a>
+</section>
+{% endblock %}

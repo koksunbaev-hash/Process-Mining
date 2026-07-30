@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "test:kanban-demo": "playwright test tests/playwright/kanban-demo.spec.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.45.0"
+  }
+}
