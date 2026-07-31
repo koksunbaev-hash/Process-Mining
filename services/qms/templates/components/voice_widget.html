@@ -1,19 +1,22 @@
-<div class="voice-widget" data-voice-widget>
-  <button class="voice-widget__fab" type="button" data-voice-open aria-label="Голосовая команда">🎙</button>
+<div class="voice-widget" data-voice-widget data-voice-mode="idle">
   <section class="voice-widget__panel" data-voice-panel hidden>
     <header class="voice-widget__header">
-      <strong>Голосовая команда</strong>
+      <strong data-voice-state>Готов к записи</strong>
       <button type="button" class="voice-widget__close" data-voice-close aria-label="Закрыть">×</button>
     </header>
     <div class="voice-widget__body">
-      <p class="voice-widget__state" data-voice-state>Готов к записи</p>
-      <div class="voice-widget__timer" data-voice-timer>00:00</div>
-      <div class="voice-widget__actions">
-        <button type="button" class="btn primary" data-voice-start>Начать запись</button>
-        <button type="button" class="btn secondary" data-voice-stop hidden>Остановить запись</button>
+
+      <div class="voice-widget__live" data-voice-live hidden>
+        <div class="voice-widget__meter" aria-hidden="true"><i data-voice-level></i></div>
+        <div class="voice-widget__timer" data-voice-timer>0.0 с</div>
       </div>
+
+      <p class="voice-widget__hint" data-voice-hint>
+        Держите кнопку микрофона или клавишу <kbd>Пробел</kbd> и говорите.
+        Отпустите — команда уйдёт на распознавание.
+      </p>
+
       <div class="voice-widget__result" data-voice-result hidden>
-        <label>Текст</label>
         <div class="voice-widget__text" data-voice-transcript></div>
         <dl>
           <div><dt>Партия</dt><dd data-voice-batch>-</dd></div>
@@ -28,7 +31,14 @@
           <button type="button" class="btn primary" data-voice-confirm>Подтвердить</button>
         </div>
       </div>
+
       <p class="voice-widget__message" data-voice-message></p>
     </div>
   </section>
+
+  <button class="voice-widget__fab" type="button" data-voice-ptt
+          aria-label="Удерживайте для записи голосовой команды">
+    <span class="voice-widget__fab-icon" aria-hidden="true">🎙</span>
+    <span class="voice-widget__ring" aria-hidden="true"></span>
+  </button>
 </div>
