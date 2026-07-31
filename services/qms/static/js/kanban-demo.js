@@ -60,8 +60,10 @@
     const shell = document.querySelector("[data-kanban-board-shell]");
     if (!shell) return;
     const url = new URL("/bakery/board/partial/", window.location.origin);
+    // Refresh whatever the page is actually showing. This used to force
+    // demo=demo, which silently emptied the board for anyone looking at real
+    // batches: the redraw asked for a set the visible board did not contain.
     const params = new URLSearchParams(window.location.search);
-    if (!params.get("demo")) params.set("demo", "demo");
     url.search = params.toString();
     const response = await fetch(url, { credentials: "same-origin" });
     if (!response.ok) return;
