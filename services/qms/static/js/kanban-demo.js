@@ -4,14 +4,29 @@
     return match ? decodeURIComponent(match[1]) : "";
   }
 
+  // Remembers which batch was moved last, so after the board reloads that card
+  // can flash once - on a wall screen a silent swap is easy to miss.
+  let lastMovedBatch = null;
+
   function bindDragAndDrop() {
     document.querySelectorAll(".kanban-card").forEach((card) => {
-      card.addEventListener("dragstart", (event) => event.dataTransfer.setData("text/plain", card.dataset.batch));
+      card.addEventListener("dragstart", (event) => {
+        event.dataTransfer.setData("text/plain", card.dataset.batch);
+        card.classList.add("dragging");
+      });
+      card.addEventListener("dragend", () => card.classList.remove("dragging"));
     });
     document.querySelectorAll(".kanban-column").forEach((column) => {
-      column.addEventListener("dragover", (event) => event.preventDefault());
+      column.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        column.classList.add("drop-target");
+      });
+      column.addEventListener("dragleave", (event) => {
+        if (!column.contains(event.relatedTarget)) column.classList.remove("drop-target");
+      });
       column.addEventListener("drop", async (event) => {
         event.preventDefault();
+        column.classList.remove("drop-target");
         const batch = event.dataTransfer.getData("text/plain");
         const form = new FormData();
         form.append("stage", column.dataset.stage);
@@ -22,9 +37,18 @@
           body: form,
           credentials: "same-origin",
         });
-        if (response.ok) refreshBoard();
+        if (response.ok) {
+          lastMovedBatch = batch;
+          refreshBoard();
+        }
       });
     });
+
+    if (lastMovedBatch) {
+      const moved = document.querySelector(`.kanban-card[data-batch="${lastMovedBatch}"]`);
+      if (moved) moved.classList.add("just-moved");
+      lastMovedBatch = null;
+    }
   }
 
   async function refreshBoard() {

@@ -63,7 +63,12 @@
   }
 
   function stopPolling() {
-    if (poll) window.clearInterval(poll);
+    if (poll && typeof poll.stop === "function") {
+      const handle = poll;
+      poll = null;
+      handle.stop();
+      return;
+    }
     poll = null;
   }
 
@@ -242,39 +247,67 @@
     }
   }
 
+  /* Recognition takes about a second and a half, so a fixed 400ms poll spent
+   * most of its life asking a server that had nothing new to say - up to a
+   * hundred round trips per phrase. Ask often while an answer is plausible,
+   * then back off. */
+  function pollDelay(waitedMs) {
+    if (waitedMs < 3000) return 300;
+    if (waitedMs < 10000) return 800;
+    return 1500;
+  }
+
   function startPolling() {
     stopPolling();
-    const deadline = Date.now() + RECOGNITION_TIMEOUT_MS;
-    poll = window.setInterval(async () => {
-      if (Date.now() > deadline) {
-        stopPolling();
+    const startedPolling = Date.now();
+    let stopped = false;
+
+    const stop = () => {
+      stopped = true;
+      stopPolling();
+    };
+    poll = { stop: stop };
+
+    const step = async () => {
+      if (stopped) return;
+      const waited = Date.now() - startedPolling;
+
+      if (waited > RECOGNITION_TIMEOUT_MS) {
+        stop();
         setMode("error");
         setState("Ошибка");
         setMessage("Истекло время ожидания распознавания.");
         return;
       }
+      setState(`Распознаю… ${(waited / 1000).toFixed(0)} с`);
+
       let data;
       try {
         const response = await fetch(`/api/voice-messages/${voiceId}/status/`, {
           credentials: "same-origin",
         });
-        if (!response.ok) return;
-        data = await response.json();
+        if (response.ok) data = await response.json();
       } catch {
-        return;
+        /* a dropped poll is not an error - try again on the next tick */
       }
-      if (data.status === "failed") {
-        stopPolling();
+
+      if (stopped) return;
+      if (data && data.status === "failed") {
+        stop();
         setMode("error");
         setState("Ошибка");
         setMessage(data.processing_error || "Распознавание не удалось.");
         return;
       }
-      if (data.command) {
-        stopPolling();
+      if (data && data.command) {
+        stop();
         showCommand(data);
+        return;
       }
-    }, 400);
+      window.setTimeout(step, pollDelay(waited));
+    };
+
+    step();
   }
 
   function showCommand(data) {

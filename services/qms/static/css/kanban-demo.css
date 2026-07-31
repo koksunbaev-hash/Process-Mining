@@ -65,3 +65,90 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- board readability + motion ---------------------------------------- */
+/* The card used to carry eight labelled fields, which made every card look the
+   same from a metre away. Now: batch number, product, how much, for whom, by
+   when. Everything else is one click away. */
+
+.kanban-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+  animation: kanban-in .32s ease both;
+  animation-delay: calc(var(--card-index, 0) * 35ms);
+}
+.kanban-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15,35,75,.13); }
+.kanban-card.dragging { opacity: .55; transform: scale(.97) rotate(-1deg); cursor: grabbing; }
+
+@keyframes kanban-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.kanban-card__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kanban-card__id {
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+}
+.kanban-card__flag {
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.kanban-card__flag.is-critical { background: #fdeaec; color: #a3182a; }
+.kanban-card__flag.is-urgent   { background: #fff3e0; color: #9a5b00; }
+
+.kanban-card__product { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.3; }
+.kanban-card__meta { margin: 0; font-size: 12.5px; color: #5a6b8c; display: flex; gap: 6px; flex-wrap: wrap; }
+.kanban-card__foot {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 12px; color: #6b7a97;
+  padding-top: 6px; border-top: 1px dashed #e3e9f5;
+}
+.kanban-card__who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kanban-card__due { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.kanban-card.is-blocked { border-left: 3px solid #d92f3c; }
+
+.kanban-card__demo {
+  position: absolute; top: 6px; right: -1px;
+  padding: 1px 6px; border-radius: 3px 0 0 3px;
+  background: #eef1f8; color: #8a95ab; font-size: 9.5px; letter-spacing: .06em;
+}
+
+/* column: a coloured dot per stage makes the board scannable sideways */
+.kanban-head { display: flex; align-items: center; gap: 8px; }
+.kanban-head__dot { width: 8px; height: 8px; border-radius: 50%; background: #b9c4da; flex: none; }
+[data-stage-code="queue"]     .kanban-head__dot { background: #98a5bd; }
+[data-stage-code="mixing"]    .kanban-head__dot { background: #3f7fd8; }
+[data-stage-code="forming"]   .kanban-head__dot { background: #4aa3c7; }
+[data-stage-code="proofing"]  .kanban-head__dot { background: #d9a72f; }
+[data-stage-code="oven"]      .kanban-head__dot { background: #e0722f; }
+[data-stage-code="warehouse"] .kanban-head__dot { background: #7a6bd8; }
+[data-stage-code="done"]      .kanban-head__dot { background: #2f9e55; }
+
+.kanban-column { transition: background .18s ease, box-shadow .18s ease; }
+.kanban-column.drop-target {
+  background: #eef4ff;
+  box-shadow: inset 0 0 0 2px #7aa7f0;
+  border-radius: 10px;
+}
+
+/* a card that just arrived gets one flash, so a move is visible across the room */
+.kanban-card.just-moved { animation: kanban-flash 1.1s ease-out; }
+@keyframes kanban-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(47,158,85,.55); border-color: #2f9e55; }
+  100% { box-shadow: 0 0 0 16px rgba(47,158,85,0); }
+}
+.badge.count-changed { animation: kanban-bump .45s ease; }
+@keyframes kanban-bump { 40% { transform: scale(1.35); } }
+
+.kanban-empty { padding: 14px 4px; font-size: 12.5px; opacity: .6; text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kanban-card, .kanban-card.just-moved, .badge.count-changed { animation: none !important; }
+}
