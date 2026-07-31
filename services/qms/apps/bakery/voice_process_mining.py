@@ -154,6 +154,11 @@ def handle_process_mining_callback(payload):
     return voice, command
 
 
+def _squash(value):
+    """B-107, B107, b 107 -> b107. Speech does not pronounce punctuation."""
+    return re.sub(r"[^a-z0-9]", "", (value or "").lower())
+
+
 def resolve_batch(data):
     """Finds the batch a command refers to: by batch number, else by order.
 
@@ -169,6 +174,16 @@ def resolve_batch(data):
         ).first()
         if batch:
             return batch
+        # Whisper writes "B107" as often as "B-107", and an exact match then
+        # fails on a command that was spoken perfectly. Compare the way it
+        # sounds instead: letters and digits only.
+        wanted = _squash(number)
+        if wanted:
+            for candidate in ProductionBatch.objects.select_related("current_stage").exclude(
+                status__in=["completed", "cancelled"]
+            ):
+                if _squash(candidate.batch_number) == wanted:
+                    return candidate
 
     order_number = (data.get("order_number") or "").strip()
     if not order_number:

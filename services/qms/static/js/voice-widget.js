@@ -322,9 +322,13 @@
     $("current").textContent = extracted.current_stage || "-";
     $("next").textContent = extracted.next_stage || extracted.to_stage || "-";
     $("comment").textContent = extracted.comment || "-";
-    $("confidence").textContent =
-      cmd.confidence == null ? "-" : `${Math.round(cmd.confidence * 100)}%`;
-    $("warning").hidden = !(cmd.confidence != null && cmd.confidence < 0.8);
+    // The speech plugin reports no per-utterance score, and showing that as
+    // "0%" plus a low-confidence warning made every correct command look
+    // broken. No score means no claim - and no scare.
+    const score = Number(cmd.confidence);
+    const hasScore = cmd.confidence != null && Number.isFinite(score) && score > 0;
+    $("confidence").textContent = hasScore ? `${Math.round(score * 100)}%` : "—";
+    $("warning").hidden = !(hasScore && score < 0.8);
     result.hidden = false;
   }
 
