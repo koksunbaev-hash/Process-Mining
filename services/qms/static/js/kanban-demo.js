@@ -51,6 +51,11 @@
     }
   }
 
+  // Exposed so the voice widget can redraw the board after a command runs:
+  // the widget floats above the page and otherwise leaves stale markup behind,
+  // which looks exactly like "the command did nothing".
+  window.kanbanRefresh = () => refreshBoard();
+
   async function refreshBoard() {
     const shell = document.querySelector("[data-kanban-board-shell]");
     if (!shell) return;

@@ -152,3 +152,63 @@
 @media (prefers-reduced-motion: reduce) {
   .kanban-card, .kanban-card.just-moved, .badge.count-changed { animation: none !important; }
 }
+
+/* ---- board polish ------------------------------------------------------ */
+.kanban-board-large { gap: 14px; padding-bottom: 8px; align-items: start; }
+
+.kanban-column {
+  background: #f4f6fb;
+  border: 1px solid #e5eaf4;
+  border-radius: 14px;
+  padding: 10px;
+}
+.kanban-head {
+  padding: 2px 4px 10px;
+  font-size: 13px;
+  letter-spacing: .01em;
+  text-transform: uppercase;
+  color: #46536b;
+}
+.kanban-head strong { flex: 1; font-size: 13px; }
+.kanban-head .badge {
+  background: #fff; border: 1px solid #dde4f0; color: #46536b;
+  border-radius: 999px; min-width: 24px; text-align: center;
+  font-size: 12px; font-weight: 700; padding: 1px 7px;
+}
+.kanban-column-search input {
+  width: 100%; margin-bottom: 10px;
+  border: 1px solid #e1e7f3; border-radius: 9px;
+  padding: 7px 10px; font-size: 12.5px; background: #fff;
+}
+.kanban-column-search input:focus { outline: 2px solid #a9c4f5; outline-offset: -1px; }
+.kanban-cards { display: flex; flex-direction: column; gap: 10px; }
+
+.kanban-card {
+  background: #fff;
+  border: 1px solid #e4e9f4;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 1px 2px rgba(16,32,64,.05);
+}
+.kanban-card__id { color: #16233d; }
+.kanban-card__product { color: #24314c; }
+.kanban-card__meta strong { color: #16233d; font-weight: 700; }
+
+/* Actions are secondary to reading the board: quiet until the card is hovered,
+   so a column of cards reads as information rather than a wall of buttons. */
+.kanban-card-actions { display: flex; gap: 6px; margin-top: 2px; }
+.kanban-card-actions form { flex: 1; margin: 0; }
+.kanban-card-actions .primary,
+.kanban-card-actions .secondary {
+  width: 100%; padding: 7px 10px; border-radius: 9px;
+  font-size: 12.5px; font-weight: 600; text-align: center;
+  border: 1px solid transparent; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.kanban-card-actions .primary { background: #eef3ff; color: #2f5bd8; }
+.kanban-card-actions .secondary {
+  background: #fff; border-color: #e1e7f3; color: #61708c;
+  display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+}
+.kanban-card:hover .kanban-card-actions .primary { background: #2f5bd8; color: #fff; }
+.kanban-card-actions .secondary:hover { border-color: #b9c8e6; color: #2f5bd8; }

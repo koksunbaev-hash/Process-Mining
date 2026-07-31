@@ -349,6 +349,15 @@
       setMessage("Команда выполнена.");
       result.hidden = true;
       commandId = null;
+
+      // The batch has already moved in the database; without this the board
+      // still shows it in the old column and the command looks ignored.
+      if (typeof window.kanbanRefresh === "function") {
+        window.kanbanRefresh();
+      } else if (/\/bakery\/board/.test(window.location.pathname)) {
+        window.location.reload();
+      }
+
       window.setTimeout(resetIdle, 2500);
     } catch {
       setMode("error");

@@ -154,10 +154,36 @@ def handle_process_mining_callback(payload):
     return voice, command
 
 
+def resolve_batch(data):
+    """Finds the batch a command refers to: by batch number, else by order.
+
+    Falling back to the order number turns a dead end into a working command,
+    because one order normally has a single batch in flight. When an order has
+    several at once the reference really is ambiguous, so we refuse rather than
+    move the wrong one.
+    """
+    number = (data.get("batch_number") or "").strip()
+    if number:
+        batch = ProductionBatch.objects.select_related("current_stage").filter(
+            batch_number__iexact=number
+        ).first()
+        if batch:
+            return batch
+
+    order_number = (data.get("order_number") or "").strip()
+    if not order_number:
+        return None
+    active = ProductionBatch.objects.select_related("current_stage").filter(
+        order_item__order__order_number__iendswith=order_number
+    ).exclude(status__in=["completed", "cancelled"])
+    return active.first() if active.count() == 1 else None
+
+
 def create_voice_command(voice):
     parsed = parse_voice_command(voice.transcript, voice.confidence)
-    batch = ProductionBatch.objects.select_related("current_stage").filter(batch_number__iexact=parsed.get("batch_number", "")).first()
+    batch = resolve_batch(parsed)
     if batch:
+        parsed["batch_number"] = batch.batch_number
         parsed["from_stage"] = batch.current_stage.code
         parsed["current_stage"] = batch.current_stage.name
     status = VoiceCommand.Status.NEEDS_REVIEW if (voice.confidence is not None and voice.confidence < Decimal("0.8000")) else VoiceCommand.Status.DETECTED
@@ -177,6 +203,11 @@ def parse_voice_command(text, confidence=None):
     normalized = text.lower().replace("№", " ")
     batch_match = re.search(r"\bB[-\s]?\d+(?:-\d+)?(?:-\d+)?\b", text, flags=re.IGNORECASE)
     batch_number = batch_match.group(0).upper().replace(" ", "-") if batch_match else ""
+    # An operator names the order as readily as the batch ("заказ 13"), and a
+    # spoken number never carries the stored prefix - keep the digits and
+    # resolve them loosely in resolve_batch().
+    order_match = re.search(r"заказ\w*\s*([a-zа-я0-9][a-zа-я0-9\-]*)", normalized, flags=re.IGNORECASE)
+    order_number = order_match.group(1).upper().strip("-") if order_match else ""
     to_stage = ""
     for phrase, code in NEXT_BY_PHRASE.items():
         if phrase in normalized:
@@ -208,6 +239,7 @@ def parse_voice_command(text, confidence=None):
     return {
         "intent": intent,
         "batch_number": batch_number,
+        "order_number": order_number,
         "to_stage": to_stage,
         "comment": comment,
         "quantity": quantity,
@@ -241,7 +273,15 @@ def confirm_voice_command(command, user):
     if command.status == VoiceCommand.Status.REJECTED:
         raise ValidationError("Команда отклонена.")
     data = command.extracted_data
-    batch = ProductionBatch.objects.select_for_update().select_related("current_stage", "order_item__order").filter(batch_number__iexact=data.get("batch_number", "")).first()
+    found = resolve_batch(data)
+    batch = (
+        ProductionBatch.objects.select_for_update()
+        .select_related("current_stage", "order_item__order")
+        .filter(pk=found.pk)
+        .first()
+        if found
+        else None
+    )
     if not batch:
         command.status = VoiceCommand.Status.FAILED
         command.error_message = "Партия не найдена."

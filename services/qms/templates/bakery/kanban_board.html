@@ -1,6 +1,8 @@
-{# Board view: only what a person needs to decide "what do I touch next".
-   Everything else lives one click away on the batch page - eight fields in a
-   grid made every card look identical at a glance. #}
+{% comment %}
+Board view: only what a person needs to decide "what do I touch next".
+Everything else lives one click away on the batch page - eight fields in a grid
+made every card look identical at a glance.
+{% endcomment %}
 <section class="kanban-board kanban-board-large" data-kanban-board>
   {% for column in columns %}
   <div class="kanban-column" data-stage="{{ column.stage.pk }}" data-stage-code="{{ column.stage.code }}">
