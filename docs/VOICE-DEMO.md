@@ -100,8 +100,11 @@ docker compose ps
 Speech-сервис отвечает:
 
 ```bash
-curl -s localhost:8001/api/transcriptions/capabilities
+curl -s localhost:8001/api/transcriptions/capabilities -H "X-API-Key: $PM_API_KEYS"
 ```
+
+Ключ обязателен: без него ответ будет `401`, и легко решить, что распознавание
+не поднялось, хотя оно работает.
 
 Первый запуск скачивает модель (~0.5 ГБ), поэтому **первое распознавание будет
 долгим**. Прогрейте его до показа: запишите любую фразу заранее.

@@ -33,7 +33,10 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 # doubled PM_MAX_CONCURRENT_JOBS into four parallel discoveries and pointed a
 # second writer at the same SQLite file.
 #
-# Throughput does not need them: the endpoints are async and CPU-bound work
-# already runs in a thread pool capped by PM_MAX_CONCURRENT_JOBS. Raising this
-# above 1 requires moving job state and the cache out of the process first.
+# Throughput barely needs them: discovery already runs in a thread pool capped
+# by PM_MAX_CONCURRENT_JOBS. Log upload is the exception - upload_log and
+# import_events parse and write inline, so a large XES blocks this process
+# while pm4py reads it. That is a fair trade against job_ids that go missing,
+# but it is the thing to fix before raising the count, along with moving job
+# state and the cache out of process memory.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

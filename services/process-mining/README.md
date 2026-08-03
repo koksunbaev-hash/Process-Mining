@@ -279,9 +279,10 @@ Read this section before building on top of it.
 - **Deduplication needs an `event_id`.** Events that carry one can never be stored twice;
   events without one (plain file uploads) are always appended, because there is no honest
   way to tell a re-delivery from a genuine repeat of the same activity in the same case.
-- **SQLite means one node.** The `LogRepository` interface is ready for Postgres but the
-  implementation does not exist. Do not run multiple replicas against one database file —
-  note that `deploy/k8s.yaml` ships `replicas: 2`, which you must fix before using it.
+- **SQLite means one node, and one process.** The `LogRepository` interface is ready for
+  Postgres but the implementation does not exist, so `deploy/k8s.yaml` ships `replicas: 1`
+  and the container runs a single uvicorn worker. Job state and the result cache live in
+  process memory, so a second of either loses track of half the jobs it hands out.
 - **`tenant` is a filter, not isolation.** It scopes queries; it does not enforce that key A
   cannot read tenant B.
 - **No rate limiting.** Only a request body size cap.
