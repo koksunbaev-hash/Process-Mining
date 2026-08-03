@@ -165,3 +165,7 @@ host without internet, `docker save | gzip` gives you ~400 MB to copy.
 otherwise spend a day re-deriving: why the two services stay separate, which
 traps have already been stepped on, what the 1C data can and cannot support,
 and what is deliberately unfinished. Read it before the first change.
+
+Showing the system to someone: [docs/DEMO-CHECKLIST.md](docs/DEMO-CHECKLIST.md)
+for the deploy and the checks worth doing beforehand,
+[docs/VOICE-DEMO.md](docs/VOICE-DEMO.md) for the voice walkthrough.
