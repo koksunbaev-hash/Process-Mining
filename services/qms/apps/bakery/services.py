@@ -142,7 +142,20 @@ def move_batch(batch, to_stage, user, comment="", require_comment=False):
         batch.actual_start = now
     batch.save(update_fields=["current_stage", "status", "actual_start", "actual_finish", "updated_at"])
     order = batch.order_item.order
-    order.status = ProductionOrder.Status.READY if to_stage.code == "done" else ProductionOrder.Status.IN_PRODUCTION
+    if to_stage.code == "done":
+        # An order can carry several batches - confirm_order makes one per order
+        # item - so finishing this one does not finish the order. The batch above
+        # is already saved, so it counts itself out of this query; a cancelled
+        # batch is not something anyone is still waiting for.
+        waiting = (
+            ProductionBatch.objects.filter(order_item__order_id=order.pk)
+            .exclude(status=ProductionBatch.Status.CANCELLED)
+            .exclude(current_stage__code="done")
+            .exists()
+        )
+        order.status = ProductionOrder.Status.IN_PRODUCTION if waiting else ProductionOrder.Status.READY
+    else:
+        order.status = ProductionOrder.Status.IN_PRODUCTION
     order.save(update_fields=["status", "updated_at"])
     log_order_event(order, f"Партия {batch.batch_number}: {from_stage.name} -> {to_stage.name}.", "stage_changed", user=user, batch=batch)
     if to_stage.code == "warehouse":

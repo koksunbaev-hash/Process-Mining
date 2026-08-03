@@ -92,6 +92,22 @@ def create_order(user=None, quantity=Decimal("100.000"), priority=ProductionOrde
     return order, item
 
 
+def create_order_with_two_items(user=None, quantity=Decimal("100.000")):
+    """confirm_order makes one batch per order item, and that is the only way an
+    order ends up carrying more than one batch."""
+    user = user or create_user()
+    order, first = create_order(user=user, quantity=quantity)
+    product = create_product(code="BUN", name="Булочка тестовая")
+    second = ProductionOrderItem.objects.create(
+        order=order,
+        product=product,
+        quantity=quantity,
+        unit="шт",
+        recipe=create_recipe(product),
+    )
+    return order, first, second
+
+
 def create_queued_batch(user=None, assignee=None, quantity=Decimal("100.000")):
     create_stage_list()
     user = user or create_user()
