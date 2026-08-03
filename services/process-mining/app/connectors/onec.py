@@ -180,6 +180,26 @@ def collect(client: Client, days: int) -> tuple[list[dict[str, Any]], Counter]:
     return events, stats
 
 
+def collapse_repeats(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keeps the first occurrence of each activity per case.
+
+    A client ships fifty times a month, so the raw log is mostly
+    "Отгрузка -> Отгрузка" and the map turns into one enormous self-loop that
+    hides the thing we came for: the order of stages and the days between them.
+    Collapsing answers "how does the cycle run", which is the question; volume
+    is already visible in the counts printed on import.
+    """
+    seen: set[tuple[str, str]] = set()
+    kept: list[dict[str, Any]] = []
+    for event in sorted(events, key=lambda e: e["timestamp"]):
+        key = (event["case_id"], event["activity"])
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(event)
+    return kept
+
+
 COLUMNS = [
     "event_id", "case_id", "case_type", "activity", "timestamp", "user_id", "user_name",
     "resource", "product_id", "product_name", "batch_number", "order_number",
@@ -239,6 +259,11 @@ def main() -> int:
     parser.add_argument("--source", default="goldsapa_1c")
     parser.add_argument("--import-url", default="http://localhost:8000/api/event-logs/import/")
     parser.add_argument("--dry-run", action="store_true", help="build the CSV, do not send it")
+    parser.add_argument(
+        "--keep-repeats",
+        action="store_true",
+        help="keep every document; by default only the first of each activity per case",
+    )
     args = parser.parse_args()
 
     env = load_env()
@@ -254,8 +279,11 @@ def main() -> int:
         print("nothing to import")
         return 1
 
+    raw_count = len(events)
+    if not args.keep_repeats:
+        events = collapse_repeats(events)
     cases = len({e["case_id"] for e in events})
-    print(f"\n  total: {len(events)} events in {cases} cases")
+    print(f"\n  total: {len(events)} events in {cases} cases (from {raw_count} documents)")
 
     payload = to_csv(events)
     if args.dry_run:
