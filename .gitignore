@@ -24,3 +24,6 @@ process_map.svg
 
 # local agent settings
 .claude/settings.local.json
+
+# TLS certificates are generated per host, never committed
+services/nginx/certs/

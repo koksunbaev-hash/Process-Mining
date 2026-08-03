@@ -112,6 +112,23 @@ services:
         limits:
           cpus: "${STT_CPUS:-2}"
 
+  # TLS in front of both apps. Not for secrecy on a LAN - browsers simply
+  # refuse microphone access outside a secure context, so voice commands are
+  # impossible over plain http from anything but localhost.
+  proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${PM_HTTPS_PORT:-8443}:8443"
+    volumes:
+      - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./services/nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - qms
+      - process-mining
+
 volumes:
   postgres_data:
   qms_static:
