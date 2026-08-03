@@ -13,6 +13,7 @@ from django.utils import timezone
 from apps.notifications.models import Notification
 from apps.notifications.services import notify
 from apps.nonconformities.models import Nonconformity
+from apps.process_mining.models import ProcessEvent
 
 from .models import (
     BatchStageHistory,
@@ -311,6 +312,10 @@ def reset_demo(run, user):
     Nonconformity.objects.filter(bakery_batch_id__in=batch_ids).exclude(status__in=[Nonconformity.Status.CLOSED, Nonconformity.Status.RESOLVED]).delete()
     FinishedGoodsStock.objects.filter(demo_run=run, is_demo=True).delete()
     BatchStageHistory.objects.filter(batch_id__in=batch_ids).delete()
+    # ProcessEvent.batch is SET_NULL, so anything still queued would lose the
+    # only thing marking it synthetic and ship to the analytics service on the
+    # next export. Already-sent events stay as a record of what went out.
+    ProcessEvent.objects.filter(batch_id__in=batch_ids).exclude(export_status=ProcessEvent.ExportStatus.SENT).delete()
     ProductionBatch.objects.filter(demo_run=run, is_demo=True).delete()
     ProductionOrderItem.objects.filter(demo_run=run, is_demo=True).delete()
     ProductionOrder.objects.filter(demo_run=run, is_demo=True).delete()

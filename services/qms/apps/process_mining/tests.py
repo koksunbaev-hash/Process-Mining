@@ -14,11 +14,15 @@ from apps.bakery.models import FinishedGoodsStock, ProductionBatch
 from apps.bakery.tests.batch_workflow.factories import create_manual_batch, create_user
 from apps.bakery.tests.batch_workflow.helpers import move_batch, stage
 
+from apps.bakery.kanban_demo import create_demo_run, reset_demo, start_demo, tick_demo
+from apps.bakery.models import KanbanDemoRun
+
 from .models import ProcessEvent, ProcessEventExport
 from .services import (
     CSV_COLUMNS,
     apply_response,
     build_events_csv,
+    choose_pending_events,
     csv_checksum,
     export_pending_events_to_process_mining,
     multipart_body,
@@ -436,3 +440,41 @@ class ProcessMiningFullScenarioTests(TestCase):
         move_batch(self.batch, "mixing", self.user, "замес")
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.current_stage, stage("mixing"))
+
+
+class DemoEventsStayOutOfTheLogTests(TestCase):
+    """A demo run records transitions like any other batch, but the analytics
+    service cannot take them back: reset deletes the batch and the DEMO-B-0001
+    case stays in the log, inside every map and KPI drawn from it."""
+
+    def setUp(self):
+        self.user = create_user(username="pm-demo", role=UserProfile.Role.ADMIN)
+
+    def move_one_stage(self, batch):
+        move_batch(batch, "forming", self.user, "to forming")
+        return ProcessEvent.objects.get(batch=batch, to_stage="forming")
+
+    def test_transition_records_whether_its_batch_is_demo(self):
+        work = create_manual_batch("mixing", self.user)
+        demo = create_manual_batch("mixing", self.user, is_demo=True)
+        self.assertIs(self.move_one_stage(work).event_data["is_demo"], False)
+        self.assertIs(self.move_one_stage(demo).event_data["is_demo"], True)
+
+    def test_demo_events_are_never_chosen_for_export(self):
+        work = create_manual_batch("mixing", self.user)
+        demo = create_manual_batch("mixing", self.user, is_demo=True)
+        self.move_one_stage(work)
+        self.move_one_stage(demo)
+        case_ids = {event.case_id for event in choose_pending_events(100)}
+        self.assertIn(work.batch_number, case_ids)
+        self.assertNotIn(demo.batch_number, case_ids)
+
+    def test_reset_drops_demo_events_that_never_shipped(self):
+        run = create_demo_run(user=self.user, count=2, speed_seconds=0.1, mode=KanbanDemoRun.Mode.FAST)
+        start_demo(run, self.user)
+        tick_demo(run, self.user)
+        self.assertTrue(ProcessEvent.objects.filter(batch__is_demo=True).exists())
+        reset_demo(run, self.user)
+        # batch is SET_NULL, so a survivor would look like a work event and ship
+        # on the next export with nothing left to mark it synthetic.
+        self.assertFalse(ProcessEvent.objects.exclude(export_status=ProcessEvent.ExportStatus.SENT).exists())

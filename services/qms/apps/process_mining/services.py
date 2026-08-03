@@ -119,7 +119,9 @@ def process_event_for_batch_transition(batch, from_stage, to_stage, user, occurr
         status=batch.status,
         quantity=batch.actual_quantity or batch.planned_quantity,
         unit=batch.unit,
-        event_data={"comment": comment, "direction": direction},
+        # is_demo travels in the metadata as well as on the FK, because reset_demo
+        # deletes the batch and the FK is SET_NULL - the flag has to outlive it.
+        event_data={"comment": comment, "direction": direction, "is_demo": bool(batch.is_demo)},
     )
 
 
@@ -165,7 +167,16 @@ def csv_checksum(csv_text):
 
 
 def choose_pending_events(batch_size):
-    queryset = ProcessEvent.objects.filter(export_status=ProcessEvent.ExportStatus.PENDING).order_by("created_at", "id")
+    # Demo transitions are recorded like any other, but once they reach the
+    # analytics service there is no taking them back: the batch is deleted on
+    # reset and the DEMO-B-0001 case stays in the log for good, inside every map
+    # and every KPI drawn from it. Cheaper to never send them.
+    queryset = (
+        ProcessEvent.objects.filter(export_status=ProcessEvent.ExportStatus.PENDING)
+        .exclude(batch__is_demo=True)
+        .exclude(order__is_demo=True)
+        .order_by("created_at", "id")
+    )
     try:
         return list(queryset.select_for_update(skip_locked=True)[:batch_size])
     except DatabaseError:
