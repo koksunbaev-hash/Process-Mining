@@ -75,6 +75,11 @@ services:
       PM_ARTIFACT_DIR: /srv/data/artifacts
       PM_STT_URL: http://stt:8080
       PM_STT_LANGUAGE: ${PM_STT_LANGUAGE:-ru}
+      # Read by the 1C connector (app/connectors/onec.py), which runs on demand
+      # rather than as part of the service.
+      ONEC_URL: ${ONEC_URL:-}
+      ONEC_USER: ${ONEC_USER:-}
+      ONEC_PASSWORD: ${ONEC_PASSWORD:-}
       PM_CALLBACK_SECRET: ${PM_CALLBACK_SECRET:?set PM_CALLBACK_SECRET in .env}
       # Discovery is CPU-bound and shares 4 cores with Postgres, Django and the
       # speech model. Two keeps a heavy job from starving the rest.
