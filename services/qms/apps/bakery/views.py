@@ -83,7 +83,17 @@ def kanban_context(request):
         items = batches.filter(current_stage=stage)
         if column_search[stage.code]:
             items = items.filter(Q(product__name__icontains=column_search[stage.code]) | Q(batch_number__icontains=column_search[stage.code]))
-        columns.append({"stage": stage, "batches": items, "count": items.count(), "query": column_search[stage.code], "has_next": index + 1 < len(stages)})
+        # prev_stage feeds the "← Назад" button, which exists because HTML5 drag
+        # and drop fires no events from touch: on a phone or tablet the buttons
+        # are the only way to move a batch at all.
+        columns.append({
+            "stage": stage,
+            "batches": items,
+            "count": items.count(),
+            "query": column_search[stage.code],
+            "has_next": index + 1 < len(stages),
+            "prev_stage": stages[index - 1] if index else None,
+        })
     # Where a card should send you back to. Not request.get_full_path: this same
     # template is served by kanban_partial for script refreshes, and there that
     # path is /bakery/board/partial/ - a fragment with no base template, styles

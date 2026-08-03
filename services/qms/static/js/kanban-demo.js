@@ -90,8 +90,34 @@
     url.search = params.toString();
     const response = await fetch(url, { credentials: "same-origin" });
     if (!response.ok) return;
+    const scroll = readScroll(shell);
     shell.innerHTML = await response.text();
+    restoreScroll(shell, scroll);
     bindDragAndDrop();
+  }
+
+  // Replacing the shell's HTML throws away every scroll position with it. The
+  // board is wider than any screen and the demo redraws it every 0.1-5 seconds,
+  // so without this it snapped back to the first column continuously and could
+  // not be read at all on a laptop, let alone a tablet.
+  function readScroll(shell) {
+    const board = shell.querySelector("[data-kanban-board]");
+    const lanes = {};
+    shell.querySelectorAll(".kanban-column").forEach((column) => {
+      const cards = column.querySelector(".kanban-cards");
+      if (cards && cards.scrollTop) lanes[column.dataset.stageCode] = cards.scrollTop;
+    });
+    return { left: board ? board.scrollLeft : 0, lanes };
+  }
+
+  function restoreScroll(shell, scroll) {
+    const board = shell.querySelector("[data-kanban-board]");
+    if (board && scroll.left) board.scrollLeft = scroll.left;
+    shell.querySelectorAll(".kanban-column").forEach((column) => {
+      const top = scroll.lanes[column.dataset.stageCode];
+      const cards = column.querySelector(".kanban-cards");
+      if (cards && top) cards.scrollTop = top;
+    });
   }
 
   function bindDemoPanel() {

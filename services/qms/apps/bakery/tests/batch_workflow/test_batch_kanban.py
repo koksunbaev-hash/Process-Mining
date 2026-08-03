@@ -5,7 +5,7 @@ from apps.bakery.models import ProductionBatch
 from apps.bakery.services import pause_batch
 
 from .factories import create_problem, create_user
-from .helpers import WORKFLOW, create_batch_at_stage
+from .helpers import WORKFLOW, create_batch_at_stage, stage
 
 
 class BatchKanbanTests(TestCase):
@@ -119,3 +119,44 @@ class KanbanReturnUrlTests(TestCase):
     def test_filters_survive_the_round_trip(self):
         html = self.client.get(reverse("bakery:kanban_partial"), {"demo": "all"}).content.decode()
         self.assertIn('name="next" value="/bakery/board/?demo=all"', html)
+
+
+class KanbanTouchFallbackTests(TestCase):
+    """HTML5 drag and drop fires nothing from touch, so on a phone or tablet the
+    card buttons are the only way to move a batch - in either direction."""
+
+    def setUp(self):
+        self.user = create_user()
+        self.client.force_login(self.user)
+
+    def board(self):
+        return self.client.get(reverse("bakery:kanban")).content.decode()
+
+    def test_first_column_offers_no_way_back(self):
+        create_batch_at_stage("queue", self.user)
+        self.assertNotIn("Назад", self.board())
+
+    def test_middle_column_offers_both_directions(self):
+        create_batch_at_stage("mixing", self.user)
+        html = self.board()
+        self.assertIn("Назад", html)
+        self.assertIn("Дальше", html)
+
+    def test_last_column_offers_only_the_way_back(self):
+        create_batch_at_stage("done", self.user)
+        html = self.board()
+        self.assertIn("Назад", html)
+        self.assertNotIn("Дальше", html)
+
+    def test_the_back_button_moves_the_batch(self):
+        batch = create_batch_at_stage("forming", self.user)
+        html = self.board()
+        # The form carries a comment, because move_batch demands one for a
+        # backward step - the same one drag and drop has always sent.
+        self.assertIn("Возврат на Kanban-доске", html)
+        self.client.post(
+            reverse("bakery:move_batch", args=[batch.pk]),
+            {"stage": stage("mixing").pk, "comment": "Возврат на Kanban-доске"},
+        )
+        batch.refresh_from_db()
+        self.assertEqual(batch.current_stage.code, "mixing")

@@ -8,6 +8,6 @@
   <div class="stat-card danger"><span>Проблемные этапы</span><strong>{{ problems_by_stage|length }}</strong></div>
   <div class="stat-card"><span>Складские записи</span><strong>{{ stock|length }}</strong></div>
 </section>
-<section class="panel"><h3>Партии по этапам</h3><table>{% for row in stage_rows %}<tr><td>{{ row.current_stage__name }}</td><td>{{ row.total }}</td></tr>{% endfor %}</table></section>
-<section class="panel"><h3>Готовая продукция</h3><table>{% for item in stock %}<tr><td>{{ item.product.name }}</td><td>{{ item.batch.batch_number }}</td><td>{{ item.quantity }} {{ item.unit }}</td></tr>{% endfor %}</table></section>
+<section class="panel"><h3>Партии по этапам</h3><div class="table-wrap"><table>{% for row in stage_rows %}<tr><td>{{ row.current_stage__name }}</td><td>{{ row.total }}</td></tr>{% endfor %}</table></div></section>
+<section class="panel"><h3>Готовая продукция</h3><div class="table-wrap sticky-first"><table>{% for item in stock %}<tr><td>{{ item.product.name }}</td><td>{{ item.batch.batch_number }}</td><td>{{ item.quantity }} {{ item.unit }}</td></tr>{% endfor %}</table></div></section>
 {% endblock %}

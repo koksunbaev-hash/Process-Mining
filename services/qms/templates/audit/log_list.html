@@ -11,7 +11,7 @@
     <input name="date" value="{{ request.GET.date }}" type="date">
     <button class="primary">Фильтр</button>
   </form>
-  <div class="table-wrap">
+  <div class="table-wrap sticky-first">
     <table>
       <tr><th>Дата</th><th>Пользователь</th><th>Действие</th><th>Объект/страница</th><th>IP</th><th>Данные</th></tr>
       {% for item in page_obj %}

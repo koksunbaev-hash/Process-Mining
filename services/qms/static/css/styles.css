@@ -4,11 +4,14 @@
   --primary: #2457d6; --primary-soft: #eaf0ff; --success: #12805c; --warning: #b54708; --danger: #c1153b;
   --shadow: 0 8px 30px rgba(16,24,40,.07);
 }
-body { margin: 0; font-family: Inter, Segoe UI, Arial, sans-serif; color: var(--text); background: var(--bg); min-height: 100vh; }
+body { margin: 0; font-family: Inter, Segoe UI, Arial, sans-serif; color: var(--text); background: var(--bg); min-height: 100vh; line-height: 1.45; -webkit-text-size-adjust: 100%; }
 a { color: inherit; text-decoration: none; }
 .mobile-header,.sidebar-backdrop { display: none; }
 .sidebar { width: 260px; background: #12213f; color: white; padding: 24px 18px; display: flex; flex-direction: column; position: fixed; inset: 0 auto 0 0; overflow-y: auto; z-index: 20; transition: transform .2s ease; }
-.sidebar-collapse-toggle,.sidebar-rail-toggle { width: 36px; height: 36px; min-height: 36px; padding: 0; border-radius: 8px; border-color: rgba(255,255,255,.18); background: rgba(255,255,255,.08); color: white; font-size: 22px; line-height: 1; }
+/* 44px, not 36: between 721 and 1024 these two are the only way to hide or bring
+   back the menu - the hamburger belongs to the mobile header, which does not
+   exist at that width - and a 768px tablet is a touch screen. */
+.sidebar-collapse-toggle,.sidebar-rail-toggle { width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: 8px; border-color: rgba(255,255,255,.18); background: rgba(255,255,255,.08); color: white; font-size: 22px; line-height: 1; }
 .sidebar-collapse-toggle { position: absolute; top: 18px; right: 14px; }
 .sidebar-rail-toggle { display: none; position: fixed; left: 14px; top: 18px; z-index: 25; background: #12213f; box-shadow: 0 8px 24px rgba(16,24,40,.2); }
 body.sidebar-collapsed .sidebar { transform: translateX(-100%); }
@@ -22,7 +25,7 @@ nav { display: grid; gap: 7px; }
 .nav-item:hover { background: rgba(255,255,255,.1); color: white; }
 .user-card { margin-top: auto; border-top: 1px solid rgba(255,255,255,.12); padding-top: 18px; display: grid; gap: 6px; }
 .user-card span { color: #b8c3d9; font-size: 12px; }
-.link-button { background: transparent; border: 0; color: #cbd5e7; padding: 0; text-align: left; cursor: pointer; }
+.link-button { background: transparent; border: 0; color: #cbd5e7; padding: 0; text-align: left; cursor: pointer; min-height: 44px; justify-content: flex-start; }
 .main { margin-left: 260px; width: calc(100% - 260px); padding: 30px; }
 .login-main { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
 .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; gap: 16px; }
@@ -44,9 +47,22 @@ nav { display: grid; gap: 7px; }
 .badge { background: var(--primary-soft); color: var(--primary); }
 .status.waiting { background: #fff4e5; color: #9a4b00; } .status.active { background: #eaf0ff; color: #2457d6; }
 .status.done { background: #e9f8f1; color: #12715b; } .status.critical { background: #ffedf1; color: #b42345; }
-.table-wrap { overflow-x: auto; } table { width: 100%; border-collapse: collapse; }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; }
 th,td { padding: 12px 10px; border-bottom: 1px solid var(--border); text-align: left; font-size: 14px; vertical-align: top; }
 th { color: var(--muted); font-weight: 600; }
+/* A register is opened to compare rows, so we scroll rather than fold cells into
+   cards - but once you have scrolled right, the row needs to keep saying whose
+   it is. */
+.table-wrap.sticky-first th:first-child,.table-wrap.sticky-first td:first-child {
+  position: sticky; left: 0; z-index: 1; background: var(--surface);
+  box-shadow: 1px 0 0 var(--border);
+}
+.table-wrap.sticky-first tr.row-danger td:first-child { background: #fff1f3; }
+.table-wrap.sticky-first tr.row-ok td:first-child { background: #effaf4; }
+/* Free-text and JSON columns: one audit row carries the whole POST body, which
+   on its own stretched the table to several screens. */
+td .cell-long,td code { display: block; max-width: 46ch; max-height: 4.5em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 .defects-list { display: grid; gap: 12px; } .defect { border: 1px solid var(--border); border-radius: 8px; padding: 13px; background: white; }
 .defect strong,.defect span { display: block; } .defect span { color: var(--muted); margin-top: 5px; font-size: 13px; }
 .unread { border-left: 4px solid var(--primary); }
@@ -83,7 +99,11 @@ canvas { max-height: 280px; }
 .kanban-mode .topbar h2 { font-size: 32px; line-height: 1.15; }
 .kanban-page { display: grid; gap: 14px; }
 .kanban-toolbar { background: white; border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); padding: 12px; }
-.kanban-filters { display: grid; grid-template-columns: minmax(240px, 1.35fr) repeat(5, minmax(140px, 1fr)) minmax(130px, .65fr); gap: 10px; align-items: center; }
+/* auto-fit rather than seven named tracks: the named version demanded 1140px
+   of content and so tore open at 1366x768 - the most ordinary laptop there is -
+   taking the right edge of the board with it. */
+.kanban-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: center; }
+.kanban-filters input[name="q"] { grid-column: span 2; }
 .kanban-board { display: grid; grid-template-columns: repeat(7, minmax(310px, 330px)); gap: 14px; overflow-x: auto; padding: 2px 2px 14px; min-height: calc(100vh - 184px); align-items: stretch; }
 .kanban-column { background: #edf2f8; border: 1px solid #d8e0ec; border-radius: 8px; padding: 12px; height: calc(100vh - 198px); min-height: 560px; display: flex; flex-direction: column; }
 .kanban-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -2px -2px 10px; padding: 8px 4px 10px; background: #edf2f8; border-bottom: 1px solid #d8e0ec; }
@@ -98,13 +118,33 @@ canvas { max-height: 280px; }
 .kanban-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 12px; }
 .kanban-card-grid p { font-size: 13px; color: var(--text); display: grid; gap: 3px; min-width: 0; word-break: break-word; }
 .kanban-card-grid span { color: var(--muted); font-size: 12px; font-weight: 700; }
-.kanban-card-actions form { flex: 1; }
-.kanban-card-actions .primary,.kanban-card-actions .secondary { width: 100%; min-height: 42px; margin-top: 0; }
+.kanban-card-actions { gap: 8px; }
+.kanban-card-actions form { flex: 1 1 40%; }
+.kanban-card-actions .primary,.kanban-card-actions .secondary { width: 100%; min-height: 44px; margin-top: 0; }
+.kanban-card-actions > .secondary { flex: 1 1 100%; }
+.kanban-card-back { color: var(--muted); }
+/* The board scrolls sideways on every screen narrower than seven columns, so it
+   should come to rest on a column rather than halfway across two. */
+.kanban-board { scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
+.kanban-column { scroll-snap-align: start; }
 .kanban-empty { padding: 20px 8px; text-align: center; }
 audio { width: 240px; max-width: 100%; }
-@media (max-width: 1200px) { .report-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 1300px) { .kanban-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 1000px) { .cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .content-grid,.filters,.meta-grid,.report-filters { grid-template-columns: 1fr; } }
+/* One ladder: <=720 phone, 721-1024 tablet, >=1025 desktop. The grids below
+   size themselves and need no breakpoint at all - the old 1200/1300 rules were
+   there to patch tracks that could not shrink. */
+.cards-grid,.report-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.filters,.report-filters { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.meta-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+
+/* 721-1024 used to be nobody's land: the mobile header had not appeared yet and
+   the fixed 260px sidebar already took a third of a 768px tablet. */
+@media (max-width: 1024px) {
+  .sidebar { width: 216px; padding: 20px 12px; }
+  .main { margin-left: 216px; width: calc(100% - 216px); padding: 22px 18px; }
+  .content-grid { grid-template-columns: 1fr; }
+  .stat-card strong { font-size: 26px; }
+  .kanban-mode .topbar h2 { font-size: 26px; }
+}
 @media (max-width: 720px) {
   body.menu-open { overflow: hidden; }
   body.sidebar-collapsed .sidebar { transform: translateX(-105%); }
@@ -137,8 +177,10 @@ audio { width: 240px; max-width: 100%; }
   .mobile-brand strong,.mobile-brand span { display: block; line-height: 1.15; }
   .mobile-brand span { color: #b8c3d9; font-size: 12px; }
   .mobile-notifications {
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    padding: 0 4px;
     border-radius: 999px;
     display: grid;
     place-items: center;
@@ -172,7 +214,12 @@ audio { width: 240px; max-width: 100%; }
   .topbar p { font-size: 15px; }
   .panel { padding: 14px; }
   .panel-header { align-items: flex-start; flex-direction: column; }
-  .primary, button, .secondary { min-height: 44px; width: 100%; }
+  /* Full width for real form buttons only. The blanket rule used to stretch the
+     voice widget's × across its whole panel and blow up the little action
+     buttons that live inside table cells. */
+  .primary, button, .secondary { min-height: 44px; }
+  .filters button,.form-grid button,.dialog-actions button,.export-actions button,
+  .filter-actions button,.kanban-filters button,form > .primary,form > .secondary { width: 100%; }
   .dialog-actions,.inline-form,.filter-actions,.export-actions,.pagination { justify-content: stretch; }
   th,td { padding: 11px 9px; font-size: 13px; white-space: nowrap; }
   .inspection-table input,.inspection-table select { min-width: 150px; }

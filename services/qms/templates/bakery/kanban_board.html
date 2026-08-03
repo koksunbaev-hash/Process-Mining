@@ -49,6 +49,15 @@ made every card look identical at a glance.
         </footer>
 
         <div class="kanban-card-actions">
+          {% if column.prev_stage %}
+          <form method="post" action="{% url 'bakery:move_batch' batch.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="stage" value="{{ column.prev_stage.pk }}">
+            <input type="hidden" name="comment" value="Возврат на Kanban-доске">
+            <input type="hidden" name="next" value="{{ board_url }}">
+            <button class="secondary kanban-card-back" title="Вернуть на этап «{{ column.prev_stage.name }}»">← Назад</button>
+          </form>
+          {% endif %}
           {% if column.has_next %}
           <form method="post" action="{% url 'bakery:move_batch' batch.pk %}">
             {% csrf_token %}
