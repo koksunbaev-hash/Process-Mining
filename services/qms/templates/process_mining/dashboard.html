@@ -3,6 +3,27 @@
 {% block page_title %}Интеграция Process Mining{% endblock %}
 {% block page_subtitle %}Экспорт бизнес-событий KMS в CSV{% endblock %}
 {% block content %}
+<section class="panel pm-console">
+  <div class="pm-console__text">
+    <h3>Аналитика процессов</h3>
+    <p class="muted">Карта процесса, узкие места, варианты маршрутов и KPI по событиям, которые отправляет эта система.</p>
+  </div>
+  {# Built from the current host so the link works over localhost, over the LAN
+     address and behind any future domain without another setting to maintain. #}
+  <a class="primary pm-console__link" id="pmConsoleLink" href="#" target="_blank" rel="noopener">
+    Открыть консоль →
+  </a>
+</section>
+<script>
+  (function () {
+    // The console listens on its own port: 8443 behind TLS, 8001 without.
+    var link = document.getElementById("pmConsoleLink");
+    var secure = window.location.protocol === "https:";
+    var port = secure ? "8443" : "8001";
+    link.href = (secure ? "https://" : "http://") + window.location.hostname + ":" + port + "/";
+  })();
+</script>
+
 <section class="panel">
   <div class="stats">
     <div class="stat"><span>Pending</span><strong>{{ counts.pending|default:0 }}</strong></div>

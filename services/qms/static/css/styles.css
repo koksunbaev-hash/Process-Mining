@@ -186,3 +186,21 @@ audio { width: 240px; max-width: 100%; }
   .kanban-column { height: calc(100vh - 224px); min-height: 520px; }
   .kanban-card-grid { grid-template-columns: 1fr; }
 }
+
+/* ---- link out to the analytics console --------------------------------- */
+.pm-console {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.pm-console__text h3 { margin: 0 0 4px; }
+.pm-console__text p { margin: 0; font-size: 13px; max-width: 60ch; }
+.pm-console__link {
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
