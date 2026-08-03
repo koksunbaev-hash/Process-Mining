@@ -148,3 +148,12 @@ host without internet, `docker save | gzip` gives you ~400 MB to copy.
 - **Voice transcription is not deployed here.** QMS can send recordings to a
   transcription endpoint and the analytics service has a Whisper module, but it
   is off by default: it wants gigabytes of RAM and belongs in its own deployment.
+
+---
+
+## Picking this up
+
+[docs/HANDOFF.md](docs/HANDOFF.md) carries the context a newcomer would
+otherwise spend a day re-deriving: why the two services stay separate, which
+traps have already been stepped on, what the 1C data can and cannot support,
+and what is deliberately unfinished. Read it before the first change.
