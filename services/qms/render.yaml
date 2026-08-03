@@ -11,7 +11,7 @@ services:
     rootDir: services/qms
     plan: free
     buildCommand: pip install -r requirements.txt && python manage.py migrate && python manage.py seed_bakery --reset-passwords && python manage.py collectstatic --noinput
-    startCommand: python -m gunicorn config.wsgi:application
+    startCommand: python manage.py migrate --noinput && python manage.py seed_bakery --reset-passwords && python -m gunicorn config.wsgi:application
     envVars:
       - key: DATABASE_URL
         fromDatabase:
