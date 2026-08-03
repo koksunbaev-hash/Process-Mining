@@ -52,7 +52,7 @@ made every card look identical at a glance.
           {% if column.has_next %}
           <form method="post" action="{% url 'bakery:move_batch' batch.pk %}">
             {% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <input type="hidden" name="next" value="{{ board_url }}">
             <button class="primary">Дальше →</button>
           </form>
           {% endif %}

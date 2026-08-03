@@ -88,3 +88,16 @@ class BatchViewEndpointTests(TestCase):
         self.client.post(reverse("bakery:move_batch", args=[self.batch.pk]), {"stage": stage("forming").pk})
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.current_stage.code, "mixing")
+
+    def test_a_refused_move_reads_as_a_sentence(self):
+        # ValidationError.__str__ is repr(list(self)), so the board would have
+        # shown ['Переход возможен только на соседний этап.'] verbatim.
+        response = self.client.post(
+            reverse("bakery:move_batch", args=[self.batch.pk]),
+            {"stage": stage("oven").pk},
+            headers={"x-requested-with": "XMLHttpRequest"},
+        )
+        error = response.json()["error"]
+        self.assertTrue(error)
+        self.assertNotIn("[", error)
+        self.assertNotIn("'", error)

@@ -7,6 +7,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Count, Q
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.notifications.services import notify
@@ -83,7 +84,13 @@ def kanban_context(request):
         if column_search[stage.code]:
             items = items.filter(Q(product__name__icontains=column_search[stage.code]) | Q(batch_number__icontains=column_search[stage.code]))
         columns.append({"stage": stage, "batches": items, "count": items.count(), "query": column_search[stage.code], "has_next": index + 1 < len(stages)})
+    # Where a card should send you back to. Not request.get_full_path: this same
+    # template is served by kanban_partial for script refreshes, and there that
+    # path is /bakery/board/partial/ - a fragment with no base template, styles
+    # or navigation. The query string is the same either way, so filters survive.
+    query = request.GET.urlencode()
     context = {
+        "board_url": f"{reverse('bakery:kanban')}?{query}" if query else reverse("bakery:kanban"),
         "columns": columns,
         "products": Product.objects.filter(is_active=True),
         "customers": Customer.objects.filter(is_active=True),
@@ -123,7 +130,10 @@ def move_batch_view(request, pk):
         try:
             move_batch(batch, stage, request.user, request.POST.get("comment", ""), require_comment=going_back)
         except (PermissionDenied, ValidationError) as exc:
-            error = str(exc)
+            # ValidationError.__str__ is repr(list(self)), which would print
+            # ['Переход возможен только на соседний этап.'] - brackets, quotes
+            # and all - onto the board.
+            error = " ".join(exc.messages) if isinstance(exc, ValidationError) else str(exc)
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
         # Deliberately no messages.* here: a JSON response renders none, so the
         # queued text would surface on whatever page was opened next.

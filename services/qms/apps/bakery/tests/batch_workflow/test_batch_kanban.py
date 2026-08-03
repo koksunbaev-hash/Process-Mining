@@ -96,3 +96,26 @@ class KanbanCardActionsTests(TestCase):
             create_batch_at_stage(code, create_user(username=f"op-{code}"))
         create_batch_at_stage("done", create_user(username="op-done"))
         self.assertEqual(self.board().count("Дальше"), 3)
+
+
+class KanbanReturnUrlTests(TestCase):
+    """kanban_partial serves the same template for script refreshes, so a card
+    rendered there must still send you back to the page, not to the fragment."""
+
+    def setUp(self):
+        self.user = create_user()
+        self.client.force_login(self.user)
+        create_batch_at_stage("mixing", self.user)
+
+    def test_the_page_points_cards_at_the_board(self):
+        html = self.client.get(reverse("bakery:kanban")).content.decode()
+        self.assertIn('name="next" value="/bakery/board/"', html)
+
+    def test_the_refresh_fragment_points_cards_at_the_board_too(self):
+        html = self.client.get(reverse("bakery:kanban_partial")).content.decode()
+        self.assertIn('name="next" value="/bakery/board/"', html)
+        self.assertNotIn("board/partial", html)
+
+    def test_filters_survive_the_round_trip(self):
+        html = self.client.get(reverse("bakery:kanban_partial"), {"demo": "all"}).content.decode()
+        self.assertIn('name="next" value="/bakery/board/?demo=all"', html)
