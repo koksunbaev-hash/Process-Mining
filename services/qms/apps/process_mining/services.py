@@ -11,6 +11,8 @@ from django.conf import settings
 from django.db import DatabaseError, transaction
 from django.utils import timezone
 
+from apps.bakery.models import ProductionBatch, ProductionOrder
+
 from .models import ProcessEvent, ProcessEventExport
 
 logger = logging.getLogger(__name__)
@@ -171,10 +173,17 @@ def choose_pending_events(batch_size):
     # analytics service there is no taking them back: the batch is deleted on
     # reset and the DEMO-B-0001 case stays in the log for good, inside every map
     # and every KPI drawn from it. Cheaper to never send them.
+    #
+    # Filtered by id against a subquery rather than by batch__is_demo: both FKs
+    # are nullable, so a join lookup becomes a LEFT OUTER JOIN, and PostgreSQL
+    # refuses SELECT ... FOR UPDATE on the nullable side of one. SQLite ignores
+    # FOR UPDATE entirely, so that failure only ever shows up in production.
+    demo_batches = ProductionBatch.objects.filter(is_demo=True).values("pk")
+    demo_orders = ProductionOrder.objects.filter(is_demo=True).values("pk")
     queryset = (
         ProcessEvent.objects.filter(export_status=ProcessEvent.ExportStatus.PENDING)
-        .exclude(batch__is_demo=True)
-        .exclude(order__is_demo=True)
+        .exclude(batch_id__in=demo_batches)
+        .exclude(order_id__in=demo_orders)
         .order_by("created_at", "id")
     )
     try:

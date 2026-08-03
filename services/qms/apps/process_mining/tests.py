@@ -478,3 +478,22 @@ class DemoEventsStayOutOfTheLogTests(TestCase):
         # batch is SET_NULL, so a survivor would look like a work event and ship
         # on the next export with nothing left to mark it synthetic.
         self.assertFalse(ProcessEvent.objects.exclude(export_status=ProcessEvent.ExportStatus.SENT).exists())
+
+    def test_events_without_a_batch_or_order_are_still_exported(self):
+        # The demo filter excludes by id against a subquery; a NULL foreign key
+        # must not be swept up by that.
+        record_process_event(case_id="B-LOOSE", case_type=ProcessEvent.CaseType.BATCH, activity="Замес")
+        self.assertIn("B-LOOSE", {event.case_id for event in choose_pending_events(100)})
+
+    def test_reset_drops_demo_events_recorded_against_the_order(self):
+        run = create_demo_run(user=self.user, count=1, speed_seconds=0.1, mode=KanbanDemoRun.Mode.FAST)
+        order = run.orders.first()
+        record_process_event(
+            case_id=f"ORDER-{order.order_number}",
+            case_type=ProcessEvent.CaseType.ORDER,
+            activity="Заказ подтверждён",
+            order=order,
+        )
+        self.assertTrue(ProcessEvent.objects.filter(order=order, batch__isnull=True).exists())
+        reset_demo(run, self.user)
+        self.assertFalse(ProcessEvent.objects.exclude(export_status=ProcessEvent.ExportStatus.SENT).exists())

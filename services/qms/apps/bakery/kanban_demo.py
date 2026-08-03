@@ -6,7 +6,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.urls import reverse
 from django.utils import timezone
 
@@ -312,10 +312,13 @@ def reset_demo(run, user):
     Nonconformity.objects.filter(bakery_batch_id__in=batch_ids).exclude(status__in=[Nonconformity.Status.CLOSED, Nonconformity.Status.RESOLVED]).delete()
     FinishedGoodsStock.objects.filter(demo_run=run, is_demo=True).delete()
     BatchStageHistory.objects.filter(batch_id__in=batch_ids).delete()
-    # ProcessEvent.batch is SET_NULL, so anything still queued would lose the
-    # only thing marking it synthetic and ship to the analytics service on the
-    # next export. Already-sent events stay as a record of what went out.
-    ProcessEvent.objects.filter(batch_id__in=batch_ids).exclude(export_status=ProcessEvent.ExportStatus.SENT).delete()
+    # Both FKs are SET_NULL, so anything still queued would lose the only thing
+    # marking it synthetic and ship to the analytics service on the next export.
+    # Order events matter as much as batch ones: confirming a demo order writes
+    # ORDER-DEMO-O-0001 with batch=None. Already-sent events stay as a record.
+    ProcessEvent.objects.filter(Q(batch_id__in=batch_ids) | Q(order_id__in=order_ids)).exclude(
+        export_status=ProcessEvent.ExportStatus.SENT
+    ).delete()
     ProductionBatch.objects.filter(demo_run=run, is_demo=True).delete()
     ProductionOrderItem.objects.filter(demo_run=run, is_demo=True).delete()
     ProductionOrder.objects.filter(demo_run=run, is_demo=True).delete()
