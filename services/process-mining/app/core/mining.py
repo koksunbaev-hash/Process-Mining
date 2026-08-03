@@ -134,12 +134,17 @@ def discover_dfg(frame: pd.DataFrame, *, performance: bool = False) -> Discovery
         source_dfg = perf_dfg if performance else freq_dfg
         if performance and not source_dfg:
             source_dfg, _, _ = pm4py.discover_performance_dfg(pm_frame)
+        # An activity seen only in single-event cases has no directly-follows
+        # pair, so it never becomes a node - but it is still a start and an end
+        # activity, and handing it to the renderer raises KeyError on a graph
+        # that has no such node. Announce only what was actually drawn.
+        drawn = {activity for pair in source_dfg for activity in pair}
         # string keys on purpose: pm4py resolves both enum and plain-string
         # parameter keys, and strings survive pm4py version bumps.
         parameters = {
             "format": options.get("format", "svg"),
-            "start_activities": start_activities,
-            "end_activities": end_activities,
+            "start_activities": {k: v for k, v in start_activities.items() if k in drawn},
+            "end_activities": {k: v for k, v in end_activities.items() if k in drawn},
         }
         gviz = dfg_visualizer.apply(
             source_dfg, log=pm_frame, variant=variant, parameters=parameters
