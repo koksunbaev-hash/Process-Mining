@@ -4,7 +4,9 @@ metadata:
   name: process-mining
   labels: { app: process-mining }
 spec:
-  replicas: 2
+  # One, for the same reason the container runs one uvicorn worker: job state
+  # and the cache live in process memory, and SQLite wants a single writer.
+  replicas: 1
   selector:
     matchLabels: { app: process-mining }
   template:
