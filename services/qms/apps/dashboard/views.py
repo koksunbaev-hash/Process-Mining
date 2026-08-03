@@ -13,9 +13,14 @@ from apps.quality.models import ControlPost, QualityObject
 def index(request):
     now = timezone.now()
     if ProductionStage.objects.exists() or ProductionBatch.objects.exists():
-        batches = ProductionBatch.objects.select_related("current_stage")
+        # The board shows work batches unless you ask it for demo ones, and this
+        # page has no such switch - so it has to agree with that default. A demo
+        # run of 100 synthetic batches otherwise replaces every number here, and
+        # the two screens disagree about how the shop is doing.
+        batches = ProductionBatch.objects.select_related("current_stage").filter(is_demo=False)
+        orders = ProductionOrder.objects.filter(is_demo=False)
         context = {
-            "new_orders": ProductionOrder.objects.filter(status__in=["draft", "confirmed"]).count(),
+            "new_orders": orders.filter(status__in=["draft", "confirmed"]).count(),
             "queue": batches.filter(current_stage__code="queue").count(),
             "mixing": batches.filter(current_stage__code="mixing").count(),
             "forming": batches.filter(current_stage__code="forming").count(),
@@ -23,10 +28,12 @@ def index(request):
             "oven": batches.filter(current_stage__code="oven").count(),
             "warehouse": batches.filter(current_stage__code="warehouse").count(),
             "done_today": batches.filter(current_stage__code="done", actual_finish__date=timezone.localdate()).count(),
-            "overdue_orders": ProductionOrder.objects.filter(required_date__lt=now).exclude(status__in=["ready", "shipped", "cancelled"]).count(),
+            "overdue_orders": orders.filter(required_date__lt=now).exclude(status__in=["ready", "shipped", "cancelled"]).count(),
             "problem_batches": batches.filter(status="problem").count(),
             "stage_counts": list(batches.values("current_stage__name").annotate(total=Count("id")).order_by("current_stage__sequence")),
-            "latest_nc": Nonconformity.objects.select_related("bakery_batch", "bakery_product", "defect_type")[:6],
+            # Nonconformities carry no is_demo of their own; the demo raises them
+            # against its batches, so the batch is what marks them synthetic.
+            "latest_nc": Nonconformity.objects.select_related("bakery_batch", "bakery_product", "defect_type").exclude(bakery_batch__is_demo=True)[:6],
             "bakery_dashboard": True,
         }
         return render(request, "dashboard/index.html", context)
