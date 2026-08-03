@@ -28,6 +28,37 @@ class BatchViewEndpointTests(TestCase):
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.current_stage.code, "mixing")
 
+    def test_move_view_on_last_stage_answers_instead_of_crashing(self):
+        # No stage in the post and none after "done", so the view used to read
+        # .sequence off None while building the move_batch arguments.
+        batch = create_batch_at_stage("done", self.user)
+        response = self.client.post(reverse("bakery:move_batch", args=[batch.pk]))
+        self.assertEqual(response.status_code, 302)
+        batch.refresh_from_db()
+        self.assertEqual(batch.current_stage.code, "done")
+
+    def test_move_view_ajax_reports_a_refused_move(self):
+        response = self.client.post(
+            reverse("bakery:move_batch", args=[self.batch.pk]),
+            {"stage": stage("oven").pk},
+            headers={"x-requested-with": "XMLHttpRequest"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIs(response.json()["ok"], False)
+        self.assertTrue(response.json()["error"])
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.current_stage.code, "mixing")
+
+    def test_move_view_ajax_reports_a_successful_move(self):
+        response = self.client.post(
+            reverse("bakery:move_batch", args=[self.batch.pk]),
+            {"stage": stage("forming").pk, "comment": "form"},
+            headers={"x-requested-with": "XMLHttpRequest"},
+        )
+        self.assertIs(response.json()["ok"], True)
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.current_stage.code, "forming")
+
     def test_pause_view_sets_paused(self):
         self.client.post(reverse("bakery:batch_action", args=[self.batch.pk, "pause"]), {"comment": "pause"})
         self.batch.refresh_from_db()

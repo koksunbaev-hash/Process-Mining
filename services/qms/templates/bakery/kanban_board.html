@@ -49,11 +49,13 @@ made every card look identical at a glance.
         </footer>
 
         <div class="kanban-card-actions">
+          {% if column.has_next %}
           <form method="post" action="{% url 'bakery:move_batch' batch.pk %}">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ request.get_full_path }}">
             <button class="primary">Дальше →</button>
           </form>
+          {% endif %}
           <a class="secondary" href="{% url 'bakery:batch_detail' batch.pk %}">Открыть</a>
         </div>
 

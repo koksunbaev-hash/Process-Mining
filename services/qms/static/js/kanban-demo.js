@@ -8,6 +8,23 @@
   // can flash once - on a wall screen a silent swap is easy to miss.
   let lastMovedBatch = null;
 
+  // Sits outside [data-kanban-board-shell] so a board refresh does not wipe it.
+  let boardErrorTimer = null;
+  function showBoardError(text) {
+    const shell = document.querySelector("[data-kanban-board-shell]");
+    if (!shell || !text) return;
+    let box = document.querySelector("[data-kanban-error]");
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "message error";
+      box.setAttribute("data-kanban-error", "");
+      shell.parentNode.insertBefore(box, shell);
+    }
+    box.textContent = text;
+    window.clearTimeout(boardErrorTimer);
+    boardErrorTimer = window.setTimeout(() => box.remove(), 6000);
+  }
+
   function bindDragAndDrop() {
     document.querySelectorAll(".kanban-card").forEach((card) => {
       card.addEventListener("dragstart", (event) => {
@@ -37,9 +54,15 @@
           body: form,
           credentials: "same-origin",
         });
-        if (response.ok) {
+        // A refused move still answers 200, so response.ok only says the
+        // request arrived. Trusting it made a rejected transition look like a
+        // card that simply snapped back for no reason.
+        const result = await response.json().catch(() => ({}));
+        if (response.ok && result.ok) {
           lastMovedBatch = batch;
           refreshBoard();
+        } else {
+          showBoardError(result.error || "Не удалось перенести партию.");
         }
       });
     });

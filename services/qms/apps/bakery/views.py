@@ -78,11 +78,11 @@ def kanban_context(request):
     batches = filter_batches(request)
     column_search = {stage.code: request.GET.get(f"stage_q_{stage.code}", "").strip() for stage in stages}
     columns = []
-    for stage in stages:
+    for index, stage in enumerate(stages):
         items = batches.filter(current_stage=stage)
         if column_search[stage.code]:
             items = items.filter(Q(product__name__icontains=column_search[stage.code]) | Q(batch_number__icontains=column_search[stage.code]))
-        columns.append({"stage": stage, "batches": items, "count": items.count(), "query": column_search[stage.code]})
+        columns.append({"stage": stage, "batches": items, "count": items.count(), "query": column_search[stage.code], "has_next": index + 1 < len(stages)})
     context = {
         "columns": columns,
         "products": Product.objects.filter(is_active=True),
@@ -112,13 +112,26 @@ def move_batch_view(request, pk):
     if request.method != "POST":
         return redirect("bakery:kanban")
     stage = ProductionStage.objects.filter(pk=request.POST.get("stage")).first() or next_stage_for(batch)
-    try:
-        move_batch(batch, stage, request.user, request.POST.get("comment", ""), require_comment=stage.sequence < batch.current_stage.sequence)
-        messages.success(request, f"Партия {batch.batch_number} передана на этап {stage.name}.")
-    except (PermissionDenied, ValidationError) as exc:
-        messages.error(request, str(exc))
+    # Both operands are read before move_batch runs, so neither may be None:
+    # a batch on the last stage has no next stage, and a batch that never
+    # entered production has no current one.
+    going_back = bool(stage and batch.current_stage_id and stage.sequence < batch.current_stage.sequence)
+    error = ""
+    if stage is None:
+        error = f"Партия {batch.batch_number} уже на последнем этапе."
+    else:
+        try:
+            move_batch(batch, stage, request.user, request.POST.get("comment", ""), require_comment=going_back)
+        except (PermissionDenied, ValidationError) as exc:
+            error = str(exc)
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
-        return JsonResponse({"ok": not messages.get_messages(request).used})
+        # Deliberately no messages.* here: a JSON response renders none, so the
+        # queued text would surface on whatever page was opened next.
+        return JsonResponse({"ok": not error, "error": error})
+    if error:
+        messages.error(request, error)
+    else:
+        messages.success(request, f"Партия {batch.batch_number} передана на этап {stage.name}.")
     return redirect(request.POST.get("next") or "bakery:kanban")
 
 
