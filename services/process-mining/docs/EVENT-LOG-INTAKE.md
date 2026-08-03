@@ -195,11 +195,10 @@ GET  /api/v1/logs/{log_id}/map?algorithm=dfg_performance&format=svg
 
 ## Что осталось за рамками
 
-**Голосовой контур** (`POST /api/transcriptions/` и HMAC-callback из
-`docs/process_mining_integration_requirements.md`) не реализован. Модуль
-распознавания в сервисе есть, но выключен флагом `PM_VOICE_ENABLED`: Whisper
-требует гигабайты RAM и разворачивается отдельно.
-
 **Push отдельными событиями** — альтернатива пакетному CSV, если понадобится
 меньшая задержка: `POST /api/v1/logs/{log_id}/events` принимает JSON-массив,
 поле `event_id` в каждом событии даёт ту же защиту от дублей.
+
+Голосовой контур за рамки больше не выходит: `POST /api/transcriptions/` и
+HMAC-callback реализованы, роутер подключается безусловно (`app/main.py:124`).
+Флаг `PM_VOICE_ENABLED` управляет не им, а отдельным `/api/v1/voice/*`.

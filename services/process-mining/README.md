@@ -224,7 +224,7 @@ app/
 ├── services/       use cases, no HTTP knowledge
 ├── core/           pure domain logic, no FastAPI, no DB
 │   ├── ingestion.py   CSV/XES/JSON → canonical frame, column detection
-│   ├── mining.py      the ONLY module that imports pm4py
+│   ├── mining.py      discovery; imports pm4py (so does ingestion, for XES)
 │   ├── metrics.py     KPIs, variants, bottlenecks, rework (plain pandas)
 │   ├── rendering.py   graphviz → SVG/PNG/DOT, sandboxed + timed out
 │   └── cache.py       LRU + TTL keyed by a fingerprint of the inputs
@@ -235,8 +235,9 @@ app/
 Dependencies point inward only: `api` → `services` → `core`. `core` knows about nobody, so
 the logic runs from a CLI, a worker or a test without starting HTTP.
 
-Two decisions worth knowing about. **All pm4py calls live in `core/mining.py`** — its public
-API drifts between minor versions, so an upgrade is a one-file change. **Rendering happens
+Two decisions worth knowing about. **pm4py is confined to `core/mining.py` and one function in
+`core/ingestion.py`** (`read_xes`, which nothing else can do) — its public API drifts between
+minor versions, so an upgrade touches those two files and nothing else. **Rendering happens
 in a private temp dir** with a timeout, because rendering into the project directory is how
 you get `PermissionError` on Windows and a wedged worker on a pathological graph.
 

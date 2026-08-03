@@ -4,9 +4,17 @@ Two services that ship together: the **QMS** that runs the bakery, and the
 **process-mining** service that shows how it actually ran.
 
 ```bash
-cp .env.example .env    # set SECRET_KEY and PM_API_KEYS
+cp .env.example .env             # set SECRET_KEY and PM_API_KEYS
+sh services/nginx/make-cert.sh   # the proxy will not start without this
 docker compose up -d --build
 ```
+
+The certificate step is not optional. Certificates are generated per host and
+never committed, so on a fresh clone `services/nginx/certs/` does not exist;
+the `proxy` container mounts it, fails to load the key and — being
+`restart: unless-stopped` — retries forever. Pass the host's IP or domain if
+the stack is reached by anything other than `localhost`
+(`sh services/nginx/make-cert.sh 192.168.0.137`).
 
 | | URL | What it is |
 |---|---|---|
