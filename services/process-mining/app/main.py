@@ -10,7 +10,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -131,6 +131,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         @application.get("/", include_in_schema=False)
         async def root() -> FileResponse:
             return FileResponse(STATIC_DIR / "index.html")
+
+        @application.get("/{asset_name}", include_in_schema=False)
+        async def root_asset(asset_name: str) -> FileResponse:
+            if asset_name not in {"styles.css", "app.js", "i18n.js", "sample_log.csv"}:
+                raise HTTPException(status_code=404)
+            return FileResponse(STATIC_DIR / asset_name)
 
     else:  # pragma: no cover
 

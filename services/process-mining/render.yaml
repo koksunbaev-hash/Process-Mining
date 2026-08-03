@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: process-mining
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PM_ENVIRONMENT
+        value: prod
+      - key: PM_DEBUG
+        value: false
+      - key: PM_API_KEYS
+        generateValue: true
+      - key: PM_CORS_ORIGINS
+        value: "*"
+      - key: PM_STORAGE_BACKEND
+        value: sqlite
+      - key: PM_SQLITE_PATH
+        value: /srv/data/pm.db
+      - key: PM_ARTIFACT_DIR
+        value: /srv/data/artifacts
+      - key: PM_MAX_CONCURRENT_JOBS
+        value: 2
+      - key: PM_CALLBACK_SECRET
+        generateValue: true
