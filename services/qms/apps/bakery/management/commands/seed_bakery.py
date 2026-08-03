@@ -28,9 +28,12 @@ from apps.quality.models import ControlPost, ControlType, Department, QualityObj
 class Command(BaseCommand):
     help = "Создаёт демонстрационные данные хлебозавода."
 
+    def add_arguments(self, parser):
+        parser.add_argument("--reset-passwords", action="store_true")
+
     @transaction.atomic
     def handle(self, *args, **options):
-        users = self.create_users()
+        users = self.create_users(reset_passwords=options["reset_passwords"])
         self.create_stages()
         products = self.create_products()
         ingredients = self.create_ingredients()
@@ -60,7 +63,7 @@ class Command(BaseCommand):
             ("auditor", "Auditor123!"),
         ]
 
-    def create_users(self):
+    def create_users(self, reset_passwords=False):
         User = get_user_model()
         dept, _ = Department.objects.get_or_create(code="BAKERY", defaults={"name": "Хлебозавод"})
         specs = [
@@ -79,7 +82,7 @@ class Command(BaseCommand):
         for username, password, role, is_superuser, is_staff in specs:
             group, _ = Group.objects.get_or_create(name=dict(UserProfile.Role.choices).get(role, role))
             user, created = User.objects.get_or_create(username=username, defaults={"is_superuser": is_superuser, "is_staff": is_staff})
-            if created:
+            if created or reset_passwords:
                 user.set_password(password)
                 user.save()
             user.groups.add(group)
