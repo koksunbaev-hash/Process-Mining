@@ -34,6 +34,23 @@ STAGE_ALIASES = {
     "готов": "done",
 }
 
+STAGE_ORDER = ["queue", "mixing", "forming", "proofing", "oven", "warehouse", "done"]
+
+# "отправить в склад", "передай на формовку", "перевести в печь". A named
+# destination is an instruction; "закончила замес" is an inference about what
+# comes next. When a sentence carries both - which is how people actually speak,
+# "B-102 закончил замес, отправить в склад" - the instruction wins.
+DIRECTIVE_RE = re.compile(
+    r"(?:отправ\w*|переда\w*|перевед\w*|перевест\w*|переме\w*|сразу|прямо)\s+"
+    r"(?:e[её]|его|их|партию|батч)?\s*"
+    r"(?:в|на|к)\s+([а-яё]+)",
+    re.IGNORECASE,
+)
+
+# Gender and number vary in speech - "закончил", "закончила", "завершили" - so
+# match the stem rather than listing every form.
+COMPLETED_RE = re.compile(r"(?:законч|заверш|сдела|доде?ла)\w*\s+(?:этап\s+)?([а-яё]+)", re.IGNORECASE)
+
 NEXT_BY_PHRASE = {
     "закончила замес": "forming",
     "завершила замес": "forming",
@@ -214,6 +231,49 @@ def create_voice_command(voice):
     return command
 
 
+def stage_from_word(word):
+    """Единственное слово -> код этапа. «формовку», «складе», «печь»."""
+    word = (word or "").lower()
+    for part, code in STAGE_ALIASES.items():
+        if word.startswith(part):
+            return code
+    return ""
+
+
+def resolve_target_stage(normalized):
+    """Where the speaker wants the batch, in order of how explicit they were.
+
+    1. A named destination - "отправить в склад". This is an order, and it is
+       what makes a free move possible: the target need not be the next stage.
+    2. A finished stage - "закончил замес" - which implies the one after it.
+    3. Any stage mentioned at all, last one wins. The old behaviour, kept as a
+       fallback for phrasings the two rules above do not cover.
+    """
+    directive = DIRECTIVE_RE.search(normalized)
+    if directive:
+        code = stage_from_word(directive.group(1))
+        if code:
+            return code
+
+    for phrase, code in NEXT_BY_PHRASE.items():
+        if phrase in normalized:
+            return code
+
+    completed = COMPLETED_RE.search(normalized)
+    if completed:
+        code = stage_from_word(completed.group(1))
+        if code in STAGE_ORDER:
+            index = STAGE_ORDER.index(code)
+            if index + 1 < len(STAGE_ORDER):
+                return STAGE_ORDER[index + 1]
+
+    found = ""
+    for part, code in STAGE_ALIASES.items():
+        if part in normalized:
+            found = code
+    return found
+
+
 def parse_voice_command(text, confidence=None):
     normalized = text.lower().replace("№", " ")
     batch_match = re.search(r"\bB[-\s]?\d+(?:-\d+)?(?:-\d+)?\b", text, flags=re.IGNORECASE)
@@ -223,15 +283,7 @@ def parse_voice_command(text, confidence=None):
     # resolve them loosely in resolve_batch().
     order_match = re.search(r"заказ\w*\s*([a-zа-я0-9][a-zа-я0-9\-]*)", normalized, flags=re.IGNORECASE)
     order_number = order_match.group(1).upper().strip("-") if order_match else ""
-    to_stage = ""
-    for phrase, code in NEXT_BY_PHRASE.items():
-        if phrase in normalized:
-            to_stage = code
-            break
-    if not to_stage:
-        for part, code in STAGE_ALIASES.items():
-            if part in normalized:
-                to_stage = code
+    to_stage = resolve_target_stage(normalized)
     if "пауз" in normalized or "останов" in normalized:
         intent = VoiceCommand.Intent.PAUSE_BATCH
     elif "возобнов" in normalized or "продолж" in normalized:
@@ -311,8 +363,21 @@ def confirm_voice_command(command, user):
         if data.get("quantity") and intent == VoiceCommand.Intent.ACCEPT_TO_WAREHOUSE:
             batch.actual_quantity = Decimal(str(data["quantity"]))
             batch.save(update_fields=["actual_quantity", "updated_at"])
-        target = ProductionStage.objects.get(code=data.get("to_stage"))
-        move_batch(batch, target, user, data.get("comment", ""), require_comment=target.sequence < batch.current_stage.sequence)
+        target = ProductionStage.objects.filter(code=data.get("to_stage") or "").first()
+        if not target:
+            raise ValidationError("Не понял, на какой этап переводить партию. Назовите этап.")
+        # allow_skip: spoken orders name a destination, not a step. "B-102
+        # закончил замес, отправить в склад" is a legitimate thing to say, and
+        # refusing it because Склад is four stages away helps nobody. The jump is
+        # recorded as such, and move_batch still demands a comment for it.
+        move_batch(
+            batch,
+            target,
+            user,
+            data.get("comment", ""),
+            require_comment=target.sequence < batch.current_stage.sequence,
+            allow_skip=True,
+        )
     elif intent == VoiceCommand.Intent.PAUSE_BATCH:
         pause_batch(batch, user, data.get("comment", ""))
     elif intent == VoiceCommand.Intent.RESUME_BATCH:

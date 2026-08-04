@@ -12,6 +12,7 @@ from apps.accounts.models import UserProfile
 from apps.audit.models import AuditLog
 from apps.bakery.models import BatchStageHistory, VoiceCommand, VoiceMessage
 from apps.bakery.services import move_batch
+from apps.bakery.voice_process_mining import parse_voice_command
 from apps.bakery.tests.batch_workflow.factories import create_user
 from apps.bakery.tests.batch_workflow.helpers import create_batch_at_stage, stage
 from apps.notifications.models import Notification
@@ -168,14 +169,53 @@ class VoiceProcessMiningTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(BatchStageHistory.objects.filter(batch=batch).count(), before)
 
-    def test_wrong_transition_is_rejected(self):
-        batch = create_batch_at_stage("mixing", self.user)
+    def _move_command(self, batch, to_stage, comment="bad", from_stage="mixing"):
         voice = VoiceMessage.objects.create(audio_file=audio_file(), original_filename="voice.webm", mime_type="audio/webm", file_size=10, created_by=self.user)
-        command = VoiceCommand.objects.create(voice_message=voice, intent="move_batch", extracted_data={"batch_number": batch.batch_number, "from_stage": "mixing", "to_stage": "oven", "comment": "bad"}, confidence=Decimal("0.96"))
+        return VoiceCommand.objects.create(
+            voice_message=voice,
+            intent="move_batch",
+            extracted_data={"batch_number": batch.batch_number, "from_stage": from_stage, "to_stage": to_stage, "comment": comment},
+            confidence=Decimal("0.96"),
+        )
+
+    def test_voice_may_send_a_batch_straight_past_intermediate_stages(self):
+        # A spoken order names a destination, not a step: "закончил замес,
+        # отправить в склад" skips three stages and is a reasonable thing to say.
+        batch = create_batch_at_stage("mixing", self.user)
+        command = self._move_command(batch, "warehouse", comment="Забраковали, сразу на склад")
+        response = self.client.post(f"/api/voice-commands/{command.pk}/confirm/")
+        self.assertEqual(response.status_code, 200)
+        batch.refresh_from_db()
+        self.assertEqual(batch.current_stage.code, "warehouse")
+
+    def test_a_skip_names_the_stages_it_stepped_over(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        command = self._move_command(batch, "oven", comment="Печь освободилась")
+        self.client.post(f"/api/voice-commands/{command.pk}/confirm/")
+        history = BatchStageHistory.objects.filter(batch=batch, to_stage__code="oven").latest("created_at")
+        self.assertIn("Печь освободилась", history.comment)
+        self.assertIn("Формовка", history.comment)
+        self.assertIn("Расстойка", history.comment)
+
+    def test_a_skip_without_a_reason_is_refused(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        command = self._move_command(batch, "oven", comment="")
         response = self.client.post(f"/api/voice-commands/{command.pk}/confirm/")
         self.assertEqual(response.status_code, 400)
         batch.refresh_from_db()
         self.assertEqual(batch.current_stage.code, "mixing")
+
+    def test_moving_to_the_stage_it_is_already_on_is_refused(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        command = self._move_command(batch, "mixing", comment="никуда")
+        response = self.client.post(f"/api/voice-commands/{command.pk}/confirm/")
+        self.assertEqual(response.status_code, 400)
+
+    def test_an_unrecognised_stage_is_refused_instead_of_crashing(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        command = self._move_command(batch, "", comment="что-то невнятное")
+        response = self.client.post(f"/api/voice-commands/{command.pk}/confirm/")
+        self.assertEqual(response.status_code, 400)
 
     def test_insufficient_permissions_return_403(self):
         batch = create_batch_at_stage("mixing", self.user)
@@ -232,3 +272,33 @@ class VoiceProcessMiningTests(TestCase):
         batch.refresh_from_db()
         self.assertEqual(confirm_response.status_code, 200)
         self.assertEqual(batch.current_stage.code, "forming")
+
+
+class VoiceStageParsingTests(TestCase):
+    """Which stage a spoken sentence is asking for. No database, no audio."""
+
+    def target(self, text):
+        return parse_voice_command(text)["to_stage"]
+
+    def test_a_named_destination_beats_an_implied_one(self):
+        # Both halves are meaningful: "закончил замес" implies Формовка, while
+        # "в склад" states Склад. The stated one is the instruction.
+        self.assertEqual(self.target("B-102 закончил замес, отправить в склад"), "warehouse")
+        self.assertEqual(self.target("B-110 закончила формовку, отправить в печь"), "oven")
+
+    def test_a_finished_stage_implies_the_next_one(self):
+        self.assertEqual(self.target("Партия B-107 закончила замес"), "forming")
+        self.assertEqual(self.target("B-108 завершили расстойку"), "oven")
+
+    def test_gender_and_number_do_not_matter(self):
+        for text in ("B-101 закончил замес", "B-101 закончила замес", "B-101 закончили замес"):
+            self.assertEqual(self.target(text), "forming", text)
+
+    def test_plain_directions(self):
+        self.assertEqual(self.target("B-103 передать на формовку"), "forming")
+        self.assertEqual(self.target("B-104 отправить в печь"), "oven")
+        self.assertEqual(self.target("B-109 перевести в очередь"), "queue")
+        self.assertEqual(self.target("B-105 отправь его сразу в готово"), "done")
+
+    def test_a_sentence_naming_no_stage_asks_for_nothing(self):
+        self.assertEqual(self.target("B-101 что-то не так"), "")

@@ -98,8 +98,24 @@ def previous_stage_for(batch):
     return ProductionStage.objects.filter(sequence__lt=batch.current_stage.sequence, is_active=True).order_by("-sequence").first()
 
 
+def skipped_stages_between(from_stage, to_stage):
+    """Active stages a jump would step over. Empty for an adjacent move."""
+    low, high = sorted([from_stage.sequence, to_stage.sequence])
+    return list(
+        ProductionStage.objects.filter(sequence__gt=low, sequence__lt=high, is_active=True).order_by("sequence")
+    )
+
+
 @transaction.atomic
-def move_batch(batch, to_stage, user, comment="", require_comment=False):
+def move_batch(batch, to_stage, user, comment="", require_comment=False, allow_skip=False):
+    """allow_skip lets a batch go straight to any stage instead of the next one.
+
+    Off by default, so the board, the API and the chain keep refusing to step
+    over a stage. Callers that pass it must supply a comment: the history records
+    the jump honestly as one row from where the batch was to where it went, and
+    without a reason nobody reading it later can tell a deliberate diversion from
+    a mis-click.
+    """
     batch = ProductionBatch.objects.select_for_update().select_related("current_stage", "order_item__order").get(pk=batch.pk)
     if not to_stage:
         raise ValidationError("Этап не найден.")
@@ -109,7 +125,8 @@ def move_batch(batch, to_stage, user, comment="", require_comment=False):
         raise ValidationError("Партия заблокирована критической проблемой.")
     if to_stage.sequence == batch.current_stage.sequence:
         raise ValidationError("Партия уже находится на этом этапе.")
-    if abs(to_stage.sequence - batch.current_stage.sequence) != 1:
+    skipped = skipped_stages_between(batch.current_stage, to_stage)
+    if skipped and not allow_skip:
         raise ValidationError("Переход возможен только на соседний этап.")
     can_move_from_stage = can_move_batch(user, batch.current_stage.code)
     can_take_next_stage = to_stage.sequence > batch.current_stage.sequence and can_move_batch(user, to_stage.code)
@@ -119,6 +136,13 @@ def move_batch(batch, to_stage, user, comment="", require_comment=False):
         raise ValidationError("Партия заблокирована критической проблемой.")
     if (require_comment or to_stage.sequence < batch.current_stage.sequence) and not comment.strip():
         raise ValidationError("Для возврата на предыдущий этап нужен комментарий.")
+    if skipped and not comment.strip():
+        raise ValidationError("Для перехода через этап нужен комментарий.")
+    if skipped:
+        # Spelled out in the history, because "Замес -> Склад" alone does not say
+        # whether the stages in between were skipped or simply never existed.
+        names = ", ".join(stage.name for stage in skipped)
+        comment = f"{comment.strip()} (минуя этапы: {names})"
     now = timezone.now()
     from_stage = batch.current_stage
     previous = batch.stage_history.order_by("-created_at").first()
