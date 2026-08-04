@@ -12,7 +12,7 @@ from apps.accounts.models import UserProfile
 from apps.audit.models import AuditLog
 from apps.bakery.models import BatchStageHistory, VoiceCommand, VoiceMessage
 from apps.bakery.services import move_batch
-from apps.bakery.voice_process_mining import parse_voice_command
+from apps.bakery.voice_process_mining import may_auto_confirm, parse_voice_command
 from apps.bakery.tests.batch_workflow.factories import create_user
 from apps.bakery.tests.batch_workflow.helpers import create_batch_at_stage, stage
 from apps.notifications.models import Notification
@@ -302,3 +302,56 @@ class VoiceStageParsingTests(TestCase):
 
     def test_a_sentence_naming_no_stage_asks_for_nothing(self):
         self.assertEqual(self.target("B-101 что-то не так"), "")
+
+
+class AutoConfirmRuleTests(TestCase):
+    """Which commands the widget is allowed to run on a countdown. A timer that
+    nobody stopped is weaker consent than a press, so only the dull cases get
+    one: a plain step onto the next stage."""
+
+    def setUp(self):
+        self.user = create_user("auto-dispatcher", UserProfile.Role.PRODUCTION_DISPATCHER)
+
+    def command_for(self, batch, to_stage, status=VoiceCommand.Status.DETECTED, intent="move_batch"):
+        voice = VoiceMessage.objects.create(audio_file=audio_file(), original_filename="v.webm", mime_type="audio/webm", file_size=10, created_by=self.user)
+        return VoiceCommand.objects.create(
+            voice_message=voice,
+            intent=intent,
+            status=status,
+            extracted_data={"batch_number": batch.batch_number, "to_stage": to_stage, "comment": "c"},
+            confidence=Decimal("0.96"),
+        )
+
+    def test_a_plain_step_forward_may_run_itself(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        self.assertTrue(may_auto_confirm(self.command_for(batch, "forming"), batch))
+
+    def test_a_jump_over_a_stage_waits_for_a_person(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        self.assertFalse(may_auto_confirm(self.command_for(batch, "warehouse"), batch))
+
+    def test_a_step_back_waits_for_a_person(self):
+        batch = create_batch_at_stage("forming", self.user)
+        self.assertFalse(may_auto_confirm(self.command_for(batch, "mixing"), batch))
+
+    def test_a_command_flagged_for_review_waits_for_a_person(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        command = self.command_for(batch, "forming", status=VoiceCommand.Status.NEEDS_REVIEW)
+        self.assertFalse(may_auto_confirm(command, batch))
+
+    def test_raising_a_problem_waits_for_a_person(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        self.assertFalse(may_auto_confirm(self.command_for(batch, "forming", intent="create_problem"), batch))
+
+    def test_an_unknown_stage_waits_for_a_person(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        self.assertFalse(may_auto_confirm(self.command_for(batch, ""), batch))
+
+    def test_the_status_endpoint_publishes_the_verdict_and_the_delay(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        command = self.command_for(batch, "forming")
+        client = APIClient()
+        client.force_authenticate(self.user)
+        payload = client.get(f"/api/voice-messages/{command.voice_message.pk}/status/").data["command"]
+        self.assertIs(payload["auto_confirm"], True)
+        self.assertEqual(payload["auto_confirm_seconds"], 3)

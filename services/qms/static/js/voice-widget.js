@@ -330,9 +330,47 @@
     $("confidence").textContent = hasScore ? `${Math.round(score * 100)}%` : "—";
     $("warning").hidden = !(hasScore && score < 0.8);
     result.hidden = false;
+    startAutoConfirm(cmd);
+  }
+
+  // A recognised command runs itself after a short, cancellable wait - but only
+  // the ordinary ones. The server decides which qualify (may_auto_confirm): a
+  // plain step onto the next stage, nothing flagged for review. A jump over a
+  // stage, a step back or a raised problem still wait for a press, because a
+  // countdown that nobody stopped is not the same as somebody agreeing.
+  let autoConfirmTimer = null;
+
+  function cancelAutoConfirm() {
+    if (autoConfirmTimer) window.clearInterval(autoConfirmTimer);
+    autoConfirmTimer = null;
+    $("confirm").textContent = "Подтвердить";
+  }
+
+  function startAutoConfirm(cmd) {
+    cancelAutoConfirm();
+    const seconds = Number(cmd && cmd.auto_confirm_seconds);
+    if (!cmd || !cmd.auto_confirm || !Number.isFinite(seconds) || seconds <= 0) {
+      setState("Проверьте и подтвердите");
+      return;
+    }
+    const deadline = Date.now() + seconds * 1000;
+    const tick = () => {
+      const left = deadline - Date.now();
+      if (left <= 0) {
+        cancelAutoConfirm();
+        confirmCommand();
+        return;
+      }
+      const shown = Math.ceil(left / 1000);
+      setState(`Выполню через ${shown} с — «Отмена», чтобы остановить`);
+      $("confirm").textContent = `Подтвердить (${shown})`;
+    };
+    tick();
+    autoConfirmTimer = window.setInterval(tick, 100);
   }
 
   async function confirmCommand() {
+    cancelAutoConfirm();
     if (!commandId) return;
     setState("Выполняю…");
     try {
@@ -371,6 +409,7 @@
   }
 
   async function rejectCommand() {
+    cancelAutoConfirm();
     if (commandId) {
       try {
         await fetch(`/api/voice-commands/${commandId}/reject/`, {
@@ -388,6 +427,7 @@
   }
 
   function resetIdle() {
+    cancelAutoConfirm();
     setMode("idle");
     setState("Готов к записи");
     setMessage("");
@@ -431,6 +471,9 @@
   });
 
   $("close").addEventListener("click", () => {
+    // Closing the panel stops the countdown: the command stays unconfirmed
+    // rather than running while nobody is looking at it.
+    cancelAutoConfirm();
     panel.hidden = true;
     stopPolling();
   });

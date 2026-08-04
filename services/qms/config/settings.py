@@ -13,6 +13,7 @@ env = environ.Env(
     CSRF_TRUSTED_ORIGINS=(list, []),
     MAX_UPLOAD_SIZE_MB=(int, 10),
     MAX_VOICE_MESSAGE_SIZE_MB=(int, 20),
+    VOICE_AUTOCONFIRM_SECONDS=(int, 3),
     PROCESS_MINING_TIMEOUT_SECONDS=(int, 10),
     PROCESS_MINING_BATCH_SIZE=(int, 100),
     PROCESS_MINING_EXPORT_INTERVAL_SECONDS=(int, 5),
@@ -148,6 +149,10 @@ LOGOUT_REDIRECT_URL = "login"
 
 MAX_UPLOAD_SIZE_MB = env("MAX_UPLOAD_SIZE_MB")
 MAX_VOICE_MESSAGE_SIZE_MB = env("MAX_VOICE_MESSAGE_SIZE_MB")
+# Seconds a recognised command waits, cancellable, before it runs itself. Only
+# ordinary forward steps get the countdown - see may_auto_confirm(). Set to 0 to
+# go back to requiring a press for everything.
+VOICE_AUTOCONFIRM_SECONDS = env("VOICE_AUTOCONFIRM_SECONDS")
 PROCESS_MINING_API_URL = env("PROCESS_MINING_API_URL", default="")
 PROCESS_MINING_API_TOKEN = env("PROCESS_MINING_API_TOKEN", default="")
 PROCESS_MINING_CALLBACK_URL = env("PROCESS_MINING_CALLBACK_URL", default="")

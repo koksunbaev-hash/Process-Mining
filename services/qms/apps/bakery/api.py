@@ -1,5 +1,6 @@
 import json
 
+from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.http import Http404
@@ -44,6 +45,7 @@ from .voice_process_mining import (
     ConflictError,
     confirm_voice_command,
     handle_process_mining_callback,
+    may_auto_confirm,
     reject_voice_command,
     send_voice_to_process_mining,
     verify_process_mining_signature,
@@ -358,6 +360,11 @@ class VoiceMessageViewSet(viewsets.ModelViewSet):
                 "status": command.status,
                 "confidence": float(command.confidence) if command.confidence is not None else None,
                 "extracted_data": data,
+                # Whether the widget may run this on a countdown rather than a
+                # click. Decided here, not in the browser: it depends on stage
+                # order, which the widget has no way of knowing.
+                "auto_confirm": may_auto_confirm(command, batch),
+                "auto_confirm_seconds": settings.VOICE_AUTOCONFIRM_SECONDS,
             }
         return Response(payload)
 
