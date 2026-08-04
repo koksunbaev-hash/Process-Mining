@@ -10,18 +10,18 @@ import retrofit2.http.POST
 import retrofit2.http.Part
 
 /**
- * РљРѕРЅС‚СЂР°РєС‚ backend-Р° (`backend/app/api/speech.py`).
+ * Контракт backend-а (`backend/app/api/speech.py`).
  *
- * Р‘Р°Р·РѕРІС‹Р№ Р°РґСЂРµСЃ РїСЂРёС…РѕРґРёС‚ РёР· `BuildConfig.API_BASE_URL`, РїРѕСЌС‚РѕРјСѓ РїСѓС‚Рё Р·РґРµСЃСЊ
- * РІСЃРµРіРґР° РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅС‹Рµ Рё РЅРµ СЃРѕРґРµСЂР¶Р°С‚ С…РѕСЃС‚Р°.
+ * Базовый адрес приходит из `BuildConfig.API_BASE_URL`, поэтому пути здесь
+ * всегда относительные и не содержат хоста.
  */
 interface ApiService {
 
     /**
-     * РћС‚РїСЂР°РІР»СЏРµС‚ СЂР°СЃРїРѕР·РЅР°РЅРЅС‹Р№ С‚РµРєСЃС‚.
+     * Отправляет распознанный текст.
      *
-     * РћС‚РІРµС‚ 4xx/5xx РїСЂРµРІСЂР°С‰Р°РµС‚СЃСЏ Retrofit-РѕРј РІ `HttpException`, РєРѕС‚РѕСЂС‹Р№
-     * [NetworkErrorMapper] РїРµСЂРµРІРѕРґРёС‚ РІ С‚РёРїРёР·РёСЂРѕРІР°РЅРЅСѓСЋ РѕС€РёР±РєСѓ РґРѕРјРµРЅР°.
+     * Ответ 4xx/5xx превращается Retrofit-ом в `HttpException`, который
+     * [NetworkErrorMapper] переводит в типизированную ошибку домена.
      */
     @POST("api/speech")
     suspend fun sendText(@Body request: SendTextDto): SendTextResponseDto
