@@ -12,8 +12,10 @@ import hmac
 import json
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.api.transcriptions import _run
+from app.main import create_app
 from app.services.stt import SttError, SttService
 
 
@@ -132,6 +134,68 @@ def test_capabilities_are_published(client):
     body = client.get("/api/transcriptions/capabilities").json()
     assert "audio/webm" in body["formats"]
     assert "EMPTY_TRANSCRIPT" in body["error_codes"]
+
+
+def test_sync_answers_with_the_text_on_the_same_connection(client, monkeypatch):
+    """The phone has nowhere to receive a callback, so it gets the answer inline."""
+    monkeypatch.setattr(
+        "app.services.stt.SttService.transcribe",
+        lambda self, payload, *, language=None: {
+            "transcript": "партия B-154 закончила замес",
+            "language": language or "ru",
+            "duration_ms": 1700,
+            "took_ms": 900,
+        },
+    )
+
+    response = client.post(
+        "/api/transcriptions/sync",
+        files={"audio_file": ("voice.m4a", b"fake-audio", "audio/mp4")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["text"] == "партия B-154 закончила замес"
+    # Both names: the callback contract already говорит "transcript", and the
+    # phone reads "text". Renaming either would break a client in the field.
+    assert body["transcript"] == body["text"]
+
+
+def test_sync_needs_a_key_like_everything_else(settings):
+    with TestClient(create_app(settings)) as anonymous:
+        response = anonymous.post(
+            "/api/transcriptions/sync",
+            files={"audio_file": ("voice.m4a", b"fake-audio", "audio/mp4")},
+        )
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("code", "expected_status"),
+    [
+        ("STT_UNAVAILABLE", 503),
+        ("AUDIO_DECODE_UNAVAILABLE", 503),
+        ("UNSUPPORTED_AUDIO", 415),
+        ("EMPTY_TRANSCRIPT", 422),
+    ],
+)
+def test_sync_separates_retryable_failures_from_permanent_ones(
+    client, monkeypatch, code, expected_status
+):
+    """A phone that retries a 415 forever helps nobody; a 503 is worth retrying."""
+
+    def failing(self, payload, *, language=None):
+        raise SttError("nope", code=code)
+
+    monkeypatch.setattr("app.services.stt.SttService.transcribe", failing)
+
+    response = client.post(
+        "/api/transcriptions/sync",
+        files={"audio_file": ("voice.m4a", b"fake-audio", "audio/mp4")},
+    )
+    assert response.status_code == expected_status
+    assert response.json()["error"]["code"]
 
 
 @pytest.mark.parametrize("bad", [b"", b"not audio at all"])

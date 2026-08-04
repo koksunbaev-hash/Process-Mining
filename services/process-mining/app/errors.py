@@ -61,6 +61,17 @@ class RenderingError(ServiceError):
     code = "rendering_unavailable"
 
 
+class SpeechUnavailableError(ServiceError):
+    """The speech container is down, or ffmpeg is missing from the image.
+
+    Separate from RenderingError because a caller retries it differently: the
+    model comes back on its own, a missing binary never does.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "speech_unavailable"
+
+
 class MiningError(ServiceError):
     status_code = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)
     code = "mining_failed"

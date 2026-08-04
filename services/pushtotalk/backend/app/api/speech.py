@@ -1,4 +1,4 @@
-"""Р­РЅРґРїРѕРёРЅС‚С‹ РїСЂРёС‘РјР° СЂРµС‡Рё Рё РїСЂРѕСЃРјРѕС‚СЂР° РёСЃС‚РѕСЂРёРё."""
+"""Эндпоинты приёма речи и просмотра истории."""
 
 from __future__ import annotations
 
@@ -40,22 +40,22 @@ ALLOWED_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".mp4", ".mpeg", ".mpga", ".ogg", ".
     "/speech",
     response_model=SpeechResponse,
     responses={400: {"model": ErrorResponse}},
-    summary="РџСЂРёРЅСЏС‚СЊ СЂР°СЃРїРѕР·РЅР°РЅРЅС‹Р№ С‚РµРєСЃС‚",
+    summary="Принять распознанный текст",
 )
 def receive_speech(
     request: SpeechRequest,
     session: Session = Depends(get_session),
 ) -> SpeechResponse | JSONResponse:
-    """РЎРѕС…СЂР°РЅСЏРµС‚ СЂРµРїР»РёРєСѓ Рё РІРѕР·РІСЂР°С‰Р°РµС‚ РµС‘ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ.
+    """Сохраняет реплику и возвращает её идентификатор.
 
-    РџСѓСЃС‚РѕР№ РёР»Рё СЃР»РёС€РєРѕРј РґР»РёРЅРЅС‹Р№ С‚РµРєСЃС‚ вЂ” РѕР¶РёРґР°РµРјР°СЏ СЃРёС‚СѓР°С†РёСЏ, Р° РЅРµ СЃР±РѕР№:
-    РѕС‚РІРµС‡Р°РµРј 400 СЃ РѕРїРёСЃР°РЅРёРµРј, РЅРёС‡РµРіРѕ РЅРµ СЃРѕС…СЂР°РЅСЏСЏ.
+    Пустой или слишком длинный текст — ожидаемая ситуация, а не сбой:
+    отвечаем 400 с описанием, ничего не сохраняя.
     """
     try:
         message = speech_service.save_message(session, request.text, settings)
     except SpeechValidationError as error:
         logger.warning(
-            "POST /api/speech РѕС‚РєР»РѕРЅС‘РЅ text_length=%s reason=%s",
+            "POST /api/speech отклонён text_length=%s reason=%s",
             len(request.text),
             error,
         )
@@ -79,12 +79,12 @@ def receive_speech(
         400: {"model": ErrorResponse},
         503: {"model": ErrorResponse},
     },
-    summary="Р Р°СЃРїРѕР·РЅР°С‚СЊ Р°СѓРґРёРѕ Р»РѕРєР°Р»СЊРЅС‹Рј Whisper",
+    summary="Распознать аудио локальным Whisper",
 )
 def transcribe_speech(
     file: UploadFile = File(...),
 ) -> TranscriptionResponse | JSONResponse:
-    """РџСЂРёРЅРёРјР°РµС‚ Р°СѓРґРёРѕС„Р°Р№Р», СЂР°СЃРїРѕР·РЅР°С‘С‚ РµРіРѕ Р»РѕРєР°Р»СЊРЅС‹Рј faster-whisper Рё РІРѕР·РІСЂР°С‰Р°РµС‚ С‚РµРєСЃС‚."""
+    """Принимает аудиофайл, распознаёт его локальным faster-whisper и возвращает текст."""
     suffix = Path(file.filename or "speech.m4a").suffix.lower() or ".m4a"
     if suffix not in ALLOWED_AUDIO_EXTENSIONS:
         return JSONResponse(
@@ -100,13 +100,13 @@ def transcribe_speech(
 
         text = transcribe_audio(tmp_path)
     except TranscriptionUnavailableError as error:
-        logger.exception("Whisper РЅРµРґРѕСЃС‚СѓРїРµРЅ")
+        logger.exception("Whisper недоступен")
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=ErrorResponse(message=str(error)).model_dump(),
         )
     except TranscriptionError as error:
-        logger.warning("РђСѓРґРёРѕ РЅРµ СЂР°СЃРїРѕР·РЅР°РЅРѕ: %s", error)
+        logger.warning("Аудио не распознано: %s", error)
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=ErrorResponse(message=str(error)).model_dump(),
@@ -127,12 +127,12 @@ def transcribe_speech(
 @router.get(
     "/messages",
     response_model=list[MessageResponse],
-    summary="РџРѕСЃР»РµРґРЅРёРµ СЃРѕРѕР±С‰РµРЅРёСЏ",
+    summary="Последние сообщения",
 )
 def list_messages(
     session: Session = Depends(get_session),
     limit: int = Query(default=settings.history_limit, ge=1, le=settings.history_limit),
 ) -> list[MessageResponse]:
-    """РСЃС‚РѕСЂРёСЏ РґР»СЏ РїСЂРѕРІРµСЂРєРё С‚РѕРіРѕ, С‡С‚Рѕ РєР»РёРµРЅС‚ РґРµР№СЃС‚РІРёС‚РµР»СЊРЅРѕ РґРѕСЃС‚Р°РІР»СЏРµС‚ РґР°РЅРЅС‹Рµ."""
+    """История для проверки того, что клиент действительно доставляет данные."""
     messages = speech_service.recent_messages(session, limit, settings)
     return [MessageResponse.model_validate(message) for message in messages]

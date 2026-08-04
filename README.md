@@ -21,7 +21,11 @@ anywhere else the script says so and stops.
 |---|---|---|
 | QMS | <http://localhost:8000> | Django app: orders, production batches, stages, quality, stock |
 | Process mining | <http://localhost:8001> | FastAPI + pm4py: process maps, KPIs, variants, bottlenecks |
+| Push-to-talk | <http://localhost:8002> | Backend for the Android app: audio in, a command awaiting confirmation out |
 | API docs | <http://localhost:8001/docs> | OpenAPI for the analytics service |
+
+Those ports are on the loopback. Anything reaching the stack from elsewhere
+comes through the TLS proxy on 443 (QMS), 8443 (analytics) and 10000 (the app).
 
 ---
 
@@ -42,8 +46,13 @@ So what is merged is the **lifecycle**: one clone, one `.env`, one
 ├── .env.example             one file for both services
 └── services/
     ├── qms/                 Django 5 + Postgres  (bakery QMS)
-    └── process-mining/      FastAPI + pm4py      (analytics)
+    ├── process-mining/      FastAPI + pm4py      (analytics, and the one Whisper)
+    └── pushtotalk/          Android app + its FastAPI backend
 ```
+
+Voice works from the browser and from the phone, and both go to the same
+speech container - [docs/PUSHTOTALK.md](docs/PUSHTOTALK.md) explains how they
+converge and what the app needs before it will build.
 
 Each service keeps its own `Dockerfile`, dependencies and README —
 [services/qms/README.md](services/qms/README.md) and

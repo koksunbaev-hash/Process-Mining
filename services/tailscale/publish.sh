@@ -28,15 +28,19 @@ if ! command -v tailscale >/dev/null 2>&1; then
 fi
 
 if [ "${1:-on}" = "off" ]; then
-  tailscale funnel --https=443  off || true
-  tailscale funnel --https=8443 off || true
+  tailscale funnel --https=443   off || true
+  tailscale funnel --https=8443  off || true
+  tailscale funnel --https=10000 off || true
   echo "Funnel is off. The stack is reachable on the LAN and the tailnet only."
   exit 0
 fi
 
 # --bg keeps it running after this shell exits and survives reboots.
-tailscale funnel --bg --https=443  https+insecure://127.0.0.1:443
-tailscale funnel --bg --https=8443 https+insecure://127.0.0.1:8443
+tailscale funnel --bg --https=443   https+insecure://127.0.0.1:443
+tailscale funnel --bg --https=8443  https+insecure://127.0.0.1:8443
+# The phone app's backend. Funnel serves these three ports and no others,
+# which is why the proxy listens on 10000 rather than something tidier.
+tailscale funnel --bg --https=10000 https+insecure://127.0.0.1:10000
 
 echo
 tailscale funnel status

@@ -3,4 +3,6 @@ uvicorn[standard]>=0.30,<1.0
 SQLAlchemy>=2.0,<3.0
 pydantic>=2.7,<3.0
 python-multipart>=0.0.20,<1.0
-faster-whisper>=1.1,<2.0
+# faster-whisper is deliberately absent: speech recognition now goes to the
+# analytics service, which owns the one speech container in the stack. Putting
+# it back would load a second copy of the weights into this process.

@@ -1,75 +1,100 @@
-"""Local speech-to-text using faster-whisper."""
+"""Speech-to-text, delegated to the analytics service.
+
+This module used to load its own faster-whisper model. That gave the stack two
+Whispers: one in the `stt` container answering the web console, one in this
+process answering the phone - two sets of weights in RAM, two places to tune,
+and two answers to the same recording. They are one now: this posts the audio
+to the analytics service, which owns the speech container and already knows how
+to decode a phone recording into something the model accepts.
+
+What is lost by delegating: the local model was given an `initial_prompt`
+listing batch code shapes, and the OVOS speech server takes no prompt over
+HTTP. Batch numbers therefore come back less reliably punctuated - which the
+QMS side already tolerates, because it compares letters and digits only
+(`_squash` in voice_process_mining.py).
+
+The two exception types are unchanged, so `app/api/speech.py` does not care
+that the model moved out of the process.
+"""
 
 from __future__ import annotations
 
+import json
 import logging
-import os
-from functools import lru_cache
+import mimetypes
+import urllib.error
+import urllib.request
+import uuid
 from pathlib import Path
+
+from app.config import Settings, settings
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PROMPT = (
-    "Р Р°СЃРїРѕР·РЅР°Р№ СЂСѓСЃСЃРєСѓСЋ РїСЂРѕРёР·РІРѕРґСЃС‚РІРµРЅРЅСѓСЋ СЂРµС‡СЊ. Р’ С‚РµРєСЃС‚Рµ РјРѕРіСѓС‚ РІСЃС‚СЂРµС‡Р°С‚СЊСЃСЏ "
-    "Р»Р°С‚РёРЅСЃРєРёРµ РєРѕРґС‹ РїР°СЂС‚РёР№ РІСЂРѕРґРµ DEMO-B-0012, MOD-3321, QMS-100."
-)
-
 
 class TranscriptionUnavailableError(RuntimeError):
-    """Whisper runtime is not installed or cannot load a model."""
+    """The speech service is not configured, or is not answering."""
 
 
 class TranscriptionError(RuntimeError):
-    """Audio could not be transcribed."""
+    """Audio reached the model and did not come back as text."""
 
 
-@lru_cache(maxsize=1)
-def _load_model():
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError as error:  # pragma: no cover - depends on optional package
-        raise TranscriptionUnavailableError(
-            "faster-whisper is not installed. Run: pip install -r requirements.txt"
-        ) from error
-
-    model_name = os.getenv("PTT_WHISPER_MODEL", "small")
-    device = os.getenv("PTT_WHISPER_DEVICE", "cpu")
-    compute_type = os.getenv("PTT_WHISPER_COMPUTE_TYPE", "int8")
-
-    try:
-        logger.info(
-            "Loading faster-whisper model=%s device=%s compute_type=%s",
-            model_name,
-            device,
-            compute_type,
-        )
-        return WhisperModel(model_name, device=device, compute_type=compute_type)
-    except Exception as error:  # pragma: no cover - model/download environment
-        raise TranscriptionUnavailableError(str(error)) from error
+def _multipart(path: Path, boundary: str) -> bytes:
+    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    head = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="audio_file"; filename="{path.name}"\r\n'
+        f"Content-Type: {content_type}\r\n\r\n"
+    ).encode("utf-8")
+    tail = f"\r\n--{boundary}--\r\n".encode("utf-8")
+    return head + path.read_bytes() + tail
 
 
-def transcribe_audio(audio_path: Path) -> str:
-    """Transcribe an audio file and return normalized text."""
+def transcribe_audio(audio_path: Path, config: Settings = settings) -> str:
+    """Send an audio file to the analytics service and return the text."""
     if not audio_path.exists() or audio_path.stat().st_size == 0:
         raise TranscriptionError("empty audio file")
 
-    model = _load_model()
-    language = os.getenv("PTT_WHISPER_LANGUAGE", "ru") or None
-    prompt = os.getenv("PTT_WHISPER_PROMPT", DEFAULT_PROMPT)
+    if not config.transcribe_url or not config.transcribe_token:
+        raise TranscriptionUnavailableError(
+            "Speech recognition is not configured. Set PTT_TRANSCRIBE_URL and "
+            "PTT_TRANSCRIBE_TOKEN to the analytics service and its API key."
+        )
+
+    boundary = f"----ptt{uuid.uuid4().hex}"
+    request = urllib.request.Request(
+        config.transcribe_url,
+        data=_multipart(audio_path, boundary),
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "X-API-Key": config.transcribe_token,
+        },
+        method="POST",
+    )
 
     try:
-        segments, _info = model.transcribe(
-            str(audio_path),
-            language=language,
-            initial_prompt=prompt,
-            beam_size=5,
-            vad_filter=True,
-        )
-        text = " ".join(segment.text.strip() for segment in segments if segment.text.strip()).strip()
-    except Exception as error:  # pragma: no cover - decoder/audio environment
-        raise TranscriptionError(str(error)) from error
+        with urllib.request.urlopen(request, timeout=config.transcribe_timeout_seconds) as response:
+            data = json.loads(response.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:300]
+        # 5xx is the service having a bad day and is worth retrying; anything
+        # else is this request being wrong and will fail again identically.
+        if exc.code >= 500:
+            raise TranscriptionUnavailableError(f"speech service HTTP {exc.code}: {body}") from exc
+        raise TranscriptionError(f"speech service rejected the audio: HTTP {exc.code} {body}") from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise TranscriptionUnavailableError(f"speech service unreachable: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise TranscriptionError(f"speech service returned no JSON: {exc}") from exc
 
+    text = str(data.get("text") or data.get("transcript") or "").strip()
     if not text:
         raise TranscriptionError("empty transcription")
 
+    logger.info(
+        "Transcribed via analytics service chars=%s took_ms=%s",
+        len(text),
+        data.get("took_ms"),
+    )
     return text

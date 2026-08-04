@@ -17,7 +17,12 @@ from typing import Annotated, Any
 from fastapi import APIRouter, File, Form, Request, UploadFile
 
 from app.deps import ApiKeyDep, JobManagerDep
-from app.errors import PayloadTooLargeError
+from app.errors import (
+    PayloadTooLargeError,
+    SpeechUnavailableError,
+    UnsupportedFormatError,
+    ValidationError,
+)
 from app.logging_config import get_logger
 from app.services.stt import SttError, new_task_id
 
@@ -131,6 +136,57 @@ async def create_transcription(
         extra={"task": task_id, "external_id": external_id, "bytes": len(payload)},
     )
     return accepted
+
+
+# Errors from the speech path, mapped once. A caller retries a 503 and fixes a
+# 415 - anything that blurs the two makes the phone app retry forever.
+_STT_ERRORS = {
+    "STT_UNAVAILABLE": SpeechUnavailableError,
+    "AUDIO_DECODE_UNAVAILABLE": SpeechUnavailableError,
+    "UNSUPPORTED_AUDIO": UnsupportedFormatError,
+}
+
+
+@router.post(
+    "/sync",
+    summary="Transcribe a recording and answer with the text, no callback",
+)
+async def transcribe_sync(
+    request: Request,
+    jobs: JobManagerDep,
+    _: ApiKeyDep,
+    audio_file: Annotated[UploadFile, File(description="webm / ogg / mp3 / wav / mp4 / m4a")],
+    language: Annotated[str, Form()] = "",
+) -> dict[str, Any]:
+    """The same speech container the web console uses, answered inline.
+
+    The callback flow above exists because a browser recording arrives from a
+    page that must stay responsive. A phone holding a push-to-talk button has
+    nowhere to receive a callback and is already waiting, so it gets the text
+    on the same connection - one model in the stack instead of two.
+    """
+    settings = request.app.state.settings
+    stt = request.app.state.stt_service
+
+    payload = await audio_file.read()
+    if len(payload) > settings.max_upload_bytes:
+        raise PayloadTooLargeError(f"Audio is larger than {settings.max_upload_mb} MB")
+
+    try:
+        # Decoding and the model are both blocking; on the event loop they
+        # would stall every other request for the length of the recording.
+        result = await jobs.run_blocking(
+            stt.transcribe, payload, language=language or None
+        )
+    except SttError as exc:
+        log.warning("transcribe_sync_failed", extra={"code": exc.code})
+        raise _STT_ERRORS.get(exc.code, ValidationError)(str(exc)) from exc
+
+    log.info(
+        "transcribe_sync_done",
+        extra={"chars": len(result["transcript"]), "took_ms": result["took_ms"]},
+    )
+    return {"status": "ok", "text": result["transcript"], **result}
 
 
 @router.get("/capabilities", summary="Formats and limits this service accepts")

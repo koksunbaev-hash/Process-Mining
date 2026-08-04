@@ -99,6 +99,34 @@ services:
       timeout: 5s
       retries: 3
 
+  # The Android app's backend. It holds the phone's connection open while the
+  # recording is transcribed, then hands the text to the QMS as a command
+  # nobody has confirmed yet - the same place the browser's voice widget
+  # arrives at, so a spoken command behaves identically whichever it came from.
+  #
+  # It carries no model of its own: PTT_TRANSCRIBE_URL points at the analytics
+  # service, which owns the speech container. Two Whispers in one stack meant
+  # two sets of weights in RAM and two answers to the same recording.
+  pushtotalk:
+    build: ./services/pushtotalk/backend
+    restart: unless-stopped
+    environment:
+      PTT_RUNTIME_DIR: /srv/ptt
+      PTT_TRANSCRIBE_URL: http://process-mining:8000/api/transcriptions/sync
+      PTT_TRANSCRIBE_TOKEN: ${PM_API_KEYS:?set PM_API_KEYS in .env}
+      # Absolute, by container name: this is a server-to-server call and the
+      # phone never learns the QMS token.
+      PTT_KMS_COMMAND_URL: http://qms:8000/api/pushtotalk/commands/
+      PTT_KMS_API_TOKEN: ${PUSHTOTALK_API_TOKEN:?set PUSHTOTALK_API_TOKEN in .env}
+      PTT_LOG_LEVEL: ${PTT_LOG_LEVEL:-INFO}
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${PTT_PORT:-8002}:8000"
+    volumes:
+      - ptt_data:/srv/ptt
+    depends_on:
+      process-mining:
+        condition: service_started
+
   # Speech-to-text. Separate container on purpose: the model is the heaviest
   # thing in the stack, and this way it can be swapped, given a GPU or moved to
   # another host without touching anything else.
@@ -131,16 +159,22 @@ services:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
       - "${PM_HTTPS_PORT:-8443}:8443"
+      # 10000 rather than any other free number: Tailscale Funnel publishes
+      # exactly 443, 8443 and 10000, and the phone needs a public https
+      # address for its microphone the same way the browser does.
+      - "${PTT_HTTPS_PORT:-10000}:10000"
     volumes:
       - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./services/nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - qms
       - process-mining
+      - pushtotalk
 
 volumes:
   postgres_data:
   qms_static:
   qms_media:
   pm_data:
+  ptt_data:
   stt_models:

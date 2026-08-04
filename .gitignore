@@ -7,7 +7,12 @@ venv/
 .env.local
 
 # runtime state, never source
-data/
+#
+# Anchored, and not just `data/`: unanchored it also matched
+# app/src/main/java/com/example/push_to_talk/data/ - the Android app's whole
+# network and repository layer - and silently kept it out of every commit.
+# The app in this repository did not compile because of this line.
+/services/process-mining/data/
 db.sqlite3
 media/
 staticfiles/

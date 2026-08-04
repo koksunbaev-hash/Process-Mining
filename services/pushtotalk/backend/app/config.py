@@ -36,6 +36,9 @@ class Settings:
     kms_command_url: str
     kms_api_token: str
     kms_timeout_seconds: int
+    transcribe_url: str
+    transcribe_token: str
+    transcribe_timeout_seconds: int
 
     @property
     def database_path(self) -> Path:
@@ -66,6 +69,12 @@ def load_settings() -> Settings:
         kms_command_url=os.getenv("PTT_KMS_COMMAND_URL", ""),
         kms_api_token=os.getenv("PTT_KMS_API_TOKEN", ""),
         kms_timeout_seconds=int(os.getenv("PTT_KMS_TIMEOUT_SECONDS", "10")),
+        transcribe_url=os.getenv("PTT_TRANSCRIBE_URL", ""),
+        transcribe_token=os.getenv("PTT_TRANSCRIBE_TOKEN", ""),
+        # Whisper medium on CPU spends seconds per phrase, and the phone is
+        # holding the connection open the whole time. Well above the model,
+        # well below the client's own 180s call timeout.
+        transcribe_timeout_seconds=int(os.getenv("PTT_TRANSCRIBE_TIMEOUT_SECONDS", "150")),
     )
 
 

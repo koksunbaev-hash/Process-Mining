@@ -1,0 +1,161 @@
+# Render blueprint for the demo stand.
+#
+# Three services deploy here; the fourth does not and cannot. Whisper medium
+# holds ~1.4 GB of weights and a free Render instance has 512 MB, so speech
+# recognition stays on the Proxmox VM and everything that needs it calls home
+# over the machine's public Tailscale Funnel address. See docs/PUBLIC-ACCESS.md
+# for how that address comes to exist.
+#
+#   Render                                 the VM
+#   ------                                 ------
+#   qms-demo ──── voice audio ───────────> process-mining :8443 ──> stt
+#            <─── transcript callback ────
+#   pushtotalk ── phone audio ───────────> process-mining :8443 ──> stt
+#   process-mining (analytics only, no speech)
+#
+# Every `sync: false` value is typed into the Render dashboard once. They are
+# secrets or addresses that differ per deployment, and a blueprint in a public
+# repository is the wrong place for either.
+#
+# READ THIS BEFORE SHOWING IT TO ANYONE: seed_bakery creates its users with the
+# passwords printed in this repository. The stand is demonstration data and
+# must be treated as public - no real orders, no real customers. The private
+# deployment on the VM is where passwords get rotated (docs/PUBLIC-ACCESS.md).
+
+databases:
+  - name: qms-db
+    plan: free
+    databaseName: qms
+    user: qms
+
+services:
+  # ---- the QMS the demo is actually about ---------------------------------
+  - type: web
+    name: qms-demo
+    runtime: python
+    rootDir: services/qms
+    plan: free
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    # Migrations and seeding run at start rather than at build: a free instance
+    # gets a fresh database on the first deploy and nothing to migrate later.
+    startCommand: python manage.py migrate --noinput && python manage.py seed_bakery && python -m gunicorn config.wsgi:application
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: qms-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "10"
+      - key: MAX_VOICE_MESSAGE_SIZE_MB
+        value: "20"
+      # Render terminates TLS in front of the app, so cookies must be marked
+      # Secure and Django must believe the forwarded scheme. Both are already
+      # the defaults in config/settings.py when DEBUG is off.
+      - key: SECURE_HSTS_SECONDS
+        value: "0"
+      # <name>.onrender.com, and the same value with https:// for CSRF.
+      # Render does not interpolate, so these are typed in once.
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+
+      # Voice: the audio goes to the VM, because that is where the model is.
+      # https://<machine>.<tailnet>.ts.net:8443/api/transcriptions/
+      - key: PROCESS_MINING_API_URL
+        sync: false
+      - key: PROCESS_MINING_API_TOKEN
+        sync: false
+      # Absolute, and reachable from the VM: the transcript comes back here.
+      # https://qms-demo.onrender.com/api/process-mining/callback/
+      - key: PROCESS_MINING_CALLBACK_URL
+        sync: false
+      # Must equal PM_CALLBACK_SECRET on the VM or the callback is discarded.
+      - key: PROCESS_MINING_CALLBACK_SECRET
+        sync: false
+
+      # Analytics, on the other hand, runs here - the event log has no model
+      # behind it and a free instance is plenty.
+      - key: PROCESS_MINING_EVENT_LOG_URL
+        sync: false
+      - key: PROCESS_MINING_SOURCE
+        value: kms_bakery_demo
+
+      # The phone app's backend presents this token; nothing else may.
+      - key: PUSHTOTALK_API_TOKEN
+        sync: false
+      - key: PUSHTOTALK_DEFAULT_USERNAME
+        value: dispatcher
+
+  # ---- analytics ----------------------------------------------------------
+  - type: web
+    name: process-mining
+    runtime: docker
+    rootDir: services/process-mining
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: PM_ENVIRONMENT
+        value: prod
+      - key: PM_DEBUG
+        value: "false"
+      - key: PM_CORS_ORIGINS
+        value: "*"
+      - key: PM_STORAGE_BACKEND
+        value: sqlite
+      # A free instance has no disk: SQLite lives in the container filesystem
+      # and is lost on every restart. Fine for a demo whose data is pushed by
+      # the QMS anyway, wrong for anything you intend to keep.
+      - key: PM_SQLITE_PATH
+        value: /srv/data/pm.db
+      - key: PM_ARTIFACT_DIR
+        value: /srv/data/artifacts
+      - key: PM_MAX_CONCURRENT_JOBS
+        value: "1"
+      # Must match PROCESS_MINING_API_TOKEN wherever events are pushed from.
+      - key: PM_API_KEYS
+        sync: false
+      - key: PM_CALLBACK_SECRET
+        sync: false
+      # Deliberately unset: PM_STT_URL. This instance has no speech container
+      # to talk to, so /api/transcriptions/ here would accept audio and never
+      # answer. Voice goes to the VM instead.
+
+  # ---- the phone app's backend --------------------------------------------
+  - type: web
+    name: pushtotalk
+    runtime: docker
+    rootDir: services/pushtotalk/backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: PTT_LOG_LEVEL
+        value: INFO
+      # No disk on free: the message history resets when the instance sleeps.
+      # It is a delivery receipt, not a record - the command itself lives in
+      # the QMS the moment it is forwarded.
+      - key: PTT_RUNTIME_DIR
+        value: /srv/ptt
+      # Recognition, on the VM:
+      # https://<machine>.<tailnet>.ts.net:8443/api/transcriptions/sync
+      - key: PTT_TRANSCRIBE_URL
+        sync: false
+      - key: PTT_TRANSCRIBE_TOKEN
+        sync: false
+      # A cold free instance plus a medium model on four cores. The phone's own
+      # call timeout is 180s, so there is no point waiting longer than this.
+      - key: PTT_TRANSCRIBE_TIMEOUT_SECONDS
+        value: "150"
+      # And the command goes to the QMS deployed above:
+      # https://qms-demo.onrender.com/api/pushtotalk/commands/
+      - key: PTT_KMS_COMMAND_URL
+        sync: false
+      # Same value as PUSHTOTALK_API_TOKEN on qms-demo.
+      - key: PTT_KMS_API_TOKEN
+        sync: false
