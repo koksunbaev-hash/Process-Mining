@@ -22,6 +22,7 @@ from app.schemas.speech import (
 )
 from app.services import speech_service
 from app.services.kms_client import KmsForwardError, forward_text_command
+from app.services.mqtt_client import MqttPublishError, publish_text_command
 from app.services.speech_service import SpeechValidationError
 from app.services.transcription_service import (
     TranscriptionError,
@@ -34,6 +35,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["speech"])
 
 ALLOWED_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".mp4", ".mpeg", ".mpga", ".ogg", ".wav", ".webm"}
+
+
+def dispatch_text_command(text: str, *, client_request_id: str | None = None, source: str = "pushtotalk") -> None:
+    """Send recognized text to MQTT when configured, with direct KMS as fallback."""
+    try:
+        mqtt_result = publish_text_command(text, client_request_id=client_request_id, source=source)
+    except MqttPublishError as error:
+        logger.warning("MQTT publish failed; falling back to KMS: %s", error)
+    else:
+        if mqtt_result.get("status") != "skipped":
+            return
+
+    try:
+        forward_text_command(text, client_request_id=client_request_id, source=source)
+    except KmsForwardError as error:
+        logger.warning("KMS forwarding failed: %s", error)
 
 
 @router.post(
@@ -64,10 +81,7 @@ def receive_speech(
             content=ErrorResponse(message=str(error)).model_dump(),
         )
 
-    try:
-        forward_text_command(message.text, client_request_id=f"speech-{message.id}")
-    except KmsForwardError as error:
-        logger.warning("KMS forwarding failed for speech_message_id=%s: %s", message.id, error)
+    dispatch_text_command(message.text, client_request_id=f"speech-{message.id}")
 
     return SpeechResponse(status="ok", id=message.id)
 
@@ -116,10 +130,7 @@ def transcribe_speech(
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
 
-    try:
-        forward_text_command(text, source="pushtotalk-whisper")
-    except KmsForwardError as error:
-        logger.warning("KMS forwarding failed after transcription: %s", error)
+    dispatch_text_command(text, source="pushtotalk-whisper")
 
     return TranscriptionResponse(status="ok", text=text)
 

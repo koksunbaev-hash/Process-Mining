@@ -39,6 +39,19 @@ class Settings:
     transcribe_url: str
     transcribe_token: str
     transcribe_timeout_seconds: int
+    mqtt_host: str
+    mqtt_port: int
+    mqtt_username: str
+    mqtt_password: str
+    mqtt_tls: bool
+    mqtt_topic: str
+    mqtt_client_id: str
+    mqtt_project: str
+    mqtt_timeout_seconds: int
+
+    @property
+    def mqtt_enabled(self) -> bool:
+        return bool(self.mqtt_host)
 
     @property
     def database_path(self) -> Path:
@@ -75,6 +88,15 @@ def load_settings() -> Settings:
         # holding the connection open the whole time. Well above the model,
         # well below the client's own 180s call timeout.
         transcribe_timeout_seconds=int(os.getenv("PTT_TRANSCRIBE_TIMEOUT_SECONDS", "150")),
+        mqtt_host=os.getenv("PTT_MQTT_HOST", ""),
+        mqtt_port=int(os.getenv("PTT_MQTT_PORT", "1883")),
+        mqtt_username=os.getenv("PTT_MQTT_USERNAME", ""),
+        mqtt_password=os.getenv("PTT_MQTT_PASSWORD", ""),
+        mqtt_tls=os.getenv("PTT_MQTT_TLS", "false").strip().lower() in {"1", "true", "yes", "on"},
+        mqtt_topic=os.getenv("PTT_MQTT_TOPIC", "voice/commands/recognized"),
+        mqtt_client_id=os.getenv("PTT_MQTT_CLIENT_ID", "pushtotalk-backend"),
+        mqtt_project=os.getenv("PTT_MQTT_PROJECT", "kms"),
+        mqtt_timeout_seconds=int(os.getenv("PTT_MQTT_TIMEOUT_SECONDS", "10")),
     )
 
 

@@ -1,4 +1,4 @@
-"""Тесты POST /api/speech."""
+"""Tests for POST /api/speech and speech command dispatch."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ def test_valid_text_returns_ok(client) -> None:
     assert body["id"] > 0
 
 
-def test_valid_text_is_forwarded_to_kms(client, monkeypatch) -> None:
+def test_valid_text_is_dispatched_to_kms_when_mqtt_is_not_configured(client, monkeypatch) -> None:
     import app.api.speech as speech_api
 
     calls = []
@@ -24,10 +24,15 @@ def test_valid_text_is_forwarded_to_kms(client, monkeypatch) -> None:
 
     monkeypatch.setattr(speech_api, "forward_text_command", fake_forward)
 
-    response = client.post("/api/speech", json={"text": "Партия DEMO-B-0012 закончила замес"})
+    response = client.post("/api/speech", json={"text": "Batch DEMO-B-0012 finished mixing"})
 
     assert response.status_code == 200
-    assert calls == [("Партия DEMO-B-0012 закончила замес", {"client_request_id": f"speech-{response.json()['id']}"})]
+    assert calls == [
+        (
+            "Batch DEMO-B-0012 finished mixing",
+            {"client_request_id": f"speech-{response.json()['id']}", "source": "pushtotalk"},
+        )
+    ]
 
 
 def test_kms_forward_error_does_not_break_speech_save(client, monkeypatch) -> None:
@@ -39,17 +44,72 @@ def test_kms_forward_error_does_not_break_speech_save(client, monkeypatch) -> No
 
     monkeypatch.setattr(speech_api, "forward_text_command", fake_forward)
 
-    response = client.post("/api/speech", json={"text": "Партия DEMO-B-0012 закончила замес"})
+    response = client.post("/api/speech", json={"text": "Batch DEMO-B-0012 finished mixing"})
 
     assert response.status_code == 200
-    assert client.get("/api/messages").json()[0]["text"] == "Партия DEMO-B-0012 закончила замес"
+    assert client.get("/api/messages").json()[0]["text"] == "Batch DEMO-B-0012 finished mixing"
 
 
-def test_transcribed_text_is_forwarded_to_kms(client, monkeypatch, tmp_path) -> None:
+def test_mqtt_publish_is_preferred_over_direct_kms(client, monkeypatch) -> None:
+    import app.api.speech as speech_api
+
+    mqtt_calls = []
+    kms_calls = []
+    monkeypatch.setattr(
+        speech_api,
+        "publish_text_command",
+        lambda text, **kwargs: mqtt_calls.append((text, kwargs)) or {"status": "ok"},
+    )
+    monkeypatch.setattr(
+        speech_api,
+        "forward_text_command",
+        lambda text, **kwargs: kms_calls.append((text, kwargs)) or {"status": "ok"},
+    )
+
+    response = client.post("/api/speech", json={"text": "DEMO-B-0012 ready"})
+
+    assert response.status_code == 200
+    assert mqtt_calls == [
+        (
+            "DEMO-B-0012 ready",
+            {"client_request_id": f"speech-{response.json()['id']}", "source": "pushtotalk"},
+        )
+    ]
+    assert kms_calls == []
+
+
+def test_mqtt_error_falls_back_to_kms(client, monkeypatch) -> None:
+    import app.api.speech as speech_api
+    from app.services.mqtt_client import MqttPublishError
+
+    kms_calls = []
+
+    def fail_publish(text, **kwargs):
+        raise MqttPublishError("broker down")
+
+    monkeypatch.setattr(speech_api, "publish_text_command", fail_publish)
+    monkeypatch.setattr(
+        speech_api,
+        "forward_text_command",
+        lambda text, **kwargs: kms_calls.append((text, kwargs)) or {"status": "ok"},
+    )
+
+    response = client.post("/api/speech", json={"text": "DEMO-B-0012 ready"})
+
+    assert response.status_code == 200
+    assert kms_calls == [
+        (
+            "DEMO-B-0012 ready",
+            {"client_request_id": f"speech-{response.json()['id']}", "source": "pushtotalk"},
+        )
+    ]
+
+
+def test_transcribed_text_is_dispatched(client, monkeypatch, tmp_path) -> None:
     import app.api.speech as speech_api
 
     calls = []
-    monkeypatch.setattr(speech_api, "transcribe_audio", lambda path: "Партия DEMO-B-0012 закончила замес")
+    monkeypatch.setattr(speech_api, "transcribe_audio", lambda path: "Batch DEMO-B-0012 finished mixing")
     monkeypatch.setattr(
         speech_api,
         "forward_text_command",
@@ -62,8 +122,13 @@ def test_transcribed_text_is_forwarded_to_kms(client, monkeypatch, tmp_path) -> 
         response = client.post("/api/speech/transcribe", files={"file": ("voice.m4a", audio, "audio/mp4")})
 
     assert response.status_code == 200
-    assert response.json()["text"] == "Партия DEMO-B-0012 закончила замес"
-    assert calls == [("Партия DEMO-B-0012 закончила замес", {"source": "pushtotalk-whisper"})]
+    assert response.json()["text"] == "Batch DEMO-B-0012 finished mixing"
+    assert calls == [
+        (
+            "Batch DEMO-B-0012 finished mixing",
+            {"client_request_id": None, "source": "pushtotalk-whisper"},
+        )
+    ]
 
 
 def test_cyrillic_text_is_accepted(client) -> None:
@@ -127,7 +192,6 @@ def test_very_long_text_is_rejected_without_crash(client) -> None:
     assert response.status_code == 400
     assert "too long" in response.json()["message"]
 
-    # Сервис остался работоспособным.
     assert client.post("/api/speech", json={"text": "still alive"}).status_code == 200
 
 
@@ -138,9 +202,9 @@ def test_text_at_length_limit_is_accepted(client, settings) -> None:
 
 
 def test_text_is_trimmed_before_saving(client) -> None:
-    client.post("/api/speech", json={"text": "  привет мир  "})
+    client.post("/api/speech", json={"text": "  hello world  "})
 
-    assert client.get("/api/messages").json()[0]["text"] == "привет мир"
+    assert client.get("/api/messages").json()[0]["text"] == "hello world"
 
 
 def test_health_endpoint(client) -> None:

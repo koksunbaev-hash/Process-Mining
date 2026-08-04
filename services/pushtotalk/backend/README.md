@@ -203,3 +203,41 @@ MVP рассчитан на локальную сеть: авторизации 
 `AuthInterceptor`, который добавит `Authorization: Bearer <token>`, как только
 `AuthTokenProvider` начнёт возвращать токен. Перед выносом сервиса за пределы локальной
 сети нужно добавить проверку токена на стороне backend-а и TLS.
+## MQTT route to Voice Gateway
+
+PushToTalk can publish recognized text to the shared MQTT command bus. The
+`services/voice-gateway` service consumes that topic and forwards commands to
+KMS. This makes the phone backend reusable for other projects later.
+
+If `PTT_MQTT_HOST` is empty, PushToTalk keeps the old direct KMS fallback through
+`PTT_KMS_COMMAND_URL`.
+
+Render variables for HiveMQ Cloud:
+
+```env
+PTT_MQTT_HOST=b6b2dc99ffe5473fb6c82721c186d30f.s1.eu.hivemq.cloud
+PTT_MQTT_PORT=8883
+PTT_MQTT_USERNAME=<hivemq username>
+PTT_MQTT_PASSWORD=<hivemq password>
+PTT_MQTT_TLS=true
+PTT_MQTT_TOPIC=voice/commands/recognized
+PTT_MQTT_CLIENT_ID=pushtotalk-backend
+PTT_MQTT_PROJECT=kms
+PTT_MQTT_TIMEOUT_SECONDS=10
+```
+
+The published JSON looks like this:
+
+```json
+{
+  "project": "kms",
+  "source": "pushtotalk-whisper",
+  "request_id": "ptt-unique-id",
+  "device_id": "pushtotalk-backend",
+  "text": "Партия DEMO-B-0012 закончила замес, передать на формовку",
+  "confidence": null,
+  "metadata": {
+    "producer": "pushtotalk-backend"
+  }
+}
+```

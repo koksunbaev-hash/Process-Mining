@@ -119,6 +119,13 @@ services:
       PTT_KMS_COMMAND_URL: http://qms:8000/api/pushtotalk/commands/
       PTT_KMS_API_TOKEN: ${PUSHTOTALK_API_TOKEN:?set PUSHTOTALK_API_TOKEN in .env}
       PTT_LOG_LEVEL: ${PTT_LOG_LEVEL:-INFO}
+      PTT_MQTT_HOST: ${PTT_MQTT_HOST:-}
+      PTT_MQTT_PORT: ${PTT_MQTT_PORT:-1883}
+      PTT_MQTT_USERNAME: ${PTT_MQTT_USERNAME:-}
+      PTT_MQTT_PASSWORD: ${PTT_MQTT_PASSWORD:-}
+      PTT_MQTT_TLS: ${PTT_MQTT_TLS:-false}
+      PTT_MQTT_TOPIC: ${PTT_MQTT_TOPIC:-voice/commands/recognized}
+      PTT_MQTT_PROJECT: ${PTT_MQTT_PROJECT:-kms}
     ports:
       - "${BIND_ADDR:-127.0.0.1}:${PTT_PORT:-8002}:8000"
     volumes:

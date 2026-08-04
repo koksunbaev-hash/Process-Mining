@@ -159,6 +159,23 @@ services:
       # Same value as PUSHTOTALK_API_TOKEN on qms-demo.
       - key: PTT_KMS_API_TOKEN
         sync: false
+      # Optional preferred route: publish recognized text to MQTT, where
+      # voice-gateway consumes it and routes it to KMS. If these are empty,
+      # pushtotalk falls back to direct PTT_KMS_COMMAND_URL.
+      - key: PTT_MQTT_HOST
+        sync: false
+      - key: PTT_MQTT_PORT
+        value: "8883"
+      - key: PTT_MQTT_USERNAME
+        sync: false
+      - key: PTT_MQTT_PASSWORD
+        sync: false
+      - key: PTT_MQTT_TLS
+        value: "true"
+      - key: PTT_MQTT_TOPIC
+        value: voice/commands/recognized
+      - key: PTT_MQTT_PROJECT
+        value: kms
 
   # ---- reusable MQTT/OVOS bridge ------------------------------------------
   - type: web
