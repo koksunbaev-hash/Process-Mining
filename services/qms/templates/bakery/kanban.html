@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Производственная доска{% endblock %}
 {% block page_title %}Производственная доска{% endblock %}
 {% block page_subtitle %}Очередь | Замес | Формовка | Расстойка | Печь | Склад | Готово{% endblock %}
@@ -75,5 +76,5 @@
     {% include "bakery/kanban_board.html" %}
   </div>
 </div>
-<script src="/static/js/kanban-demo.js"></script>
+<script src="{% static 'js/kanban-demo.js' %}"></script>
 {% endblock %}

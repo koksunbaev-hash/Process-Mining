@@ -148,6 +148,22 @@ class VoiceProcessMiningTests(TestCase):
         self.callback(voice, f"Партия {batch.batch_number} закончила замес", confidence=0.55)
         self.assertEqual(voice.command.status, VoiceCommand.Status.NEEDS_REVIEW)
 
+    def test_a_missing_confidence_score_does_not_count_as_a_low_one(self):
+        # What the speech plugin actually sends: no score, which arrives as 0.
+        # Reading that as "below 0.8" marked every command - correct ones
+        # included - as needing review, and the countdown then never ran at all.
+        # Goes through the callback rather than building a command by hand,
+        # which is exactly why the first version of this passed while the
+        # feature did nothing on the stand.
+        batch = create_batch_at_stage("mixing", self.user)
+        self.upload_voice()
+        voice = VoiceMessage.objects.get()
+        self.callback(voice, f"Партия {batch.batch_number} закончила замес", confidence=0)
+        self.assertEqual(voice.command.status, VoiceCommand.Status.DETECTED)
+        payload = self.client.get(f"/api/voice-messages/{voice.pk}/status/").data["command"]
+        self.assertIs(payload["auto_confirm"], True)
+        self.assertEqual(payload["auto_confirm_seconds"], 3)
+
     def test_confirm_calls_existing_batch_service(self):
         batch = create_batch_at_stage("mixing", self.user)
         self.upload_voice()

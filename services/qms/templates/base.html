@@ -5,12 +5,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}QMS{% endblock %}</title>
+  {% comment %}
+  Every asset here resolves through the static tag, so the manifest puts a
+  content hash in its name and a deployed change actually reaches the browser
+  instead of sitting behind a cached copy. Three of these were hardcoded
+  /static/... paths, which is why edits to the voice widget kept looking as
+  though they had never been deployed.
+  {% endcomment %}
   <link rel="stylesheet" href="{% static 'css/styles.css' %}">
-  <link rel="stylesheet" href="/static/css/voice-widget.css">
-  <link rel="stylesheet" href="/static/css/kanban-demo.css">
+  <link rel="stylesheet" href="{% static 'css/voice-widget.css' %}">
+  <link rel="stylesheet" href="{% static 'css/kanban-demo.css' %}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
   <script src="{% static 'js/app.js' %}" defer></script>
-  <script src="/static/js/voice-widget.js" defer></script>
+  <script src="{% static 'js/voice-widget.js' %}" defer></script>
 </head>
 <body>
   {% if user.is_authenticated %}

@@ -243,7 +243,15 @@ def create_voice_command(voice):
         parsed["batch_number"] = batch.batch_number
         parsed["from_stage"] = batch.current_stage.code
         parsed["current_stage"] = batch.current_stage.name
-    status = VoiceCommand.Status.NEEDS_REVIEW if (voice.confidence is not None and voice.confidence < Decimal("0.8000")) else VoiceCommand.Status.DETECTED
+    # No score is not a low score. The plugin reports none at all, so this used
+    # to read 0.0000, fall under the threshold and mark every single command -
+    # correct ones included - as needing review. The widget already treats zero
+    # as "no claim" and hides the warning; the server now agrees with it.
+    status = (
+        VoiceCommand.Status.NEEDS_REVIEW
+        if voice.confidence is not None and Decimal("0") < voice.confidence < Decimal("0.8000")
+        else VoiceCommand.Status.DETECTED
+    )
     command, _ = VoiceCommand.objects.update_or_create(
         voice_message=voice,
         defaults={
