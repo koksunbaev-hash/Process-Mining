@@ -20,7 +20,7 @@ from apps.quality.models import ControlPost, ControlType, Department, QualityObj
 
 from .models import ProductionBatch, ProductionStage, VoiceCommand, VoiceMessage
 from .permissions import can_view_voice
-from .services import log_order_event, move_batch, pause_batch, resume_batch, skipped_stages_between
+from .services import log_order_event, move_batch, pause_batch, resume_batch
 
 
 STAGE_ALIASES = {
@@ -73,26 +73,27 @@ NEXT_BY_PHRASE = {
 def may_auto_confirm(command, batch):
     """Whether the widget may run this command on a timer instead of a click.
 
-    Only the ordinary case qualifies: a batch stepping forward onto the next
-    stage, from a parse the plugin did not flag. Everything unusual - a jump
-    over a stage, a step back, a problem being raised, anything already marked
-    for review - still waits for a person, because a countdown is not consent
-    and those are the commands worth reading before they run.
+    Everything the operator can say now qualifies - jumps over a stage, steps
+    back, problems raised - on the explicit instruction that the countdown is
+    the confirmation. The two remaining refusals are not policy: a command with
+    nothing to act on would spend three seconds counting down to an error, and a
+    genuinely low score is the one signal that the words themselves are in doubt.
+    In practice the plugin reports no score at all, so that branch never fires.
     """
     if command.status != VoiceCommand.Status.DETECTED:
         return False
-    if command.intent not in {
+    if not batch:
+        return False
+    if command.intent in {
         VoiceCommand.Intent.MOVE_BATCH,
         VoiceCommand.Intent.ACCEPT_TO_WAREHOUSE,
         VoiceCommand.Intent.COMPLETE_BATCH,
     }:
-        return False
-    if not batch or not batch.current_stage_id:
-        return False
-    target = ProductionStage.objects.filter(code=(command.extracted_data or {}).get("to_stage") or "").first()
-    if not target or target.sequence <= batch.current_stage.sequence:
-        return False
-    return not skipped_stages_between(batch.current_stage, target)
+        if not batch.current_stage_id:
+            return False
+        target = ProductionStage.objects.filter(code=(command.extracted_data or {}).get("to_stage") or "").first()
+        return bool(target) and target.sequence != batch.current_stage.sequence
+    return True
 
 
 def callback_url():

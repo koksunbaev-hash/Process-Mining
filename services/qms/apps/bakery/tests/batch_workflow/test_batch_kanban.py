@@ -1,7 +1,7 @@
 from django.test import TestCase
 from django.urls import reverse
 
-from apps.bakery.models import ProductionBatch
+from apps.bakery.models import BatchStageHistory, ProductionBatch
 from apps.bakery.services import pause_batch
 
 from .factories import create_problem, create_user
@@ -158,5 +158,47 @@ class KanbanTouchFallbackTests(TestCase):
             reverse("bakery:move_batch", args=[batch.pk]),
             {"stage": stage("mixing").pk, "comment": "Возврат на Kanban-доске"},
         )
+        batch.refresh_from_db()
+        self.assertEqual(batch.current_stage.code, "mixing")
+
+
+class KanbanFreeDragTests(TestCase):
+    """Dragging a card names a column, not a step, so it may cross several."""
+
+    def setUp(self):
+        self.user = create_user()
+        self.client.force_login(self.user)
+
+    def drag(self, batch, stage_code, comment="Перенос на Kanban-доске"):
+        return self.client.post(
+            reverse("bakery:move_batch", args=[batch.pk]),
+            {"stage": stage(stage_code).pk, "comment": comment},
+            headers={"x-requested-with": "XMLHttpRequest"},
+        )
+
+    def test_a_card_may_be_dragged_across_several_columns(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        response = self.drag(batch, "warehouse")
+        self.assertIs(response.json()["ok"], True)
+        batch.refresh_from_db()
+        self.assertEqual(batch.current_stage.code, "warehouse")
+
+    def test_a_dragged_jump_records_what_it_stepped_over(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        self.drag(batch, "oven")
+        history = BatchStageHistory.objects.filter(batch=batch, to_stage__code="oven").latest("created_at")
+        self.assertIn("Формовка", history.comment)
+        self.assertIn("Расстойка", history.comment)
+
+    def test_a_card_may_be_dragged_backwards(self):
+        batch = create_batch_at_stage("oven", self.user)
+        self.assertIs(self.drag(batch, "mixing").json()["ok"], True)
+        batch.refresh_from_db()
+        self.assertEqual(batch.current_stage.code, "mixing")
+
+    def test_a_jump_with_no_comment_is_still_refused(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        response = self.drag(batch, "warehouse", comment="")
+        self.assertIs(response.json()["ok"], False)
         batch.refresh_from_db()
         self.assertEqual(batch.current_stage.code, "mixing")

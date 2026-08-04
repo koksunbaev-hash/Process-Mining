@@ -138,7 +138,19 @@ def move_batch_view(request, pk):
         error = f"Партия {batch.batch_number} уже на последнем этапе."
     else:
         try:
-            move_batch(batch, stage, request.user, request.POST.get("comment", ""), require_comment=going_back)
+            # allow_skip: dragging a card names a column, not a step. The two
+            # buttons on a card can only ever reach a neighbour, so this changes
+            # nothing for them; it is what lets a drag cross several columns.
+            # move_batch still refuses a jump with no comment, and the drop
+            # handler always sends one.
+            move_batch(
+                batch,
+                stage,
+                request.user,
+                request.POST.get("comment", ""),
+                require_comment=going_back,
+                allow_skip=True,
+            )
         except (PermissionDenied, ValidationError) as exc:
             # ValidationError.__str__ is repr(list(self)), which would print
             # ['Переход возможен только на соседний этап.'] - brackets, quotes

@@ -342,22 +342,29 @@ class AutoConfirmRuleTests(TestCase):
         batch = create_batch_at_stage("mixing", self.user)
         self.assertTrue(may_auto_confirm(self.command_for(batch, "forming"), batch))
 
-    def test_a_jump_over_a_stage_waits_for_a_person(self):
+    def test_a_jump_over_a_stage_may_run_itself(self):
         batch = create_batch_at_stage("mixing", self.user)
-        self.assertFalse(may_auto_confirm(self.command_for(batch, "warehouse"), batch))
+        self.assertTrue(may_auto_confirm(self.command_for(batch, "warehouse"), batch))
 
-    def test_a_step_back_waits_for_a_person(self):
+    def test_a_step_back_may_run_itself(self):
         batch = create_batch_at_stage("forming", self.user)
-        self.assertFalse(may_auto_confirm(self.command_for(batch, "mixing"), batch))
+        self.assertTrue(may_auto_confirm(self.command_for(batch, "mixing"), batch))
 
-    def test_a_command_flagged_for_review_waits_for_a_person(self):
+    def test_raising_a_problem_may_run_itself(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        self.assertTrue(may_auto_confirm(self.command_for(batch, "forming", intent="create_problem"), batch))
+
+    def test_a_command_flagged_for_review_still_waits_for_a_person(self):
+        # Not policy about the action - a low score means the words themselves
+        # are in doubt, and today's plugin reports no score at all, so this never
+        # actually fires.
         batch = create_batch_at_stage("mixing", self.user)
         command = self.command_for(batch, "forming", status=VoiceCommand.Status.NEEDS_REVIEW)
         self.assertFalse(may_auto_confirm(command, batch))
 
-    def test_raising_a_problem_waits_for_a_person(self):
+    def test_a_move_to_the_stage_it_is_already_on_waits(self):
         batch = create_batch_at_stage("mixing", self.user)
-        self.assertFalse(may_auto_confirm(self.command_for(batch, "forming", intent="create_problem"), batch))
+        self.assertFalse(may_auto_confirm(self.command_for(batch, "mixing"), batch))
 
     def test_an_unknown_stage_waits_for_a_person(self):
         batch = create_batch_at_stage("mixing", self.user)
