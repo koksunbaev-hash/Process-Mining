@@ -34,7 +34,12 @@ class VoiceMqttBridge:
 
         client.on_connect = self._on_connect
         client.on_message = self._on_message
-        client.connect(self.config.mqtt_host, self.config.mqtt_port, keepalive=30)
+        try:
+            client.connect(self.config.mqtt_host, self.config.mqtt_port, keepalive=30)
+        except OSError as exc:
+            logger.warning("MQTT bridge disabled: cannot connect to %s:%s: %s", self.config.mqtt_host, self.config.mqtt_port, exc)
+            return False
+
         client.loop_start()
         self.client = client
         logger.info("MQTT bridge started topic=%s host=%s", self.config.mqtt_topic, self.config.mqtt_host)

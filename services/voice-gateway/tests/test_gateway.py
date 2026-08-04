@@ -91,6 +91,19 @@ def test_missing_kms_config_is_skipped():
     assert result.reason == "kms_not_configured"
 
 
+def test_mqtt_connection_error_does_not_crash_gateway(monkeypatch):
+    from app.mqtt_client import VoiceMqttBridge
+
+    def fail_connect(self, host, port, keepalive):
+        raise OSError("name or service not known")
+
+    monkeypatch.setattr("paho.mqtt.client.Client.connect", fail_connect)
+    bridge = VoiceMqttBridge(settings(mqtt_host="bad-host"))
+
+    assert bridge.start() is False
+    assert bridge.client is None
+
+
 def test_http_endpoint_requires_token(monkeypatch):
     from app import main
 
