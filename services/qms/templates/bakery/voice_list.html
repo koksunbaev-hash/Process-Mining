@@ -10,6 +10,7 @@
     <button class="primary">Фильтр</button>
   </form>
 </section>
+
 <section class="panel">
   <div class="panel-header">
     <h3>Запись</h3>
@@ -26,25 +27,49 @@
     </div>
   </form>
 </section>
+
 <section class="panel">
   <div class="table-wrap"><table>
-    <tr><th>Автор</th><th>Дата</th><th>Длительность</th><th>Связь</th><th>Комментарий</th><th>Аудио</th><th></th></tr>
+    <tr>
+      <th>Автор</th>
+      <th>Дата</th>
+      <th>Длительность</th>
+      <th>Связь</th>
+      <th>Текст</th>
+      <th>Команда</th>
+      <th>Аудио</th>
+      <th></th>
+    </tr>
     {% for item in items %}
     <tr>
       <td>{{ item.created_by|default:"-" }}</td>
       <td>{{ item.created_at }}</td>
       <td>{{ item.duration_seconds|default:"-" }} сек</td>
       <td>{% if item.order %}Заказ №{{ item.order.order_number }}{% elif item.batch %}{{ item.batch.batch_number }}{% elif item.product %}{{ item.product.name }}{% else %}Общий канал{% endif %}</td>
-      <td>{{ item.comment }}</td>
-      <td><audio controls src="{% url 'bakery:voice_audio' item.pk %}"></audio></td>
       <td>
-        <a class="secondary" href="{% url 'bakery:voice_audio' item.pk %}" download>Скачать</a>
+        {% if item.transcript %}<strong>{{ item.transcript }}</strong>{% endif %}
+        {% if item.comment %}<div>{{ item.comment }}</div>{% endif %}
+      </td>
+      <td>
+        {% if item.command %}
+          <div>Статус: {{ item.command.get_status_display }}</div>
+          <div>Действие: {{ item.command.get_intent_display }}</div>
+          {% if item.command.status != "executed" and item.command.status != "rejected" %}
+            <button class="primary voice-command-action" type="button" data-command-id="{{ item.command.pk }}" data-action="confirm">Подтвердить</button>
+            <button class="secondary voice-command-action" type="button" data-command-id="{{ item.command.pk }}" data-action="reject">Отмена</button>
+          {% endif %}
+        {% else %}-{% endif %}
+      </td>
+      <td>{% if item.audio_file %}<audio controls src="{% url 'bakery:voice_audio' item.pk %}"></audio>{% else %}<span class="badge">Текст</span>{% endif %}</td>
+      <td>
+        {% if item.audio_file %}<a class="secondary" href="{% url 'bakery:voice_audio' item.pk %}" download>Скачать</a>{% endif %}
         <form method="post" action="{% url 'bakery:voice_delete' item.pk %}">{% csrf_token %}<button>Удалить</button></form>
       </td>
     </tr>
     {% endfor %}
   </table></div>
 </section>
+
 <script>
 let mediaRecorder, chunks = [], startedAt, timer, selectedMime = "audio/webm", selectedExt = "webm";
 const recordButton = document.getElementById("recordButton");
@@ -103,6 +128,22 @@ document.getElementById("deleteVoice").addEventListener("click", () => {
   preview.hidden = true;
   sendButton.disabled = true;
   timerEl.textContent = "00:00";
+});
+document.querySelectorAll(".voice-command-action").forEach(button => {
+  button.addEventListener("click", async () => {
+    const id = button.dataset.commandId;
+    const action = button.dataset.action;
+    const response = await fetch(`/api/voice-commands/${id}/${action}/`, {
+      method: "POST",
+      headers: {"X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value}
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      alert(data.detail || "Команду не удалось выполнить");
+      return;
+    }
+    window.location.reload();
+  });
 });
 </script>
 {% endblock %}

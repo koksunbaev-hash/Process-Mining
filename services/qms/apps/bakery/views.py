@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Count, Q
-from django.http import FileResponse, JsonResponse
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -360,7 +360,7 @@ def batch_detail(request, pk):
 
 @login_required
 def voice_list(request):
-    items = VoiceMessage.objects.select_related("created_by", "order", "batch", "product", "stage").filter(is_deleted=False)
+    items = VoiceMessage.objects.select_related("created_by", "order", "batch", "product", "stage", "command").filter(is_deleted=False)
     if request.GET.get("date"):
         items = items.filter(created_at__date=request.GET["date"])
     if request.GET.get("order"):
@@ -393,6 +393,8 @@ def voice_audio(request, pk):
     msg = get_object_or_404(VoiceMessage, pk=pk, is_deleted=False)
     if not can_view_voice(request.user, msg):
         raise PermissionDenied
+    if not msg.audio_file:
+        raise Http404("У этого сообщения нет аудиофайла.")
     path = msg.audio_file.path
     content_type = msg.mime_type or mimetypes.guess_type(path)[0] or "application/octet-stream"
     return FileResponse(open(path, "rb"), content_type=content_type)

@@ -1,0 +1,51 @@
+<resources>
+    <string name="app_name">Push-to-Talk</string>
+
+    <string name="status_label">Status</string>
+    <string name="status_idle">Idle</string>
+    <string name="status_preparing">Preparing</string>
+    <string name="status_listening">Listening</string>
+    <string name="status_speech_detected">Speech detected</string>
+    <string name="status_recognizing">Recognizing</string>
+    <string name="status_success">Finished</string>
+    <string name="status_error">Error</string>
+
+    <string name="recognized_text_label">Text:</string>
+    <string name="recognized_text_placeholder">…</string>
+
+    <string name="send_status_sending">Sending text…</string>
+    <string name="send_status_success">✅ Sent</string>
+    <string name="send_status_error">❌ Sending failed</string>
+
+    <string name="mic_button_start">Start recording</string>
+    <string name="mic_button_stop">Stop recording</string>
+    <string name="hint_tap">Tap to talk. Speech start and end are detected automatically.</string>
+    <string name="hint_hold">Hold the button while you speak.</string>
+
+    <string name="permission_title">No microphone access</string>
+    <string name="permission_message">The app needs the audio recording permission to recognize speech. Grant it here or open the app settings.</string>
+    <string name="permission_grant">Grant</string>
+    <string name="permission_open_settings">Open settings</string>
+
+    <string name="error_dismiss">Got it</string>
+    <string name="error_recognizer_unavailable">No speech recognition service on this device</string>
+    <string name="error_microphone_unavailable">Microphone is unavailable or busy</string>
+    <string name="error_permission_denied">Audio recording permission is missing</string>
+    <string name="error_no_speech">No speech recognized. Please try again</string>
+    <string name="error_speech_timeout">Speech did not start — timed out</string>
+    <string name="error_recognizer_busy">Recognizer is busy with a previous session</string>
+    <string name="error_cancelled">Session cancelled</string>
+    <string name="error_speech_client">On-device recognizer error</string>
+    <string name="error_speech_server">Recognition service returned an error</string>
+    <string name="error_language_unavailable">Recognition language is unavailable</string>
+    <string name="error_too_many_requests">Too many requests to the recognition service</string>
+    <string name="error_speech_unknown">Unknown recognition error</string>
+
+    <string name="error_network_connection">No connection to the server</string>
+    <string name="error_network_timeout">Network timeout</string>
+    <string name="error_network_http">The server rejected the request</string>
+    <string name="error_network_server">The server is temporarily unavailable</string>
+    <string name="error_network_serialization">Malformed server response</string>
+    <string name="error_network_unexpected">Failed to send the text</string>
+    <string name="error_empty_text">There is no text to send</string>
+</resources>
