@@ -98,6 +98,15 @@ canvas { max-height: 280px; }
 .kanban-mode .topbar { margin-bottom: 12px; }
 .kanban-mode .topbar h2 { font-size: 32px; line-height: 1.15; }
 .kanban-page { display: grid; gap: 14px; }
+/* The board lives inside [data-kanban-board-shell], which the refresh script
+   replaces wholesale and which carried no styles at all. As a grid item it took
+   min-width: auto - a minimum the size of its contents - so the shell stretched
+   to the board's full 2258px, the board was never narrower than what it held,
+   its overflow-x: auto therefore produced no scrollbar, and .main's
+   overflow-x: hidden cut the last columns off with no way to reach them.
+   Measured at a 1280px window: shell 2258px inside a 1020px main, seventh
+   column unreachable; with this rule, shell 984px and the board scrolls. */
+[data-kanban-board-shell],.kanban-board,.kanban-toolbar { min-width: 0; }
 .kanban-toolbar { background: white; border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); padding: 12px; }
 /* auto-fit rather than seven named tracks: the named version demanded 1140px
    of content and so tore open at 1366x768 - the most ordinary laptop there is -
