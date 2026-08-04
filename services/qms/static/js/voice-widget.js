@@ -340,10 +340,16 @@
   // countdown that nobody stopped is not the same as somebody agreeing.
   let autoConfirmTimer = null;
 
+  // 2 * pi * r for the r=21 circle in the widget markup. Kept in step with the
+  // stroke-dasharray in voice-widget.css.
+  const RING_LENGTH = 131.95;
+
   function cancelAutoConfirm() {
     if (autoConfirmTimer) window.clearInterval(autoConfirmTimer);
     autoConfirmTimer = null;
-    $("confirm").textContent = "Подтвердить";
+    $("ring").hidden = true;
+    $("ring-fill").style.strokeDashoffset = "0";
+    $("confirm-label").textContent = "Подтвердить";
   }
 
   function startAutoConfirm(cmd) {
@@ -353,7 +359,10 @@
       setState("Проверьте и подтвердите");
       return;
     }
-    const deadline = Date.now() + seconds * 1000;
+    const total = seconds * 1000;
+    const deadline = Date.now() + total;
+    $("ring").hidden = false;
+    $("confirm-label").textContent = "Выполнить сейчас";
     const tick = () => {
       const left = deadline - Date.now();
       if (left <= 0) {
@@ -362,8 +371,11 @@
         return;
       }
       const shown = Math.ceil(left / 1000);
+      // Drains clockwise as the wait runs out, so the ring shows how much time
+      // is left to press Отмена rather than how much has passed.
+      $("ring-fill").style.strokeDashoffset = String(RING_LENGTH * (1 - left / total));
+      $("ring-count").textContent = String(shown);
       setState(`Выполню через ${shown} с — «Отмена», чтобы остановить`);
-      $("confirm").textContent = `Подтвердить (${shown})`;
     };
     tick();
     autoConfirmTimer = window.setInterval(tick, 100);

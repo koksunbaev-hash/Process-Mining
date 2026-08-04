@@ -85,6 +85,61 @@
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+/* While the countdown runs the confirm button becomes the ring: it drains over
+   the three seconds and carries the number of seconds left. Still a button -
+   pressing it runs the command straight away instead of waiting out the ring. */
+.voice-widget__go {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.voice-widget__ringwrap {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+}
+
+.voice-widget__ringwrap[hidden] { display: none; }
+
+.voice-widget__ringwrap svg {
+  width: 34px;
+  height: 34px;
+  transform: rotate(-90deg);
+}
+
+.voice-widget__ring-track,
+.voice-widget__ring-fill {
+  fill: none;
+  stroke-width: 5;
+}
+
+.voice-widget__ring-track { stroke: rgba(255, 255, 255, 0.28); }
+
+.voice-widget__ring-fill {
+  stroke: #fff;
+  stroke-linecap: round;
+  /* 2 * pi * r, r = 21 */
+  stroke-dasharray: 131.95;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 0.1s linear;
+}
+
+.voice-widget__ringwrap b {
+  position: absolute;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-widget__ring-fill { transition: none; }
 }
 
 .voice-widget .btn {

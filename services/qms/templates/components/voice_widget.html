@@ -28,7 +28,16 @@
         <p class="voice-widget__warning" data-voice-warning hidden>Низкая уверенность распознавания. Проверьте команду вручную.</p>
         <div class="voice-widget__actions">
           <button type="button" class="btn secondary" data-voice-reject>Отмена</button>
-          <button type="button" class="btn primary" data-voice-confirm>Подтвердить</button>
+          <button type="button" class="btn primary voice-widget__go" data-voice-confirm>
+            <span class="voice-widget__ringwrap" data-voice-ring hidden>
+              <svg viewBox="0 0 48 48" aria-hidden="true">
+                <circle class="voice-widget__ring-track" cx="24" cy="24" r="21"></circle>
+                <circle class="voice-widget__ring-fill" cx="24" cy="24" r="21" data-voice-ring-fill></circle>
+              </svg>
+              <b data-voice-ring-count>3</b>
+            </span>
+            <span data-voice-confirm-label>Подтвердить</span>
+          </button>
         </div>
       </div>
 
