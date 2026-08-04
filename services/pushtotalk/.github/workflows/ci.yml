@@ -1,0 +1,120 @@
+name: CI
+
+# Проверка перед merge: тесты обеих частей, статический анализ и сборка APK.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Установка зависимостей
+        run: pip install -r requirements-dev.txt
+
+      - name: Тесты и покрытие
+        # Порог покрытия (80%) задан в pytest.ini и валит сборку сам.
+        run: pytest
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          if-no-files-found: ignore
+
+  android:
+    name: Android (tests, lint, APK)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit-тесты
+        # Сквозной RealBackendIntegrationTest пропускается: backendUrl не задан.
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Статический анализ
+        run: ./gradlew lintDebug --stacktrace
+
+      - name: Сборка APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest
+            app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: ignore
+
+  end-to-end:
+    name: Сквозной сценарий (клиент → backend → SQLite)
+    runs-on: ubuntu-latest
+    needs: [backend, android]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Запуск backend-а
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8080 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8080/api/health && break
+            sleep 1
+          done
+
+      - name: Проверка контракта (Тест 1 и Тест 2)
+        run: |
+          curl -sf -X POST http://127.0.0.1:8080/api/speech \
+            -H "Content-Type: application/json" -d '{"text":"hello"}' | tee /tmp/post.json
+          grep -q '"status":"ok"' /tmp/post.json
+          curl -sf http://127.0.0.1:8080/api/messages | tee /tmp/messages.json
+          grep -q 'hello' /tmp/messages.json
+
+      - name: Боевой сетевой стек приложения против живого сервера
+        run: |
+          ./gradlew testDebugUnitTest --tests '*RealBackendIntegrationTest*' \
+            -PbackendUrl=http://127.0.0.1:8080/ --stacktrace

@@ -1,8 +1,13 @@
 import json
+import hmac
+from decimal import Decimal
 
+from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.http import Http404
+from django.utils import timezone
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied as ApiPermissionDenied, ValidationError as ApiValidationError
@@ -43,11 +48,19 @@ from apps.process_mining.services import safe_record_process_event
 from .voice_process_mining import (
     ConflictError,
     confirm_voice_command,
+    create_voice_command,
     handle_process_mining_callback,
     reject_voice_command,
     send_voice_to_process_mining,
     verify_process_mining_signature,
 )
+
+
+def _bearer_token(request):
+    value = request.headers.get("Authorization", "")
+    if value.lower().startswith("bearer "):
+        return value.split(" ", 1)[1].strip()
+    return request.headers.get("X-PushToTalk-Token", "").strip()
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -409,6 +422,66 @@ class VoiceCommandRejectView(APIView):
         except PermissionDenied as exc:
             raise ApiPermissionDenied(str(exc))
         return Response({"id": command.pk, "status": command.status})
+
+
+class PushToTalkTextCommandView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        expected_token = getattr(settings, "PUSHTOTALK_API_TOKEN", "")
+        if not expected_token:
+            return Response({"detail": "PUSHTOTALK_API_TOKEN не настроен."}, status=503)
+        if not hmac.compare_digest(_bearer_token(request), expected_token):
+            raise ApiPermissionDenied("Неверный PushToTalk API token.")
+
+        text = str(request.data.get("text", "")).strip()
+        if not text:
+            return Response({"detail": "text обязателен."}, status=400)
+
+        client_request_id = str(request.data.get("client_request_id", "")).strip() or None
+        if client_request_id:
+            existing = VoiceMessage.objects.filter(client_request_id=client_request_id).first()
+            if existing:
+                command = getattr(existing, "command", None)
+                return Response(
+                    {
+                        "status": "ok",
+                        "voice_message_id": existing.pk,
+                        "command_id": command.pk if command else None,
+                        "duplicate": True,
+                    }
+                )
+
+        user = None
+        username = getattr(settings, "PUSHTOTALK_DEFAULT_USERNAME", "")
+        if username:
+            user = get_user_model().objects.filter(username=username).first()
+
+        confidence = Decimal(str(request.data.get("confidence") or getattr(settings, "PUSHTOTALK_COMMAND_CONFIDENCE", 0.90)))
+        with transaction.atomic():
+            voice = VoiceMessage.objects.create(
+                audio_file="",
+                original_filename="pushtotalk-text",
+                mime_type="text/plain",
+                file_size=0,
+                created_by=user,
+                transcript=text,
+                transcription_status=VoiceMessage.TranscriptionStatus.COMPLETED,
+                confidence=confidence,
+                client_request_id=client_request_id,
+                processed_at=timezone.now(),
+                comment=str(request.data.get("source", "pushtotalk")),
+            )
+            command = create_voice_command(voice)
+        return Response(
+            {
+                "status": "ok",
+                "voice_message_id": voice.pk,
+                "command_id": command.pk if command else None,
+                "command_status": command.status if command else None,
+            },
+            status=201,
+        )
 
 
 class FinishedGoodsStockViewSet(viewsets.ModelViewSet):

@@ -18,11 +18,13 @@ staticfiles/
 .mypy_cache/
 .coverage
 htmlcov/
+backups/
 
 # smoke-test artifact
 process_map.svg
 
 # local agent settings
+.claude/
 .claude/settings.local.json
 
 # TLS certificates are generated per host, never committed

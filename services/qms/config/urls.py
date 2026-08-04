@@ -25,6 +25,7 @@ from apps.bakery.api import (
     VoiceCommandConfirmView,
     VoiceCommandRejectView,
     VoiceMessageViewSet,
+    PushToTalkTextCommandView,
 )
 from apps.inspections.api import (
     InspectionCardViewSet,
@@ -85,6 +86,7 @@ urlpatterns = [
     path("api/process-mining/callback/", ProcessMiningCallbackView.as_view(), name="process-mining-callback"),
     path("api/voice-commands/<int:pk>/confirm/", VoiceCommandConfirmView.as_view(), name="voice-command-confirm"),
     path("api/voice-commands/<int:pk>/reject/", VoiceCommandRejectView.as_view(), name="voice-command-reject"),
+    path("api/pushtotalk/commands/", PushToTalkTextCommandView.as_view(), name="pushtotalk-command"),
     path("api/kanban-demo/create/", KanbanDemoCreateView.as_view(), name="kanban-demo-create"),
     path("api/kanban-demo/<int:pk>/status/", KanbanDemoStatusView.as_view(), name="kanban-demo-status"),
     path("api/kanban-demo/<int:pk>/<str:action>/", KanbanDemoActionView.as_view(), name="kanban-demo-action"),
