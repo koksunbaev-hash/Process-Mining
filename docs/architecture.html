@@ -1,689 +1,498 @@
-<title>Bakery QMS + Process Mining — архитектура</title>
+<title>Bakery QMS × Process Mining</title>
 
 <style>
-/* ============================================================ ТОКЕНЫ ==== */
+/* Единый тёмный мир — это сцена презентации, не документ.
+   Тёплый градиент = цех, холодный = аналитика. */
 :root{
-  --ink:#0A1418; --slab:#101F24; --slab2:#16292F; --rule:#1C333A;
-  --bone:#E6EEF0; --ash:#8399A0; --dim:#5D7076;
-  --ember:#F0A23C;      /* тёплый: то, что происходит в цеху */
-  --signal:#56C7E6;     /* холодный: то, что об этом узнаётся */
-  --good:#5FD08A; --warn:#E8B54B; --bad:#F2766B;
-  --shadow:0 18px 50px rgba(0,0,0,.45);
-  --display:"Segoe UI","Helvetica Neue",Helvetica,Arial,sans-serif;
-  --body:Charter,"Bitstream Charter","Sitka Text",Cambria,Georgia,serif;
-  --mono:"SF Mono","Cascadia Mono","JetBrains Mono",Consolas,"Roboto Mono",monospace;
-  --measure:66ch;
+  --bg:#06080C; --text:#F3F6F8; --mut:#8C98A6; --faint:#5B6672;
+  --glass:rgba(255,255,255,.035); --edge:rgba(255,255,255,.085);
+  --amber:#FFB65C; --rose:#FF7A6B; --cyan:#5AD1F0; --blue:#6E8BFF;
+  --gw:linear-gradient(92deg,var(--amber),var(--rose));
+  --gc:linear-gradient(92deg,var(--cyan),var(--blue));
+  --disp:"Segoe UI Variable Display","Segoe UI",-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --mono:"Cascadia Mono","SF Mono",Consolas,"Roboto Mono",monospace;
 }
-@media (prefers-color-scheme:light){
-  :root{
-    --ink:#ECF1F1; --slab:#FFFFFF; --slab2:#F4F8F8; --rule:#D3DFDF;
-    --bone:#0A1418; --ash:#4E6268; --dim:#6E8288;
-    --ember:#8F5307; --signal:#12657F;
-    --good:#1B7F4B; --warn:#8A6207; --bad:#B03328;
-    --shadow:0 14px 40px rgba(16,32,38,.10);
-  }
-}
-:root[data-theme="dark"]{
-  --ink:#0A1418; --slab:#101F24; --slab2:#16292F; --rule:#1C333A;
-  --bone:#E6EEF0; --ash:#8399A0; --dim:#5D7076;
-  --ember:#F0A23C; --signal:#56C7E6;
-  --good:#5FD08A; --warn:#E8B54B; --bad:#F2766B;
-  --shadow:0 18px 50px rgba(0,0,0,.45);
-}
-:root[data-theme="light"]{
-  --ink:#ECF1F1; --slab:#FFFFFF; --slab2:#F4F8F8; --rule:#D3DFDF;
-  --bone:#0A1418; --ash:#4E6268; --dim:#6E8288;
-  --ember:#8F5307; --signal:#12657F;
-  --good:#1B7F4B; --warn:#8A6207; --bad:#B03328;
-  --shadow:0 14px 40px rgba(16,32,38,.10);
-}
-
 *{box-sizing:border-box}
 body{margin:0}
 .page{
-  background:var(--ink); color:var(--bone);
-  font-family:var(--body); font-size:17px; line-height:1.62;
-  -webkit-text-size-adjust:100%; overflow-x:hidden;
+  background:var(--bg); color:var(--text);
+  font-family:var(--disp); font-size:17px; line-height:1.6;
+  overflow-x:hidden; -webkit-text-size-adjust:100%;
 }
-h1,h2,h3,h4{font-family:var(--display); font-weight:700; text-wrap:balance; margin:0}
+h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.03em; text-wrap:balance}
 p{margin:0}
-a{color:inherit}
-:focus-visible{outline:2px solid var(--signal); outline-offset:3px; border-radius:3px}
+.wrap{max-width:1140px; margin:0 auto; padding:0 24px}
+section{padding:110px 0; position:relative}
+@media (max-width:760px){ section{padding:70px 0} }
+:focus-visible{outline:2px solid var(--cyan); outline-offset:3px; border-radius:4px}
 
-/* ============================================================ СЕТКА ==== */
-.wrap{max-width:1180px; margin:0 auto; padding:0 22px}
-.rail{display:grid; grid-template-columns:64px minmax(0,1fr); gap:0}
-@media (max-width:820px){ .rail{grid-template-columns:28px minmax(0,1fr)} }
-
-/* хребет конвейера: события текут сверху вниз, разделы висят станциями */
-.spine{position:relative}
-.spine::before{
-  content:""; position:absolute; left:19px; top:0; bottom:0; width:2px;
-  background:linear-gradient(180deg,transparent,var(--rule) 6%,var(--rule) 94%,transparent);
-}
-@media (max-width:820px){ .spine::before{left:9px} }
-.node{
-  position:absolute; left:11px; width:18px; height:18px; border-radius:50%;
-  background:var(--ink); border:2px solid var(--rule); margin-top:16px;
-  transition:border-color .5s ease, box-shadow .5s ease;
-}
-@media (max-width:820px){ .node{left:1px} }
-.seen .node{border-color:var(--signal); box-shadow:0 0 0 5px color-mix(in srgb,var(--signal) 14%,transparent)}
-
-section{padding:76px 0; position:relative}
-@media (max-width:820px){ section{padding:52px 0} }
-.col{max-width:var(--measure)}
-
-/* ======================================================= ТИПОГРАФИКА ==== */
 .eyebrow{
-  font-family:var(--mono); font-size:11.5px; letter-spacing:.22em; text-transform:uppercase;
-  color:var(--dim); display:block; margin-bottom:14px;
+  font-family:var(--mono); font-size:12px; letter-spacing:.28em; text-transform:uppercase;
+  color:var(--faint); display:block; margin-bottom:18px;
 }
-h2{font-size:clamp(27px,3.4vw,40px); line-height:1.12; letter-spacing:-.022em; margin-bottom:18px}
-h3{font-size:19px; letter-spacing:-.01em; margin-bottom:7px}
-h4{font-family:var(--mono); font-size:11.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--dim); font-weight:600}
-.lead{font-size:20px; color:var(--ash); margin-bottom:26px}
-.stack>*+*{margin-top:20px}
-.muted{color:var(--ash)}
-code,.mono{font-family:var(--mono); font-size:.88em}
-code{background:var(--slab2); padding:1px 6px; border-radius:4px; color:var(--signal)}
-.warm{color:var(--ember)} .cool{color:var(--signal)}
-strong{font-weight:600; color:var(--bone)}
+h2{font-size:clamp(30px,4.6vw,54px); line-height:1.06; margin-bottom:16px}
+.sub{color:var(--mut); font-size:clamp(16px,1.5vw,19px); max-width:56ch}
+.gtw{background:var(--gw); -webkit-background-clip:text; background-clip:text; color:transparent}
+.gtc{background:var(--gc); -webkit-background-clip:text; background-clip:text; color:transparent}
 
-/* ============================================================= ГЕРОЙ ==== */
-.hero{padding:clamp(70px,13vh,130px) 0 60px; position:relative; overflow:hidden}
-.hero canvas{position:absolute; inset:0; width:100%; height:100%; opacity:.5; pointer-events:none}
-.hero .inner{position:relative}
-.hero h1{
-  font-size:clamp(38px,7vw,84px); line-height:1.02; letter-spacing:-.038em; max-width:16ch;
+/* ------------------------------------------------------------- герой ---- */
+.hero{min-height:92vh; display:grid; place-items:center; text-align:center; overflow:hidden; position:relative; padding:80px 0}
+.orb{position:absolute; border-radius:50%; filter:blur(90px); opacity:.5; pointer-events:none}
+.orb.a{width:520px; height:520px; left:-140px; top:-80px;
+  background:radial-gradient(circle,rgba(255,150,90,.55),transparent 65%);
+  animation:drift 16s ease-in-out infinite alternate}
+.orb.b{width:560px; height:560px; right:-160px; bottom:-120px;
+  background:radial-gradient(circle,rgba(90,170,255,.5),transparent 65%);
+  animation:drift 19s ease-in-out infinite alternate-reverse}
+@keyframes drift{to{transform:translate(60px,40px) scale(1.12)}}
+.hero .in{position:relative; max-width:900px; padding:0 24px}
+.hero .eyebrow{margin-bottom:26px}
+.hero h1{font-size:clamp(46px,9vw,110px); line-height:.98}
+.hero h1 span{display:block; opacity:0; transform:translateY(26px); animation:up .9s cubic-bezier(.16,.8,.26,1) forwards}
+.hero h1 span:nth-child(2){animation-delay:.14s}
+.hero .sub{margin:30px auto 0; opacity:0; animation:up .9s cubic-bezier(.16,.8,.26,1) .34s forwards}
+.hero .chips{margin-top:42px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;
+  opacity:0; animation:up .9s cubic-bezier(.16,.8,.26,1) .5s forwards}
+@keyframes up{to{opacity:1; transform:none}}
+.chip{
+  font-family:var(--mono); font-size:12px; letter-spacing:.08em;
+  padding:8px 16px; border-radius:999px; color:var(--mut);
+  background:var(--glass); border:1px solid var(--edge); backdrop-filter:blur(6px);
 }
-.hero h1 .l{display:block; opacity:0; transform:translateY(18px); animation:rise .85s cubic-bezier(.2,.7,.3,1) forwards}
-.hero h1 .l:nth-child(2){animation-delay:.11s}
-.hero h1 .l:nth-child(3){animation-delay:.22s}
-.hero .sub{
-  margin-top:28px; max-width:56ch; font-size:19px; color:var(--ash);
-  opacity:0; animation:rise .85s cubic-bezier(.2,.7,.3,1) .36s forwards;
-}
-.hero .meta{
-  margin-top:38px; display:flex; flex-wrap:wrap; gap:10px;
-  opacity:0; animation:rise .85s cubic-bezier(.2,.7,.3,1) .5s forwards;
-}
-@keyframes rise{to{opacity:1; transform:none}}
-.tag{
-  font-family:var(--mono); font-size:11.5px; letter-spacing:.1em; text-transform:uppercase;
-  border:1px solid var(--rule); border-radius:999px; padding:6px 13px; color:var(--ash);
-}
-.tag.w{border-color:color-mix(in srgb,var(--ember) 42%,transparent); color:var(--ember)}
-.tag.c{border-color:color-mix(in srgb,var(--signal) 42%,transparent); color:var(--signal)}
+.scrollcue{position:absolute; bottom:26px; left:50%; transform:translateX(-50%); color:var(--faint);
+  font-family:var(--mono); font-size:11px; letter-spacing:.3em; text-transform:uppercase;
+  animation:cue 2.2s ease-in-out infinite}
+@keyframes cue{50%{transform:translate(-50%,8px); opacity:.4}}
 
-/* ====================================================== КАРТЫ, СЕТКИ ==== */
-.grid{display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
-.card{
-  background:var(--slab); border:1px solid var(--rule); border-radius:12px; padding:20px;
-  box-shadow:var(--shadow);
+/* ------------------------------------------------- два мира + контракт ---- */
+.duo{display:grid; grid-template-columns:1fr 150px 1fr; gap:0; align-items:stretch; margin-top:54px}
+@media (max-width:900px){ .duo{grid-template-columns:1fr; gap:22px} }
+.world{
+  border-radius:22px; padding:34px 30px; background:var(--glass);
+  border:1px solid var(--edge); backdrop-filter:blur(8px); position:relative; overflow:hidden;
 }
-.card h3{margin-bottom:8px}
-.card p{font-size:15.5px; color:var(--ash); line-height:1.55}
-.side{border-left:3px solid var(--rule)}
-.side.w{border-left-color:var(--ember)}
-.side.c{border-left-color:var(--signal)}
+.world::before{content:""; position:absolute; inset:0 0 auto 0; height:3px}
+.world.w::before{background:var(--gw)} .world.c::before{background:var(--gc)}
+.world h3{font-size:26px; margin:6px 0 4px}
+.world .role{font-family:var(--mono); font-size:11.5px; letter-spacing:.22em; text-transform:uppercase; color:var(--faint)}
+.world .tech{font-family:var(--mono); font-size:12.5px; margin-top:2px}
+.world.w .tech{color:var(--amber)} .world.c .tech{color:var(--cyan)}
+.world ul{list-style:none; margin:20px 0 0; padding:0; display:grid; gap:11px}
+.world li{color:var(--mut); font-size:15.5px; padding-left:20px; position:relative; line-height:1.5}
+.world li::before{content:""; position:absolute; left:0; top:.55em; width:8px; height:8px; border-radius:50%}
+.world.w li::before{background:var(--gw)} .world.c li::before{background:var(--gc)}
 
-.figure{
-  margin:30px 0; background:var(--slab); border:1px solid var(--rule);
-  border-radius:14px; padding:22px; box-shadow:var(--shadow);
+.link{position:relative; display:grid; place-items:center; min-height:120px}
+.link svg{width:100%; height:120px; overflow:visible}
+@media (max-width:900px){ .link{min-height:84px} .link svg{height:84px; transform:rotate(90deg); width:84px} }
+.link .lbl{
+  position:absolute; top:calc(50% + 26px); left:50%; transform:translateX(-50%);
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--faint); white-space:nowrap;
 }
-.figure .cap{
-  font-family:var(--mono); font-size:12px; color:var(--dim); margin-top:16px;
-  padding-top:14px; border-top:1px solid var(--rule); line-height:1.55;
-}
-.scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+@media (max-width:900px){ .link .lbl{display:none} }
+.dotflow{fill:var(--cyan)}
+.dotflow.hot{fill:var(--amber)}
 
-/* ============================================================= ЭТАПЫ ==== */
-.chain{display:flex; gap:8px; min-width:660px; align-items:stretch}
-.stage{
-  flex:1; background:var(--slab2); border:1px solid var(--rule); border-radius:10px;
-  padding:14px 12px; cursor:pointer; text-align:left;
-  font:inherit; color:inherit; transition:border-color .22s, transform .22s, background .22s;
+/* --------------------------------------------------------- путь события ---- */
+.path{margin-top:60px; position:relative}
+.track{position:relative; height:3px; background:rgba(255,255,255,.09); border-radius:3px; margin:0 7% 46px}
+.track .fill{position:absolute; inset:0 auto 0 0; width:0%; border-radius:3px; background:var(--gc);
+  transition:width .9s cubic-bezier(.4,0,.2,1)}
+.track .puck{
+  position:absolute; top:50%; left:0%; width:20px; height:20px; border-radius:50%;
+  transform:translate(-50%,-50%); background:var(--cyan);
+  box-shadow:0 0 24px 6px rgba(90,209,240,.55);
+  transition:left .9s cubic-bezier(.4,0,.2,1), background .4s;
 }
-.stage:hover,.stage[aria-pressed="true"]{border-color:var(--ember); transform:translateY(-3px)}
-.stage[aria-pressed="true"]{background:color-mix(in srgb,var(--ember) 12%,var(--slab2))}
-.stage .n{font-family:var(--mono); font-size:11px; color:var(--dim); display:block}
-.stage .t{font-family:var(--display); font-weight:700; font-size:15px; display:block; margin-top:5px}
-.stage .c{font-family:var(--mono); font-size:11px; color:var(--ember); display:block; margin-top:3px}
-.stage-note{
-  margin-top:16px; min-height:52px; font-size:15.5px; color:var(--ash);
-  border-left:3px solid var(--ember); padding-left:14px;
+.track .puck.hot{background:var(--amber); box-shadow:0 0 24px 6px rgba(255,182,92,.5)}
+.steps{display:grid; grid-template-columns:repeat(5,1fr); gap:12px}
+@media (max-width:860px){ .steps{grid-template-columns:repeat(2,1fr)} .track{display:none} }
+.step{
+  border-radius:16px; padding:20px 18px; background:var(--glass); border:1px solid var(--edge);
+  opacity:.38; transform:translateY(6px);
+  transition:opacity .5s, transform .5s, border-color .5s;
+}
+.step.on{opacity:1; transform:none; border-color:rgba(90,209,240,.5)}
+.step.on.hot{border-color:rgba(255,182,92,.55)}
+.step .k{font-family:var(--mono); font-size:11px; color:var(--faint); letter-spacing:.16em}
+.step h3{font-size:16.5px; margin:8px 0 6px; letter-spacing:-.01em}
+.step p{font-size:13.5px; color:var(--mut); line-height:1.5}
+.saybar{margin-top:30px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; justify-content:center}
+.say{
+  font-family:var(--mono); font-size:13.5px; color:var(--cyan); min-height:1.5em; text-align:center;
 }
 
-/* ========================================================== КОНВЕЙЕР ==== */
-.pipe{display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); min-width:640px}
-.st{
-  background:var(--slab2); border:1px solid var(--rule); border-radius:10px; padding:14px;
-  position:relative; opacity:.42; transition:opacity .4s, border-color .4s, transform .4s;
+/* ---------------------------------------------------------------- голос ---- */
+.voice{text-align:center}
+.mic{
+  margin:44px auto 0; width:min(720px,100%); border-radius:22px; padding:38px 30px 34px;
+  background:var(--glass); border:1px solid var(--edge); backdrop-filter:blur(8px);
 }
-.st.on{opacity:1; border-color:var(--signal); transform:translateY(-3px)}
-.st.done{opacity:.85; border-color:color-mix(in srgb,var(--good) 55%,transparent)}
-.st h4{color:var(--dim); margin-bottom:6px}
-.st.on h4{color:var(--signal)}
-.st p{font-size:13.5px; color:var(--ash); line-height:1.5}
-.st .who{
-  position:absolute; top:-9px; right:10px; font-family:var(--mono); font-size:10px;
-  letter-spacing:.1em; text-transform:uppercase; padding:2px 7px; border-radius:999px;
-  background:var(--slab); border:1px solid var(--rule); color:var(--dim);
+.phrase{
+  font-family:var(--mono); font-size:clamp(16px,2.6vw,24px); min-height:2.6em;
+  color:var(--text); line-height:1.45;
 }
-.st.qms .who{color:var(--ember); border-color:color-mix(in srgb,var(--ember) 45%,transparent)}
-.st.pm .who{color:var(--signal); border-color:color-mix(in srgb,var(--signal) 45%,transparent)}
-.runbar{display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:18px}
-.btn{
-  font-family:var(--mono); font-size:12.5px; letter-spacing:.08em; text-transform:uppercase;
-  background:var(--signal); color:var(--ink); border:0; border-radius:8px;
-  padding:11px 18px; cursor:pointer; font-weight:700; transition:filter .2s, transform .2s;
+.phrase .caret{display:inline-block; width:.55em; border-bottom:2px solid var(--amber);
+  animation:blink 1s steps(1) infinite; transform:translateY(-2px)}
+@keyframes blink{50%{opacity:0}}
+.voicesteps{display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:28px}
+.vs{
+  font-size:13.5px; color:var(--mut); padding:9px 16px; border-radius:999px;
+  background:rgba(255,255,255,.05); border:1px solid var(--edge);
+  opacity:0; transform:translateY(8px); transition:opacity .5s, transform .5s;
 }
-.btn:hover{filter:brightness(1.1); transform:translateY(-1px)}
-.btn.ghost{background:transparent; color:var(--ash); border:1px solid var(--rule)}
-.runbar .say{font-size:14.5px; color:var(--ash); flex:1; min-width:220px}
+.vs.on{opacity:1; transform:none}
+.vs b{color:var(--text); font-weight:600}
+.ringnote{margin-top:26px; color:var(--faint); font-size:14px}
+.ringnote b{color:var(--amber); font-weight:600}
 
-/* ============================================================ ЦИФРЫ ==== */
-.figs{display:grid; gap:1px; background:var(--rule); border:1px solid var(--rule);
-      border-radius:12px; overflow:hidden; grid-template-columns:repeat(auto-fit,minmax(158px,1fr))}
-.fig{background:var(--slab); padding:20px 18px}
-.fig b{
-  display:block; font-family:var(--display); font-weight:700; font-size:31px;
-  letter-spacing:-.03em; font-variant-numeric:tabular-nums; line-height:1;
+/* ----------------------------------------------------------------- карта ---- */
+.mapbox{
+  margin-top:50px; border-radius:22px; padding:30px 22px 18px;
+  background:var(--glass); border:1px solid var(--edge); overflow-x:auto;
 }
-.fig span{display:block; margin-top:8px; font-size:13.5px; color:var(--ash); line-height:1.45}
+.mapbox svg{display:block; margin:0 auto}
+.flow{stroke-dasharray:7 11; animation:flow 1.6s linear infinite}
+.flow.slow{animation-duration:2.6s}
+@keyframes flow{to{stroke-dashoffset:-18}}
+.maplegend{display:flex; gap:26px; justify-content:center; flex-wrap:wrap; margin-top:18px;
+  font-family:var(--mono); font-size:12px; color:var(--faint)}
+.maplegend i{display:inline-block; width:22px; height:4px; border-radius:2px; vertical-align:middle; margin-right:8px}
+.maplegend .lw i{background:var(--amber)} .maplegend .lc i{background:var(--cyan)}
 
-/* ============================================================ ТАБЛИЦА ==== */
-table{width:100%; border-collapse:collapse; min-width:520px}
-th,td{text-align:left; padding:11px 12px; border-bottom:1px solid var(--rule); font-size:14.5px; vertical-align:top}
-th{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); font-weight:600}
-td.num{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--signal)}
+/* ---------------------------------------------------------------- цифры ---- */
+.stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:54px}
+@media (max-width:860px){ .stats{grid-template-columns:repeat(2,1fr)} }
+.stat{
+  border-radius:18px; padding:30px 22px; text-align:center;
+  background:var(--glass); border:1px solid var(--edge);
+}
+.stat b{
+  display:block; font-size:clamp(38px,5vw,58px); font-weight:800; letter-spacing:-.04em;
+  font-variant-numeric:tabular-nums; line-height:1;
+}
+.stat.w b{background:var(--gw); -webkit-background-clip:text; background-clip:text; color:transparent}
+.stat.c b{background:var(--gc); -webkit-background-clip:text; background-clip:text; color:transparent}
+.stat span{display:block; margin-top:12px; color:var(--mut); font-size:14px}
 
-/* ============================================================ ПРОЧЕЕ ==== */
-.limits{display:grid; gap:12px}
-.limit{display:grid; grid-template-columns:auto 1fr; gap:14px; align-items:start;
-       background:var(--slab); border:1px solid var(--rule); border-radius:10px; padding:16px 18px}
-.dot{width:9px; height:9px; border-radius:50%; margin-top:8px}
-.dot.b{background:var(--bad)} .dot.w{background:var(--warn)} .dot.g{background:var(--good)}
-.limit h3{font-size:16px; margin-bottom:4px}
-.limit p{font-size:14.5px; color:var(--ash); line-height:1.5}
+/* ---------------------------------------------------------------- финал ---- */
+.fin{text-align:center; padding-bottom:140px}
+.fin h2{font-size:clamp(32px,5.4vw,64px)}
+footer{border-top:1px solid var(--edge); padding:34px 0 54px; color:var(--faint); font-size:13.5px; text-align:center}
 
-.reveal{opacity:0; transform:translateY(22px); transition:opacity .7s cubic-bezier(.2,.7,.3,1), transform .7s cubic-bezier(.2,.7,.3,1)}
+.reveal{opacity:0; transform:translateY(26px); transition:opacity .8s cubic-bezier(.16,.8,.26,1), transform .8s cubic-bezier(.16,.8,.26,1)}
 .reveal.seen{opacity:1; transform:none}
 
-footer{border-top:1px solid var(--rule); padding:38px 0 60px; color:var(--dim); font-size:14px}
-
 @media (prefers-reduced-motion:reduce){
-  *{animation-duration:.001s !important; transition-duration:.001s !important}
-  .reveal{opacity:1; transform:none}
-  .hero h1 .l,.hero .sub,.hero .meta{opacity:1; animation:none}
+  *{animation-duration:.001s !important; animation-iteration-count:1 !important; transition-duration:.001s !important}
+  .reveal,.hero h1 span,.hero .sub,.hero .chips{opacity:1; transform:none; animation:none}
+  .step{opacity:1; transform:none}
+  .vs{opacity:1; transform:none}
+  .scrollcue{display:none}
 }
 </style>
 
 <div class="page">
 
-<!-- ================================================================ ГЕРОЙ -->
+<!-- ГЕРОЙ -->
 <header class="hero">
-  <canvas id="bg" aria-hidden="true"></canvas>
-  <div class="wrap inner">
-    <h1><span class="l">Завод печёт хлеб.</span><span class="l">Система записывает,</span><span class="l">как именно.</span></h1>
-    <p class="sub">Два приложения, которые делят репозиторий, но не процесс. Одно ведёт производство и знает,
-      где сейчас каждая партия. Второе принимает от него поток событий и рисует, как работа шла на самом деле —
-      с задержками, возвратами и петлями, которых нет ни в одном регламенте.</p>
-    <div class="meta">
-      <span class="tag w">QMS · Django 5 · PostgreSQL</span>
-      <span class="tag c">Аналитика · FastAPI · pm4py</span>
-      <span class="tag">Распознавание речи · faster-whisper</span>
-      <span class="tag">TLS · nginx</span>
+  <div class="orb a"></div><div class="orb b"></div>
+  <div class="in">
+    <span class="eyebrow">Bakery QMS × Process Mining</span>
+    <h1><span>Печём хлеб.</span><span class="gtc">Видим процесс.</span></h1>
+    <p class="sub">Одна система ведёт производство — заказы, партии, качество.
+      Вторая слушает поток её событий и рисует, как работа шла на самом деле:
+      с очередями, возвратами и петлями, которых нет ни в одном регламенте.</p>
+    <div class="chips">
+      <span class="chip">Django 5</span>
+      <span class="chip">FastAPI</span>
+      <span class="chip">pm4py</span>
+      <span class="chip">faster-whisper</span>
+      <span class="chip">PostgreSQL</span>
     </div>
   </div>
+  <span class="scrollcue">Листайте</span>
 </header>
 
-<div class="wrap">
-<div class="rail">
-  <div></div>
-  <div class="spine">
+<!-- ДВА МИРА -->
+<section>
+  <div class="wrap reveal">
+    <span class="eyebrow">Устройство</span>
+    <h2>Два сервиса. <span class="gtw">Цех</span> и <span class="gtc">зеркало</span>.</h2>
+    <p class="sub">Общей базы нет и не будет — только поток событий по HTTP.
+      Тяжёлый расчёт карты никогда не тронет приём заказов, а аналитику можно
+      перезапускать в любой момент: она не хранит ничего, что нельзя пересчитать.</p>
 
-    <!-- ======================================================= ЧТО ЭТО -->
-    <section class="reveal"><div class="node"></div>
-      <span class="eyebrow">Устройство</span>
-      <h2>Почему это два приложения, а не одно</h2>
-      <div class="col stack">
-        <p>Они делят репозиторий, один <code>.env</code> и одну команду запуска. Общей базы у них нет
-          и быть не должно — связаны они только HTTP-контрактом.</p>
-        <p>Причина простая. QMS владеет бизнес-данными и обязан продолжать принимать заказы даже тогда,
-          когда построение карты по большому журналу занимает целое ядро. Аналитика не хранит ничего,
-          что нельзя пересчитать, и её можно перезапускать когда угодно. Объединён жизненный цикл,
-          а не процессы.</p>
+    <div class="duo">
+      <div class="world w">
+        <span class="role">Источник событий</span>
+        <h3>QMS</h3>
+        <p class="tech">Django · PostgreSQL</p>
+        <ul>
+          <li>Заказы и производственные партии на канбан-доске</li>
+          <li>Семь этапов: очередь → замес → формовка → расстойка → печь → склад → готово</li>
+          <li>Голосовые команды прямо от печи</li>
+          <li>Каждый переход партии — событие с автором и временем</li>
+        </ul>
       </div>
-      <div class="grid" style="margin-top:26px">
-        <div class="card side w">
-          <h4 style="margin-bottom:10px">Тёплая сторона</h4>
-          <h3>QMS</h3>
-          <p>Заказы, производственные партии, семь этапов, канбан-доска, качество, склад, голосовые команды.
-            Здесь работают люди и здесь рождаются события.</p>
-        </div>
-        <div class="card side c">
-          <h4 style="margin-bottom:10px">Холодная сторона</h4>
-          <h3>Process Mining</h3>
-          <p>27 эндпоинтов. Принимает событийные журналы, строит карты процессов, считает варианты,
-            узкие места и длительности. Ничего не решает — только показывает.</p>
-        </div>
-      </div>
-    </section>
 
-    <!-- ========================================================= ЭТАПЫ -->
-    <section class="reveal"><div class="node"></div>
-      <span class="eyebrow">Производство</span>
-      <h2>Семь этапов, по которым идёт партия</h2>
-      <p class="lead col">Нажмите на этап — что там происходит и что при этом записывается.</p>
-      <div class="figure">
-        <div class="scroll">
-          <div class="chain" id="chain"></div>
-        </div>
-        <p class="stage-note" id="stageNote">Партия движется по цепочке. Каждый переход — событие
-          с меткой времени, автором и комментарием; из них потом и собирается карта процесса.</p>
-        <p class="cap">Переход возможен на соседний этап — или сразу на любой, если это сказано голосом
-          либо карточка перетащена через несколько колонок. Такой скачок требует комментария,
-          а пропущенные этапы записываются в историю поимённо.</p>
+      <div class="link" aria-hidden="true">
+        <svg viewBox="0 0 150 120">
+          <path id="lk" d="M 4 60 C 50 60, 100 60, 146 60" fill="none"
+                stroke="rgba(255,255,255,.14)" stroke-width="2"/>
+          <circle class="dotflow hot" r="4"><animateMotion dur="2.8s" repeatCount="indefinite"><mpath href="#lk"/></animateMotion></circle>
+          <circle class="dotflow" r="4"><animateMotion dur="2.8s" begin="0.9s" repeatCount="indefinite"><mpath href="#lk"/></animateMotion></circle>
+          <circle class="dotflow hot" r="4"><animateMotion dur="2.8s" begin="1.8s" repeatCount="indefinite"><mpath href="#lk"/></animateMotion></circle>
+        </svg>
+        <span class="lbl">события · идемпотентно</span>
       </div>
-    </section>
 
-    <!-- ====================================================== КОНВЕЙЕР -->
-    <section class="reveal"><div class="node"></div>
-      <span class="eyebrow">Главное</span>
-      <h2>Путь одного события</h2>
-      <p class="lead col">Оператор двигает партию на доске. Дальше — восемь шагов до точки на карте процесса.
-        Запустите, чтобы пройти их по очереди.</p>
-      <div class="figure">
-        <div class="scroll"><div class="pipe" id="pipe"></div></div>
-        <div class="runbar">
-          <button class="btn" id="run">Проследить событие</button>
-          <button class="btn ghost" id="reset">Сбросить</button>
-          <span class="say" id="say">Готово к запуску.</span>
-        </div>
-        <p class="cap">Ключевое свойство — доставка идемпотентна с обеих сторон. Событие с уже известным
-          <code>event_id</code> считается дубликатом, а не импортируется второй раз. Без этого любой повтор
-          задваивал бы метрики, и каждая цифра в отчёте была бы под подозрением.</p>
+      <div class="world c">
+        <span class="role">Потребитель событий</span>
+        <h3>Process Mining</h3>
+        <p class="tech">FastAPI · pm4py</p>
+        <ul>
+          <li>Принимает журналы событий пакетами, отсеивает дубли</li>
+          <li>Строит карты процессов шестью алгоритмами</li>
+          <li>Считает варианты, узкие места, длительности</li>
+          <li>Распознаёт речь и возвращает текст с подписью</li>
+        </ul>
       </div>
-    </section>
-
-    <!-- ========================================================== ГОЛОС -->
-    <section class="reveal"><div class="node"></div>
-      <span class="eyebrow">Ввод данных</span>
-      <h2>Голос — потому что руки в муке</h2>
-      <div class="col stack">
-        <p>Никто у печи не будет заполнять форму. Оператор удерживает кнопку, говорит
-          «<span class="warm">B-102 закончил замес, отправить в склад</span>», отпускает —
-          и через несколько секунд партия едет по доске.</p>
-      </div>
-      <div class="figure">
-        <div class="scroll">
-          <table>
-            <thead><tr><th>Шаг</th><th>Где</th><th>Что происходит</th></tr></thead>
-            <tbody>
-              <tr><td class="num">1</td><td class="warm">QMS</td><td>Запись webm/opus в браузере, удержание кнопки или пробела</td></tr>
-              <tr><td class="num">2</td><td class="cool">Аналитика</td><td>Мгновенно возвращает идентификатор задачи — интерфейс не ждёт</td></tr>
-              <tr><td class="num">3</td><td class="cool">Аналитика</td><td>ffmpeg переводит запись в WAV 16 кГц моно во временный файл</td></tr>
-              <tr><td class="num">4</td><td>Речь</td><td>faster-whisper, модель medium, распознаёт русскую речь</td></tr>
-              <tr><td class="num">5</td><td class="cool">Аналитика</td><td>Результат уходит обратно колбэком, подписанным HMAC-SHA256</td></tr>
-              <tr><td class="num">6</td><td class="warm">QMS</td><td>Разбор в намерение: номер партии, целевой этап, комментарий</td></tr>
-              <tr><td class="num">7</td><td class="warm">QMS</td><td>Отсчёт три секунды с кольцом — успеть отменить</td></tr>
-              <tr><td class="num">8</td><td class="warm">QMS</td><td>Партия переезжает, и рождается новое событие процесса</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="cap">Аналитика только распознаёт речь. Разбор команды и её выполнение — целиком на стороне QMS.
-          Это граница, за которую сервис аналитики не заходит: он ничего не знает о партиях и этапах.</p>
-      </div>
-      <div class="grid">
-        <div class="card">
-          <h3>Речь без пунктуации</h3>
-          <p>Whisper пишет <code>B107</code>, в базе <code>B-107</code>. Точное сравнение не сходится,
-            поэтому номера сравниваются по буквам и цифрам.</p>
-        </div>
-        <div class="card">
-          <h3>Названное важнее выведенного</h3>
-          <p>Во фразе «закончил замес, отправить в склад» есть и догадка, и приказ.
-            Побеждает приказ — партия едет на склад.</p>
-        </div>
-        <div class="card">
-          <h3>Отсчёт вместо нажатия</h3>
-          <p>Кольцо убывает три секунды, в центре — сколько осталось. Нажатие выполняет сразу,
-            «Отмена» останавливает.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- ====================================================== АНАЛИТИКА -->
-    <section class="reveal"><div class="node"></div>
-      <span class="eyebrow">Что считается</span>
-      <h2>Карта процесса и то, что она показывает</h2>
-      <p class="lead col">Из журнала событий собирается направленный граф: узлы — активности,
-        рёбра — переходы. Толщина ребра — как часто по нему ходят.</p>
-      <div class="figure">
-        <div class="scroll"><svg id="map" viewBox="0 0 760 250" width="760" height="250" role="img"
-          aria-label="Схема карты процесса: узлы этапов и переходы между ними, включая возврат"></svg></div>
-        <p class="cap">Так выглядит то, что рисует pm4py: помимо основной цепочки видны возвраты
-          и обходные пути. Именно они и есть предмет разговора — регламент их не описывает.</p>
-      </div>
-      <div class="grid">
-        <div class="card"><h3>Алгоритмы</h3><p>Граф прямого следования, эвристический и индуктивный майнинг,
-          сеть Петри, дерево процесса, BPMN. Рендер в SVG, PNG или DOT.</p></div>
-        <div class="card"><h3>Варианты</h3><p>Каждый уникальный сквозной маршрут. Мало вариантов — процесс
-          дисциплинирован; много — каждый делает по-своему.</p></div>
-        <div class="card"><h3>Узкие места</h3><p>Доля общего времени, которую съедает один переход.
-          Обычно это ожидание, а не работа.</p></div>
-        <div class="card"><h3>Переделка</h3><p>Активность повторилась внутри одного кейса — частый признак
-          брака или возврата на доработку.</p></div>
-      </div>
-    </section>
-
-    <!-- ============================================================ 1С -->
-    <section class="reveal"><div class="node"></div>
-      <span class="eyebrow">Внешние данные</span>
-      <h2>Что удалось узнать из 1С</h2>
-      <div class="col stack">
-        <p>Коннектор забирает документы по OData из живой базы 1С:Бухгалтерии.
-          Но там обнаружилось то, что определило всю конструкцию.</p>
-        <p><strong>Связей между документами нет.</strong> Поля «документ-основание» и «сделка» пусты
-          во всех трёхстах проверенных проведённых документах. Проследить путь одной сделки невозможно —
-          данных для этого просто не существует.</p>
-        <p>Восстанавливать связи по суммам и датам мы не стали: получилась бы уверенная и убедительная
-          картинка процесса, которого нет. Поэтому <strong>кейс = контрагент + месяц</strong>.
-          Он отвечает на другой, но честный вопрос: как идёт работа с клиентом и где она застревает.</p>
-      </div>
-      <div class="figs" style="margin-top:28px">
-        <div class="fig"><b>12 464</b><span>документа выгружено</span></div>
-        <div class="fig"><b>1 295</b><span>событий получилось</span></div>
-        <div class="fig"><b>903</b><span>кейса собралось</span></div>
-        <div class="fig"><b class="warm">11,5</b><span>дней между отгрузкой и счётом-фактурой, медиана</span></div>
-      </div>
-      <div class="grid" style="margin-top:22px">
-        <div class="card side w">
-          <h3>Находка, на которую можно опираться</h3>
-          <p>Счёт-фактуру выписывают через 11,5 дней после отгрузки. Цифра надёжна: она посчитана
-            по парам документов внутри одного кейса, без домыслов о связях.</p>
-        </div>
-        <div class="card side">
-          <h3>Цифра, которую называть нельзя</h3>
-          <p>«43,7 % отгрузок без фактуры» — частично артефакт нарезки по календарным месяцам.
-            Отгрузка 30 июля и фактура 3 августа попадают в разные кейсы. Как долю нарушений это подавать нечестно.</p>
-        </div>
-      </div>
-      <div class="figure">
-        <h4 style="margin-bottom:12px">Ещё три вещи, выясненные на живых данных</h4>
-        <div class="limits">
-          <div class="limit"><span class="dot w"></span><div><h3>Время суток недостоверно</h3>
-            <p>Документы проводят пачками, у всех один и тот же час. Работать можно только с точностью до дня.</p></div></div>
-          <div class="limit"><span class="dot w"></span><div><h3>Документы из будущего</h3>
-            <p>Это непроведённые черновики. Отсекаются фильтром на проведённость.</p></div></div>
-          <div class="limit"><span class="dot w"></span><div><h3>Счёт на оплату не проводят вообще</h3>
-            <p>В этой базе цепочка начинается сразу с отгрузки — предшествующего шага в данных нет.</p></div></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===================================================== НАДЁЖНОСТЬ -->
-    <section class="reveal"><div class="node"></div>
-      <span class="eyebrow">Инженерия</span>
-      <h2>Что сделано, чтобы цифрам можно было верить</h2>
-      <div class="grid">
-        <div class="card"><h3>Исходящий журнал</h3><p>Событие сначала пишется в таблицу QMS в той же транзакции,
-          что и сам переход партии. Недоступность аналитики не может сорвать производственную операцию.</p></div>
-        <div class="card"><h3>Двойная защита от дублей</h3><p>Квитанция по ключу пакета плюс уникальный индекс
-          по <code>event_id</code>. Повтор доставки не задваивает метрику.</p></div>
-        <div class="card"><h3>Один журнал на тип кейса</h3><p>Заказы, партии и продажи — разные процессы.
-          Одна карта на всех описывала бы процесс, которого не существует.</p></div>
-        <div class="card"><h3>Переход атомарен</h3><p>Смена этапа, история, событие заказа и событие процесса —
-          в одной транзакции с блокировкой строки. Сбой откатывает всё.</p></div>
-        <div class="card"><h3>Демо не смешивается с цехом</h3><p>Демонстрационные партии помечены и не попадают
-          ни в событийный журнал аналитики, ни в счётчики на панели.</p></div>
-        <div class="card"><h3>pm4py заперт в одном месте</h3><p>Его API меняется между версиями.
-          Обновление библиотеки — правка одного файла плюс чтение XES.</p></div>
-      </div>
-      <div class="figs" style="margin-top:22px">
-        <div class="fig"><b>496</b><span>тестов QMS</span></div>
-        <div class="fig"><b>37</b><span>тестов аналитики</span></div>
-        <div class="fig"><b>335</b><span>файлов в репозитории</span></div>
-        <div class="fig"><b>7</b><span>этапов производства</span></div>
-      </div>
-    </section>
-
-    <!-- ======================================================== ГРАНИЦЫ -->
-    <section class="reveal"><div class="node"></div>
-      <span class="eyebrow">Честно о пределах</span>
-      <h2>Чего система пока не умеет</h2>
-      <p class="lead col">Всё перечисленное — осознанные решения или известные долги, а не сюрпризы.
-        Знать их важнее, чем не иметь.</p>
-      <div class="limits">
-        <div class="limit"><span class="dot b"></span><div><h3>Периметр рассчитан на локальную сеть</h3>
-          <p>Ограничения частоты запросов нет; поле арендатора фильтрует выборку, но не изолирует данные.
-            До выхода в интернет это нужно закрыть — и это первый пункт работ.</p></div></div>
-        <div class="limit"><span class="dot w"></span><div><h3>Аналитика — один процесс</h3>
-          <p>Реестр фоновых заданий и кеш живут в памяти. Хранилище на SQLite. Масштабирование потребует
-            вынести и то и другое наружу.</p></div></div>
-        <div class="limit"><span class="dot w"></span><div><h3>Распознавание без видеокарты</h3>
-          <p>Модель medium даёт около 4,5 секунды на команду. Точность на шуме работающего цеха
-            пока не измерена — это делается только записями с производства.</p></div></div>
-        <div class="limit"><span class="dot w"></span><div><h3>Выгрузка из 1С — вручную</h3>
-          <p>Расписания нет. Нарезка кейсов идёт по календарным месяцам, а не скользящим окном.</p></div></div>
-      </div>
-    </section>
-
+    </div>
   </div>
-</div>
-</div>
+</section>
 
-<footer><div class="wrap">
-  <p>Bakery QMS + Process Mining — карта архитектуры. Цифры взяты из кода и из выгрузки живой базы 1С.</p>
-</div></footer>
+<!-- ПУТЬ СОБЫТИЯ -->
+<section>
+  <div class="wrap reveal">
+    <span class="eyebrow">Как это связано</span>
+    <h2>Путь одного события</h2>
+    <p class="sub">Оператор перетащил карточку — через пять шагов этот жест становится
+      ребром на карте процесса. Ни один шаг не может задвоить цифру: повтор доставки
+      распознаётся и считается дубликатом.</p>
 
+    <div class="path" id="path">
+      <div class="track"><div class="fill" id="fill"></div><div class="puck" id="puck"></div></div>
+      <div class="steps" id="steps"></div>
+      <div class="saybar"><p class="say" id="say">&nbsp;</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ГОЛОС -->
+<section class="voice">
+  <div class="wrap reveal">
+    <span class="eyebrow">Ввод без клавиатуры</span>
+    <h2>Голос — потому что <span class="gtw">руки в муке</span></h2>
+    <p class="sub" style="margin:0 auto">Оператор удерживает кнопку и говорит. Дальше система сама.</p>
+
+    <div class="mic">
+      <p class="phrase"><span id="type"></span><span class="caret"></span></p>
+      <div class="voicesteps" id="vsteps">
+        <span class="vs"><b>Распознано</b> · faster-whisper</span>
+        <span class="vs"><b>Разобрано</b> · партия B-102, цель — склад</span>
+        <span class="vs"><b>Кольцо 3 секунды</b> · время отменить</span>
+        <span class="vs"><b>Партия поехала</b> · и родилось событие</span>
+      </div>
+      <p class="ringnote">Названное направление важнее выведенного: «закончил замес» подсказывает
+        формовку, но <b>«отправить в склад»</b> — приказ, и партия едет на склад.</p>
+    </div>
+  </div>
+</section>
+
+<!-- КАРТА -->
+<section>
+  <div class="wrap reveal">
+    <span class="eyebrow">Результат</span>
+    <h2>Карта того, что было <span class="gtc">на самом деле</span></h2>
+    <p class="sub">Узлы — этапы, рёбра — переходы, толщина — частота. Регламент рисует прямую
+      линию; карта показывает и её, и возвраты, о которых регламент молчит.</p>
+
+    <div class="mapbox">
+      <svg id="map" viewBox="0 0 780 240" width="780" height="240" role="img"
+        aria-label="Карта процесса: пять этапов и переходы между ними, включая возврат с формовки на замес"></svg>
+      <div class="maplegend">
+        <span class="lc"><i></i>основной поток</span>
+        <span class="lw"><i></i>возврат — то, ради чего всё затевалось</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ЦИФРЫ -->
+<section>
+  <div class="wrap reveal">
+    <span class="eyebrow">В цифрах</span>
+    <h2>Небольшая система, которая ведёт себя как большая</h2>
+    <div class="stats">
+      <div class="stat c"><b data-to="27">0</b><span>эндпоинтов аналитики</span></div>
+      <div class="stat w"><b data-to="7">0</b><span>этапов производства</span></div>
+      <div class="stat c"><b data-to="533">0</b><span>автотеста в двух сервисах</span></div>
+      <div class="stat w"><b data-to="3">0</b><span>секунды на отмену голосовой команды</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ФИНАЛ -->
+<section class="fin">
+  <div class="wrap reveal">
+    <h2>Процесс перестал быть <span class="gtw">догадкой</span>.</h2>
+    <p class="sub" style="margin:22px auto 0">Каждый переход записан, каждая цифра проверяема,
+      каждая петля видна. Дальше — только вопросы «почему», а на них уже можно отвечать.</p>
+  </div>
+</section>
+
+<footer>Bakery QMS × Process Mining — архитектура системы</footer>
 </div>
 
 <script>
 (() => {
   "use strict";
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  /* ---------------------------------------------- появление разделов */
-  const io = new IntersectionObserver((entries) => {
-    entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("seen"); io.unobserve(e.target); } });
-  }, { rootMargin: "0px 0px -12% 0px" });
+  /* появление секций */
+  const io = new IntersectionObserver((es) => {
+    es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("seen"); io.unobserve(e.target); } });
+  }, { rootMargin: "0px 0px -14% 0px" });
   document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
 
-  /* ------------------------------------------------------ семь этапов */
-  const STAGES = [
-    ["Очередь","queue","Партия создана и ждёт. Здесь она уже существует как запись, но работа не началась."],
-    ["Замес","mixing","Смешивание по рецептуре. Первый этап, где расходуются ингредиенты со склада."],
-    ["Формовка","forming","Тесту придают форму. Возврат отсюда назад — частый признак проблем с замесом."],
-    ["Расстойка","proofing","Тесто подходит. Этап, который нельзя ускорить, — он и определяет ритм всей линии."],
-    ["Печь","oven","Выпекание. Самый дорогой в оборудовании этап, поэтому очередь перед ним заметна на карте."],
-    ["Склад","warehouse","Готовая продукция принята на хранение, создаётся складская запись с количеством."],
-    ["Готово","done","Терминальный этап. Партия завершена, и заказ закрывается — если все его партии дошли сюда."],
-  ];
-  const chain = document.getElementById("chain");
-  const note = document.getElementById("stageNote");
-  STAGES.forEach(([title, code, text], i) => {
-    const b = document.createElement("button");
-    b.className = "stage"; b.type = "button"; b.setAttribute("aria-pressed", "false");
-    b.innerHTML = `<span class="n">${String(i + 1).padStart(2, "0")}</span>
-                   <span class="t">${title}</span><span class="c">${code}</span>`;
-    b.addEventListener("click", () => {
-      chain.querySelectorAll(".stage").forEach((s) => s.setAttribute("aria-pressed", "false"));
-      b.setAttribute("aria-pressed", "true");
-      note.textContent = text;
-    });
-    chain.appendChild(b);
-  });
-
-  /* --------------------------------------------------- путь события */
+  /* ------------------------------------------------------ путь события */
   const STEPS = [
-    ["qms","Переход","Оператор двигает партию. Смена этапа, история и событие пишутся одной транзакцией.","Партия B-102 уходит с замеса на формовку."],
-    ["qms","Исходящий журнал","Событие ложится в таблицу QMS со статусом «ожидает». Аналитика для этого не нужна.","Событие записано локально — доставка может подождать."],
-    ["qms","Пакет","Фоновая команда собирает накопленные события в CSV и считает контрольную сумму.","Сто событий свернулись в один файл."],
-    ["qms","Отправка","POST на приёмник аналитики по имени контейнера. Токен общий, ключ идемпотентности в заголовке.","Пакет ушёл по HTTP внутрь docker-сети."],
-    ["pm","Приём","Проверка суммы, построчная валидация, коды ошибок по каждой отвергнутой строке.","Сто строк принято, ноль отвергнуто."],
-    ["pm","Отсев дублей","Известный идентификатор события считается повтором. Ретрай безопасен.","Три события уже были — засчитаны дубликатами."],
-    ["pm","Журнал","События раскладываются по журналам: свой на каждый тип кейса.","Записано в журнал «производственные партии»."],
-    ["pm","Карта","pm4py строит граф, считает варианты, узкие места и длительности. Результат — SVG.","Переход «Замес → Формовка» стал ребром на карте."],
+    ["qms","01 · доска","Переход","Смена этапа, история и событие — одной транзакцией.","Карточка B-102 ушла с замеса."],
+    ["qms","02 · журнал","Исходящий журнал","Событие лежит в QMS. Аналитика может быть выключена.","Записано локально — доставка подождёт."],
+    ["qms","03 · пакет","Доставка","CSV-пакет с контрольной суммой уходит по HTTP.","Сто событий — один запрос."],
+    ["pm","04 · приём","Отсев дублей","Известный event_id — дубликат, а не вторая запись.","Повтор распознан. Цифры не задвоились."],
+    ["pm","05 · карта","Карта процесса","pm4py строит граф. Жест оператора стал ребром.","Переход виден на карте."],
   ];
-  const pipe = document.getElementById("pipe");
+  const stepsBox = document.getElementById("steps");
   const say = document.getElementById("say");
-  STEPS.forEach(([who, title, text]) => {
+  const fill = document.getElementById("fill");
+  const puck = document.getElementById("puck");
+  STEPS.forEach(([who, k, t, p]) => {
     const d = document.createElement("div");
-    d.className = "st " + who;
-    d.innerHTML = `<span class="who">${who === "qms" ? "QMS" : "Аналитика"}</span>
-                   <h4>${title}</h4><p>${text}</p>`;
-    pipe.appendChild(d);
+    d.className = "step" + (who === "qms" ? " hotside" : "");
+    d.innerHTML = `<span class="k">${k}</span><h3>${t}</h3><p>${p}</p>`;
+    stepsBox.appendChild(d);
   });
-  const cells = [...pipe.children];
-  let runTimer = null;
+  const cells = [...stepsBox.children];
+  let pi = -1, pt = null;
 
-  function clearRun() {
-    if (runTimer) { clearTimeout(runTimer); runTimer = null; }
-    cells.forEach((c) => c.classList.remove("on", "done"));
-  }
-  function runPipe() {
-    clearRun();
-    if (reduced) {
-      cells.forEach((c) => c.classList.add("done"));
-      say.textContent = "Событие дошло до карты процесса.";
+  function pathTick() {
+    pi = (pi + 1) % (STEPS.length + 1);
+    if (pi === STEPS.length) {           /* пауза в конце цикла */
+      pt = setTimeout(() => { cells.forEach((c) => c.classList.remove("on","hot")); pathTick(); }, 1400);
       return;
     }
-    let i = 0;
-    const step = () => {
-      if (i > 0) { cells[i - 1].classList.remove("on"); cells[i - 1].classList.add("done"); }
-      if (i >= cells.length) { say.textContent = "Событие дошло до карты процесса."; runTimer = null; return; }
-      cells[i].classList.add("on");
-      say.textContent = STEPS[i][3];
-      i += 1;
-      runTimer = setTimeout(step, 1150);
-    };
-    step();
+    const hot = STEPS[pi][0] === "qms";
+    cells[pi].classList.add("on"); cells[pi].classList.toggle("hot", hot);
+    const x = STEPS.length === 1 ? 0 : (pi / (STEPS.length - 1)) * 100;
+    fill.style.width = x + "%";
+    puck.style.left = x + "%";
+    puck.classList.toggle("hot", hot);
+    say.textContent = STEPS[pi][4];
+    pt = setTimeout(pathTick, 1500);
   }
-  document.getElementById("run").addEventListener("click", runPipe);
-  document.getElementById("reset").addEventListener("click", () => {
-    clearRun(); say.textContent = "Готово к запуску.";
-  });
+  const pio = new IntersectionObserver((es) => {
+    es.forEach((e) => {
+      if (!e.isIntersecting) return;
+      pio.unobserve(e.target);
+      if (reduced) {
+        cells.forEach((c) => c.classList.add("on"));
+        fill.style.width = "100%"; puck.style.left = "100%";
+        say.textContent = "Переход виден на карте.";
+      } else pathTick();
+    });
+  }, { rootMargin: "0px 0px -25% 0px" });
+  pio.observe(document.getElementById("path"));
 
-  /* ------------------------------------------------- карта процесса */
+  /* ------------------------------------------------------- голос: печать */
+  const PHRASE = "«B-102 закончил замес, отправить в склад»";
+  const type = document.getElementById("type");
+  const vsteps = [...document.querySelectorAll(".vs")];
+  function typeLoop() {
+    let i = 0;
+    type.textContent = "";
+    vsteps.forEach((v) => v.classList.remove("on"));
+    const t = setInterval(() => {
+      type.textContent = PHRASE.slice(0, ++i);
+      if (i >= PHRASE.length) {
+        clearInterval(t);
+        vsteps.forEach((v, k) => setTimeout(() => v.classList.add("on"), 350 + k * 420));
+        setTimeout(typeLoop, 7200);
+      }
+    }, 46);
+  }
+  const vio = new IntersectionObserver((es) => {
+    es.forEach((e) => {
+      if (!e.isIntersecting) return;
+      vio.unobserve(e.target);
+      if (reduced) { type.textContent = PHRASE; vsteps.forEach((v) => v.classList.add("on")); }
+      else typeLoop();
+    });
+  }, { rootMargin: "0px 0px -25% 0px" });
+  vio.observe(document.querySelector(".mic"));
+
+  /* --------------------------------------------------------------- карта */
   const svg = document.getElementById("map");
   const NS = "http://www.w3.org/2000/svg";
-  const NODES = [
-    ["Замес", 60, 118], ["Формовка", 215, 118], ["Расстойка", 375, 118],
-    ["Печь", 535, 118], ["Склад", 680, 118],
-  ];
-  const EDGES = [[0,1,6,"140"],[1,2,5,"92"],[2,3,7,"140"],[3,4,4,"131"],[1,0,2,"11 · возврат"]];
   const css = getComputedStyle(document.documentElement);
-  const line = css.getPropertyValue("--rule").trim() || "#1C333A";
-  const cool = css.getPropertyValue("--signal").trim() || "#56C7E6";
-  const warm = css.getPropertyValue("--ember").trim() || "#F0A23C";
-  const ash = css.getPropertyValue("--ash").trim() || "#8399A0";
-
-  EDGES.forEach(([a, b, w, label], k) => {
-    const back = b < a;
-    const [, x1, y1] = NODES[a], [, x2, y2] = NODES[b];
-    const sx = back ? x1 + 6 : x1 + 62, sy = back ? y1 - 22 : y1;
-    const ex = back ? x2 + 62 : x2 - 8, ey = back ? y2 - 22 : y2;
-    const p = document.createElementNS(NS, "path");
-    const arc = back ? `M ${sx} ${sy} C ${sx - 30} ${sy - 62}, ${ex + 30} ${ey - 62}, ${ex} ${ey}`
-                     : `M ${sx} ${sy} L ${ex} ${ey}`;
-    p.setAttribute("d", arc);
-    p.setAttribute("fill", "none");
-    p.setAttribute("stroke", back ? warm : cool);
-    p.setAttribute("stroke-width", String(w));
-    p.setAttribute("stroke-linecap", "round");
-    p.setAttribute("opacity", back ? ".85" : ".55");
-    if (!reduced) {
-      const len = 400;
-      p.setAttribute("stroke-dasharray", String(len));
-      p.setAttribute("stroke-dashoffset", String(len));
-      p.style.transition = `stroke-dashoffset 1s ease ${0.15 * k}s`;
-    }
+  const CY = css.getPropertyValue("--cyan").trim(), AM = css.getPropertyValue("--amber").trim();
+  const NODES = [["Замес",56],["Формовка",212],["Расстойка",372],["Печь",532],["Склад",678]];
+  const Y = 128;
+  const EDGES = [[0,1,7],[1,2,5],[2,3,8],[3,4,5]];
+  EDGES.forEach(([a,b,w]) => {
+    const p = document.createElementNS(NS,"path");
+    p.setAttribute("d",`M ${NODES[a][1]+66} ${Y} L ${NODES[b][1]-10} ${Y}`);
+    p.setAttribute("stroke",CY); p.setAttribute("stroke-width",String(w));
+    p.setAttribute("fill","none"); p.setAttribute("stroke-linecap","round");
+    p.setAttribute("opacity",".8");
+    if (!reduced) p.setAttribute("class","flow");
     svg.appendChild(p);
-    const t = document.createElementNS(NS, "text");
-    t.setAttribute("x", String((sx + ex) / 2));
-    t.setAttribute("y", String(back ? sy - 66 : sy - 14));
-    t.setAttribute("fill", back ? warm : ash);
-    t.setAttribute("font-size", "12");
-    t.setAttribute("font-family", "ui-monospace, Consolas, monospace");
-    t.setAttribute("text-anchor", "middle");
-    t.textContent = label;
-    svg.appendChild(t);
   });
-  NODES.forEach(([name, x, y]) => {
-    const r = document.createElementNS(NS, "rect");
-    r.setAttribute("x", String(x - 8)); r.setAttribute("y", String(y - 20));
-    r.setAttribute("width", "78"); r.setAttribute("height", "40");
-    r.setAttribute("rx", "9");
-    r.setAttribute("fill", css.getPropertyValue("--slab2").trim() || "#16292F");
-    r.setAttribute("stroke", line);
+  const back = document.createElementNS(NS,"path");
+  back.setAttribute("d",`M ${NODES[1][1]+8} ${Y-24} C ${NODES[1][1]-46} ${Y-92}, ${NODES[0][1]+110} ${Y-92}, ${NODES[0][1]+58} ${Y-26}`);
+  back.setAttribute("stroke",AM); back.setAttribute("stroke-width","3.5");
+  back.setAttribute("fill","none"); back.setAttribute("stroke-linecap","round");
+  if (!reduced) back.setAttribute("class","flow slow");
+  svg.appendChild(back);
+  const bt = document.createElementNS(NS,"text");
+  bt.setAttribute("x",String((NODES[0][1]+NODES[1][1])/2+30)); bt.setAttribute("y",String(Y-96));
+  bt.setAttribute("fill",AM); bt.setAttribute("font-size","12"); bt.setAttribute("text-anchor","middle");
+  bt.setAttribute("font-family","ui-monospace, Consolas, monospace");
+  bt.textContent = "возврат · 11 раз";
+  svg.appendChild(bt);
+  NODES.forEach(([name,x]) => {
+    const r = document.createElementNS(NS,"rect");
+    r.setAttribute("x",String(x-10)); r.setAttribute("y",String(Y-22));
+    r.setAttribute("width","86"); r.setAttribute("height","44"); r.setAttribute("rx","12");
+    r.setAttribute("fill","rgba(255,255,255,.05)"); r.setAttribute("stroke","rgba(255,255,255,.16)");
     svg.appendChild(r);
-    const t = document.createElementNS(NS, "text");
-    t.setAttribute("x", String(x + 31)); t.setAttribute("y", String(y + 5));
-    t.setAttribute("fill", css.getPropertyValue("--bone").trim() || "#E6EEF0");
-    t.setAttribute("font-size", "13");
-    t.setAttribute("font-family", "system-ui, sans-serif");
-    t.setAttribute("font-weight", "600");
-    t.setAttribute("text-anchor", "middle");
+    const t = document.createElementNS(NS,"text");
+    t.setAttribute("x",String(x+33)); t.setAttribute("y",String(Y+5));
+    t.setAttribute("fill","#F3F6F8"); t.setAttribute("font-size","13.5");
+    t.setAttribute("font-weight","600"); t.setAttribute("text-anchor","middle");
+    t.setAttribute("font-family","system-ui, sans-serif");
     t.textContent = name;
     svg.appendChild(t);
   });
-  if (!reduced) {
-    const mapIo = new IntersectionObserver((es) => {
-      es.forEach((e) => {
-        if (!e.isIntersecting) return;
-        svg.querySelectorAll("path").forEach((p) => { p.setAttribute("stroke-dashoffset", "0"); });
-        mapIo.unobserve(e.target);
-      });
-    }, { rootMargin: "0px 0px -20% 0px" });
-    mapIo.observe(svg);
-  }
 
-  /* --------------------------------------- фон героя: дрейф частиц */
-  const cv = document.getElementById("bg");
-  if (cv && !reduced) {
-    const ctx = cv.getContext("2d");
-    let w = 0, h = 0, pts = [], raf = 0;
-    const resize = () => {
-      const r = cv.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      w = cv.width = Math.max(1, Math.floor(r.width * dpr));
-      h = cv.height = Math.max(1, Math.floor(r.height * dpr));
-      pts = Array.from({ length: 42 }, () => ({
-        x: Math.random() * w, y: Math.random() * h,
-        vx: (Math.random() - 0.5) * 0.18 * dpr, vy: (Math.random() - 0.5) * 0.18 * dpr,
-      }));
-    };
-    const draw = () => {
-      ctx.clearRect(0, 0, w, h);
-      const c = getComputedStyle(document.documentElement).getPropertyValue("--signal").trim() || "#56C7E6";
-      pts.forEach((p) => {
-        p.x += p.vx; p.y += p.vy;
-        if (p.x < 0 || p.x > w) p.vx *= -1;
-        if (p.y < 0 || p.y > h) p.vy *= -1;
-      });
-      for (let i = 0; i < pts.length; i++) {
-        for (let j = i + 1; j < pts.length; j++) {
-          const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
-          const d = Math.hypot(dx, dy);
-          if (d < 150) {
-            ctx.globalAlpha = (1 - d / 150) * 0.16;
-            ctx.strokeStyle = c; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[j].x, pts[j].y); ctx.stroke();
-          }
-        }
-      }
-      ctx.globalAlpha = 0.5;
-      ctx.fillStyle = c;
-      pts.forEach((p) => { ctx.beginPath(); ctx.arc(p.x, p.y, 1.6, 0, Math.PI * 2); ctx.fill(); });
-      ctx.globalAlpha = 1;
-      raf = requestAnimationFrame(draw);
-    };
-    resize();
-    draw();
-    window.addEventListener("resize", () => { cancelAnimationFrame(raf); resize(); draw(); });
-  }
+  /* --------------------------------------------------------------- цифры */
+  const nio = new IntersectionObserver((es) => {
+    es.forEach((e) => {
+      if (!e.isIntersecting) return;
+      nio.unobserve(e.target);
+      const el = e.target, to = +el.dataset.to;
+      if (reduced) { el.textContent = String(to); return; }
+      const t0 = performance.now(), dur = 1300;
+      const run = (now) => {
+        const k = Math.min(1,(now - t0)/dur), ease = 1 - Math.pow(1-k,3);
+        el.textContent = String(Math.round(to * ease));
+        if (k < 1) requestAnimationFrame(run);
+      };
+      requestAnimationFrame(run);
+    });
+  }, { rootMargin: "0px 0px -20% 0px" });
+  document.querySelectorAll(".stat b").forEach((el) => nio.observe(el));
 })();
 </script>
