@@ -102,6 +102,12 @@ curl http://192.168.0.168:8080/api/messages
 | `PTT_MAX_TEXT_LENGTH` | `10000` | то же | лимит длины реплики |
 | `PTT_HISTORY_LIMIT` | `50` | то же | размер выдачи `/api/messages` |
 | `PTT_LOG_LEVEL` | `INFO` | то же | уровень логирования |
+| `PTT_RUNTIME_DIR` | `backend/.runtime` | то же | базовая runtime-папка для Render/локального запуска |
+| `PTT_KMS_COMMAND_URL` | пусто | то же | URL KMS endpoint `/api/pushtotalk/commands/` |
+| `PTT_KMS_API_TOKEN` | пусто | то же | токен для отправки команд в KMS |
+| `PTT_KMS_TIMEOUT_SECONDS` | `10` | то же | timeout отправки текста в KMS |
+
+На Render без persistent disk не используйте `/opt/push-to-talk`: free web service не имеет права создавать этот каталог. Оставьте дефолт `backend/.runtime` или задайте `PTT_DATA_DIR`/`PTT_LOG_DIR` на путь подключённого Render Disk.
 
 Путь `/opt/push-to-talk` существует только на POSIX-системах, поэтому на Windows и macOS
 сервис по умолчанию пишет рядом с кодом. Боевое размещение задаётся явно:

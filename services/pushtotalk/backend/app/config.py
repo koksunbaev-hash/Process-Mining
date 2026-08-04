@@ -15,7 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # На Linux сервис живёт в /opt/push-to-talk, на других ОС этого пути нет,
 # поэтому по умолчанию используется каталог рядом с кодом.
-DEFAULT_ROOT = Path("/opt/push-to-talk") if os.name == "posix" else BASE_DIR
+DEFAULT_ROOT = Path(os.getenv("PTT_RUNTIME_DIR", BASE_DIR / ".runtime")).expanduser()
 
 
 def _resolve_dir(env_name: str, default: Path) -> Path:
