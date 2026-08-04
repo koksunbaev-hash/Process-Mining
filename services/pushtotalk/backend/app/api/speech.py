@@ -21,6 +21,7 @@ from app.schemas.speech import (
     TranscriptionResponse,
 )
 from app.services import speech_service
+from app.services.kms_client import KmsForwardError, forward_text_command
 from app.services.speech_service import SpeechValidationError
 from app.services.transcription_service import (
     TranscriptionError,
@@ -62,6 +63,11 @@ def receive_speech(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=ErrorResponse(message=str(error)).model_dump(),
         )
+
+    try:
+        forward_text_command(message.text, client_request_id=f"speech-{message.id}")
+    except KmsForwardError as error:
+        logger.warning("KMS forwarding failed for speech_message_id=%s: %s", message.id, error)
 
     return SpeechResponse(status="ok", id=message.id)
 
@@ -109,6 +115,11 @@ def transcribe_speech(
         file.file.close()
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
+
+    try:
+        forward_text_command(text, source="pushtotalk-whisper")
+    except KmsForwardError as error:
+        logger.warning("KMS forwarding failed after transcription: %s", error)
 
     return TranscriptionResponse(status="ok", text=text)
 

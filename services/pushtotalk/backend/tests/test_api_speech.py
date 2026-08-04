@@ -13,6 +13,59 @@ def test_valid_text_returns_ok(client) -> None:
     assert body["id"] > 0
 
 
+def test_valid_text_is_forwarded_to_kms(client, monkeypatch) -> None:
+    import app.api.speech as speech_api
+
+    calls = []
+
+    def fake_forward(text, **kwargs):
+        calls.append((text, kwargs))
+        return {"status": "ok", "command_id": 15}
+
+    monkeypatch.setattr(speech_api, "forward_text_command", fake_forward)
+
+    response = client.post("/api/speech", json={"text": "Партия DEMO-B-0012 закончила замес"})
+
+    assert response.status_code == 200
+    assert calls == [("Партия DEMO-B-0012 закончила замес", {"client_request_id": f"speech-{response.json()['id']}"})]
+
+
+def test_kms_forward_error_does_not_break_speech_save(client, monkeypatch) -> None:
+    import app.api.speech as speech_api
+    from app.services.kms_client import KmsForwardError
+
+    def fake_forward(text, **kwargs):
+        raise KmsForwardError("down")
+
+    monkeypatch.setattr(speech_api, "forward_text_command", fake_forward)
+
+    response = client.post("/api/speech", json={"text": "Партия DEMO-B-0012 закончила замес"})
+
+    assert response.status_code == 200
+    assert client.get("/api/messages").json()[0]["text"] == "Партия DEMO-B-0012 закончила замес"
+
+
+def test_transcribed_text_is_forwarded_to_kms(client, monkeypatch, tmp_path) -> None:
+    import app.api.speech as speech_api
+
+    calls = []
+    monkeypatch.setattr(speech_api, "transcribe_audio", lambda path: "Партия DEMO-B-0012 закончила замес")
+    monkeypatch.setattr(
+        speech_api,
+        "forward_text_command",
+        lambda text, **kwargs: calls.append((text, kwargs)) or {"status": "ok"},
+    )
+
+    audio_path = tmp_path / "voice.m4a"
+    audio_path.write_bytes(b"audio")
+    with audio_path.open("rb") as audio:
+        response = client.post("/api/speech/transcribe", files={"file": ("voice.m4a", audio, "audio/mp4")})
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "Партия DEMO-B-0012 закончила замес"
+    assert calls == [("Партия DEMO-B-0012 закончила замес", {"source": "pushtotalk-whisper"})]
+
+
 def test_cyrillic_text_is_accepted(client) -> None:
     response = client.post("/api/speech", json={"text": "Привет сервер"})
 

@@ -33,6 +33,9 @@ class Settings:
     max_text_length: int
     history_limit: int
     log_level: str
+    kms_command_url: str
+    kms_api_token: str
+    kms_timeout_seconds: int
 
     @property
     def database_path(self) -> Path:
@@ -60,6 +63,9 @@ def load_settings() -> Settings:
         max_text_length=int(os.getenv("PTT_MAX_TEXT_LENGTH", "10000")),
         history_limit=int(os.getenv("PTT_HISTORY_LIMIT", "50")),
         log_level=os.getenv("PTT_LOG_LEVEL", "INFO").upper(),
+        kms_command_url=os.getenv("PTT_KMS_COMMAND_URL", ""),
+        kms_api_token=os.getenv("PTT_KMS_API_TOKEN", ""),
+        kms_timeout_seconds=int(os.getenv("PTT_KMS_TIMEOUT_SECONDS", "10")),
     )
 
 

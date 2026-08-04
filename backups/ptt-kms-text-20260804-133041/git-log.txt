@@ -1,0 +1,10 @@
+﻿8389fbc Convert pushtotalk submodule to regular folder
+24d96a9 Update pushtotalk submodule
+479295a pushtotalk
+8cdafb5 Add pushtotalk service
+87af20e Point newcomers at the handoff note
+76f0368 Write down the context that would otherwise be re-derived
+83f9e41 Keep beam_size 5 for speech recognition
+e8fdc47 Drop the comment that printed itself onto the page
+8217e46 Link the analytics console from the QMS process mining page
+4a2f887 Do not announce activities the process map never drew
