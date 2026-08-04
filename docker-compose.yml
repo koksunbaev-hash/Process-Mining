@@ -51,8 +51,12 @@ services:
       # it has no way to resolve a path relative to the QMS.
       PROCESS_MINING_CALLBACK_URL: http://qms:8000/api/process-mining/callback/
       PROCESS_MINING_CALLBACK_SECRET: ${PM_CALLBACK_SECRET:?set PM_CALLBACK_SECRET in .env}
+    # Bound to the loopback by default. The app speaks plain http here, and the
+    # only thing that should reach it is the TLS proxy in front - or the
+    # Tailscale daemon on the host when the stack is published to the internet.
+    # BIND_ADDR=0.0.0.0 puts it back on the network for LAN debugging.
     ports:
-      - "${QMS_PORT:-8000}:8000"
+      - "${BIND_ADDR:-127.0.0.1}:${QMS_PORT:-8000}:8000"
     volumes:
       - qms_static:/app/staticfiles
       - qms_media:/app/media
@@ -85,7 +89,7 @@ services:
       # speech model. Two keeps a heavy job from starving the rest.
       PM_MAX_CONCURRENT_JOBS: ${PM_MAX_CONCURRENT_JOBS:-2}
     ports:
-      - "${PM_PORT:-8001}:8000"
+      - "${BIND_ADDR:-127.0.0.1}:${PM_PORT:-8001}:8000"
     volumes:
       - pm_data:/srv/data
       - ./services/process-mining/config:/srv/config:ro

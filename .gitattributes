@@ -1,0 +1,5 @@
+# Shell scripts run on the Linux host, are edited on Windows, and break with a
+# stray carriage return: `sh: bad interpreter`. Keep them LF whatever the
+# checkout does.
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf

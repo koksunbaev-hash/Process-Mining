@@ -20,6 +20,8 @@ env = environ.Env(
     PROCESS_MINING_MAX_RETRIES=(int, 5),
     PROCESS_MINING_CONNECT_TIMEOUT=(int, 3),
     PROCESS_MINING_READ_TIMEOUT=(int, 15),
+    SECURE_HSTS_SECONDS=(int, 0),
+    SECURE_SSL_REDIRECT=(bool, False),
 )
 environ.Env.read_env(BASE_DIR / ".env", overwrite=True)
 
@@ -141,6 +143,30 @@ if RENDER_EXTERNAL_HOSTNAME:
     CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_EXTERNAL_HOSTNAME}")
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# ---- reachable from the internet ------------------------------------------
+# Cookies stop travelling in the clear as soon as DEBUG is off, which also
+# means a deployment served over plain http can no longer log anybody in.
+# That is the intended trade: the stack has a TLS proxy in front of it.
+SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=not DEBUG)
+CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=not DEBUG)
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+
+# HSTS is a promise the browser remembers for a year and cannot be taken back
+# by turning the setting off again. Left at 0 until the public address is
+# final and TLS on it demonstrably works.
+SECURE_HSTS_SECONDS = env("SECURE_HSTS_SECONDS")
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False)
+SECURE_HSTS_PRELOAD = False
+
+# nginx already answers :80 with a redirect. Switching this on while Django
+# cannot trust X-Forwarded-Proto turns it into a redirect loop instead.
+SECURE_SSL_REDIRECT = env("SECURE_SSL_REDIRECT")
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "DENY"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"

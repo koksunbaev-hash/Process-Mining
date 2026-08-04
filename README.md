@@ -170,3 +170,8 @@ and what is deliberately unfinished. Read it before the first change.
 Showing the system to someone: [docs/DEMO-CHECKLIST.md](docs/DEMO-CHECKLIST.md)
 for the deploy and the checks worth doing beforehand,
 [docs/VOICE-DEMO.md](docs/VOICE-DEMO.md) for the voice walkthrough.
+
+Reaching it from outside the LAN — a public address without a domain, without
+forwarding a port, and SSH from anywhere: [docs/PUBLIC-ACCESS.md](docs/PUBLIC-ACCESS.md).
+Read section 0 first; it is the part that has to happen before anything is
+published.
