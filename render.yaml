@@ -159,3 +159,40 @@ services:
       # Same value as PUSHTOTALK_API_TOKEN on qms-demo.
       - key: PTT_KMS_API_TOKEN
         sync: false
+
+  # ---- reusable MQTT/OVOS bridge ------------------------------------------
+  - type: web
+    name: voice-gateway
+    runtime: python
+    rootDir: services/voice-gateway
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: VOICE_GATEWAY_PROJECT
+        value: kms
+      - key: VOICE_GATEWAY_SUBSCRIBE_TOPIC
+        value: voice/commands/recognized
+      - key: VOICE_GATEWAY_HTTP_TIMEOUT_SECONDS
+        value: "10"
+      # Optional public test endpoint token for POST /api/voice-events/.
+      - key: VOICE_GATEWAY_API_TOKEN
+        sync: false
+      # MQTT broker that receives OVOS recognized text.
+      - key: VOICE_GATEWAY_MQTT_HOST
+        sync: false
+      - key: VOICE_GATEWAY_MQTT_PORT
+        value: "1883"
+      - key: VOICE_GATEWAY_MQTT_USERNAME
+        sync: false
+      - key: VOICE_GATEWAY_MQTT_PASSWORD
+        sync: false
+      - key: VOICE_GATEWAY_MQTT_TLS
+        value: "false"
+      # KMS command endpoint:
+      # https://qms-demo.onrender.com/api/pushtotalk/commands/
+      - key: VOICE_GATEWAY_KMS_COMMAND_URL
+        sync: false
+      # Same value as PUSHTOTALK_API_TOKEN on qms-demo.
+      - key: VOICE_GATEWAY_KMS_API_TOKEN
+        sync: false
