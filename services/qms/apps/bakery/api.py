@@ -7,7 +7,9 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.http import Http404
+from django.utils.decorators import method_decorator
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied as ApiPermissionDenied, ValidationError as ApiValidationError
@@ -441,6 +443,7 @@ class VoiceCommandRejectView(APIView):
         return Response({"id": command.pk, "status": command.status})
 
 
+@method_decorator(csrf_exempt, name="dispatch")
 class PushToTalkTextCommandView(APIView):
     permission_classes = [AllowAny]
 

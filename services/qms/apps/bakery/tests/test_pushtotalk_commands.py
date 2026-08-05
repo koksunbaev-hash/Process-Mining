@@ -1,4 +1,5 @@
 from django.test import TestCase, override_settings
+from django.test import Client
 from rest_framework.test import APIClient
 
 from apps.accounts.models import UserProfile
@@ -58,6 +59,24 @@ class PushToTalkCommandApiTests(TestCase):
         self.assertEqual(voice.command.status, VoiceCommand.Status.EXECUTED)
         batch.refresh_from_db()
         self.assertEqual(batch.current_stage.code, "forming")
+
+    def test_pushtotalk_accepts_server_to_server_post_without_csrf_token(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        csrf_client = Client(enforce_csrf_checks=True)
+
+        response = csrf_client.post(
+            "/api/pushtotalk/commands/",
+            data={
+                "text": self.move_to_forming_text(batch),
+                "client_request_id": "ptt-no-csrf",
+            },
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer ptt-secret",
+        )
+
+        self.assertEqual(response.status_code, 201, response.content)
+        voice = VoiceMessage.objects.get(client_request_id="ptt-no-csrf")
+        self.assertEqual(voice.command.status, VoiceCommand.Status.EXECUTED)
 
     @override_settings(PUSHTOTALK_DEFAULT_USERNAME="missing-dispatcher")
     def test_pushtotalk_uses_admin_fallback_for_immediate_execution(self):
