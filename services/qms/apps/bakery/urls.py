@@ -7,6 +7,7 @@ app_name = "bakery"
 urlpatterns = [
     path("board/", views.kanban, name="kanban"),
     path("board/partial/", views.kanban_partial, name="kanban_partial"),
+    path("board/events/", views.kanban_events, name="kanban_events"),
     path("batches/<int:pk>/move/", views.move_batch_view, name="move_batch"),
     path("batches/<int:pk>/<str:action>/", views.batch_action, name="batch_action"),
     path("products/", views.product_list, name="products"),

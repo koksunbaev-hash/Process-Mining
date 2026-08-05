@@ -1,11 +1,12 @@
 import mimetypes
 import os
+import time
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Count, Q
-from django.http import FileResponse, Http404, JsonResponse
+from django.http import FileResponse, Http404, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -35,6 +36,7 @@ from .models import (
     Product,
     Recipe,
     RecipeItem,
+    BatchStageHistory,
     VoiceMessage,
 )
 from .permissions import can_manage_catalog, can_manage_orders, can_move_batch, can_view_voice, role
@@ -131,6 +133,34 @@ def kanban(request):
 @login_required
 def kanban_partial(request):
     return render(request, "bakery/kanban_board.html", kanban_context(request))
+
+
+def kanban_change_marker():
+    latest = BatchStageHistory.objects.order_by("-pk").values_list("pk", flat=True).first()
+    return str(latest or 0)
+
+
+@login_required
+def kanban_events(request):
+    def stream():
+        marker = kanban_change_marker()
+        yield f"event: ready\ndata: {marker}\n\n"
+        started = time.monotonic()
+        last_heartbeat = started
+        while time.monotonic() - started < 300:
+            time.sleep(2)
+            current = kanban_change_marker()
+            if current != marker:
+                marker = current
+                yield f"event: changed\ndata: {marker}\n\n"
+            elif time.monotonic() - last_heartbeat >= 20:
+                last_heartbeat = time.monotonic()
+                yield ": keepalive\n\n"
+
+    response = StreamingHttpResponse(stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
 
 
 @login_required

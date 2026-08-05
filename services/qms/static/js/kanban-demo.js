@@ -243,35 +243,64 @@
     });
   }
 
-  function startBoardAutoRefresh() {
+  function startBoardEventRefresh() {
     const shell = document.querySelector("[data-kanban-board-shell]");
     if (!shell) return;
-
-    const REFRESH_MS = 5000;
+    if (!window.EventSource) return;
     let refreshing = false;
+    let lastMarker = null;
+    let source = null;
+    let pendingRefresh = false;
 
-    async function refreshIfVisible() {
+    async function refreshFromEvent(marker) {
+      if (lastMarker === null) {
+        lastMarker = marker;
+        return;
+      }
+      if (marker === lastMarker) return;
+      lastMarker = marker;
       if (refreshing) return;
-      if (document.hidden) return;
+      if (document.hidden) {
+        pendingRefresh = true;
+        return;
+      }
       if (document.querySelector(".kanban-card.dragging")) return;
 
       refreshing = true;
       try {
         await refreshBoard();
+        pendingRefresh = false;
       } finally {
         refreshing = false;
       }
     }
 
-    window.setInterval(refreshIfVisible, REFRESH_MS);
+    function connect() {
+      if (source) source.close();
+      source = new EventSource("/bakery/board/events/");
+      source.addEventListener("ready", (event) => {
+        lastMarker = event.data || "0";
+      });
+      source.addEventListener("changed", (event) => {
+        refreshFromEvent(event.data || "");
+      });
+      source.onerror = () => {
+        if (source) source.close();
+        source = null;
+        window.setTimeout(connect, 3000);
+      };
+    }
+
+    connect();
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) refreshIfVisible();
+      if (!document.hidden && pendingRefresh) refreshBoard().then(() => {
+        pendingRefresh = false;
+      });
     });
-    window.addEventListener("focus", refreshIfVisible);
   }
 
   bindDragAndDrop();
   bindDemoPanel();
-  startBoardAutoRefresh();
+  startBoardEventRefresh();
   window.KanbanDemo = { refreshBoard };
 })();
