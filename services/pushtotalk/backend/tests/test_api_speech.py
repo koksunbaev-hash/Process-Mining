@@ -50,7 +50,7 @@ def test_kms_forward_error_does_not_break_speech_save(client, monkeypatch) -> No
     assert client.get("/api/messages").json()[0]["text"] == "Batch DEMO-B-0012 finished mixing"
 
 
-def test_mqtt_publish_is_preferred_over_direct_kms(client, monkeypatch) -> None:
+def test_mqtt_publish_is_mirrored_to_direct_kms(client, monkeypatch) -> None:
     import app.api.speech as speech_api
 
     mqtt_calls = []
@@ -75,7 +75,12 @@ def test_mqtt_publish_is_preferred_over_direct_kms(client, monkeypatch) -> None:
             {"client_request_id": f"speech-{response.json()['id']}", "source": "pushtotalk"},
         )
     ]
-    assert kms_calls == []
+    assert kms_calls == [
+        (
+            "DEMO-B-0012 ready",
+            {"client_request_id": f"speech-{response.json()['id']}", "source": "pushtotalk"},
+        )
+    ]
 
 
 def test_mqtt_error_falls_back_to_kms(client, monkeypatch) -> None:
