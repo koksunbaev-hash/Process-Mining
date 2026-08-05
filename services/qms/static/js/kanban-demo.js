@@ -243,7 +243,35 @@
     });
   }
 
+  function startBoardAutoRefresh() {
+    const shell = document.querySelector("[data-kanban-board-shell]");
+    if (!shell) return;
+
+    const REFRESH_MS = 5000;
+    let refreshing = false;
+
+    async function refreshIfVisible() {
+      if (refreshing) return;
+      if (document.hidden) return;
+      if (document.querySelector(".kanban-card.dragging")) return;
+
+      refreshing = true;
+      try {
+        await refreshBoard();
+      } finally {
+        refreshing = false;
+      }
+    }
+
+    window.setInterval(refreshIfVisible, REFRESH_MS);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refreshIfVisible();
+    });
+    window.addEventListener("focus", refreshIfVisible);
+  }
+
   bindDragAndDrop();
   bindDemoPanel();
+  startBoardAutoRefresh();
   window.KanbanDemo = { refreshBoard };
 })();
