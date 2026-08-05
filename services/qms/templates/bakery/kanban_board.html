@@ -19,11 +19,12 @@ made every card look identical at a glance.
       <article class="kanban-card{% if batch.is_demo %} kanban-card-demo{% endif %}{% if batch.has_blocking_problem %} is-blocked{% endif %}"
                draggable="true"
                data-batch="{{ batch.pk }}"
-               data-batch-number="{{ batch.batch_number }}"
+               data-batch-number="{{ batch.short_batch_number }}"
+               data-full-batch-number="{{ batch.batch_number }}"
                style="--card-index: {{ forloop.counter0 }}">
 
         <header class="kanban-card__top">
-          <span class="kanban-card__id">{{ batch.batch_number }}</span>
+          <span class="kanban-card__id" title="{{ batch.batch_number }}">{{ batch.short_batch_number }}</span>
           {% if batch.has_blocking_problem %}
             <span class="kanban-card__flag is-critical" title="Есть блокирующая проблема">проблема</span>
           {% elif batch.order_item.order.priority == 'urgent' or batch.order_item.order.priority == 'high' %}

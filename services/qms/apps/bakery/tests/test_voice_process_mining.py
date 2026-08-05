@@ -10,10 +10,10 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import UserProfile
 from apps.audit.models import AuditLog
-from apps.bakery.models import BatchStageHistory, VoiceCommand, VoiceMessage
+from apps.bakery.models import BatchStageHistory, ProductionBatch, VoiceCommand, VoiceMessage
 from apps.bakery.services import move_batch
 from apps.bakery.voice_process_mining import may_auto_confirm, parse_voice_command
-from apps.bakery.tests.batch_workflow.factories import create_user
+from apps.bakery.tests.batch_workflow.factories import create_manual_batch, create_user
 from apps.bakery.tests.batch_workflow.helpers import create_batch_at_stage, stage
 from apps.notifications.models import Notification
 
@@ -173,6 +173,27 @@ class VoiceProcessMiningTests(TestCase):
         batch.refresh_from_db()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(batch.current_stage.code, "forming")
+
+    def test_old_long_batch_number_has_short_alias(self):
+        batch = create_manual_batch("mixing", self.user, batch_number="B-2026-0404-404")
+        self.assertEqual(batch.short_batch_number, "B-404")
+        self.assertEqual(ProductionBatch.short_number_for("DEMO-B-0012"), "D-12")
+
+    def test_confirm_accepts_short_spoken_batch_number(self):
+        batch = create_manual_batch("mixing", self.user, batch_number="B-2026-0404-404")
+        voice = VoiceMessage.objects.create(audio_file=audio_file(), original_filename="voice.webm", mime_type="audio/webm", file_size=10, created_by=self.user)
+        command = VoiceCommand.objects.create(
+            voice_message=voice,
+            intent="move_batch",
+            extracted_data={"batch_number": "B-404", "from_stage": "mixing", "to_stage": "forming", "comment": "voice"},
+            confidence=Decimal("0.96"),
+        )
+        response = self.client.post(f"/api/voice-commands/{command.pk}/confirm/")
+        batch.refresh_from_db()
+        command.refresh_from_db()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(batch.current_stage.code, "forming")
+        self.assertEqual(command.extracted_data["batch_number"], "B-2026-0404-404")
 
     def test_repeated_confirm_does_not_execute_twice(self):
         batch = create_batch_at_stage("mixing", self.user)

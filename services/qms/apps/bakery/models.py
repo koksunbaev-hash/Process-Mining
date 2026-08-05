@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 from datetime import timedelta
 from decimal import Decimal
@@ -310,10 +311,32 @@ class ProductionBatch(TimestampedModel):
         verbose_name = "производственная партия"
         verbose_name_plural = "производственные партии"
 
+    @staticmethod
+    def short_number_for(value):
+        value = (value or "").strip().upper()
+        if not value:
+            return ""
+        demo_match = re.fullmatch(r"DEMO-B-0*(\d+)", value)
+        if demo_match:
+            return f"D-{int(demo_match.group(1))}"
+        old_match = re.fullmatch(r"B-\d{4}-\d+-0*(\d+)", value)
+        if old_match:
+            return f"B-{int(old_match.group(1))}"
+        return value
+
+    @property
+    def short_batch_number(self):
+        return self.short_number_for(self.batch_number)
+
     def save(self, *args, **kwargs):
         if not self.batch_number:
-            order_no = self.order_item.order.order_number or "NEW"
-            self.batch_number = f"B-{timezone.localdate().year}-{order_no}-{self.order_item_id or 'X'}"
+            base = self.order_item_id or int(timezone.now().timestamp())
+            candidate = f"B-{base}"
+            suffix = 1
+            while ProductionBatch.objects.filter(batch_number=candidate).exclude(pk=self.pk).exists():
+                suffix += 1
+                candidate = f"B-{base}-{suffix}"
+            self.batch_number = candidate
         super().save(*args, **kwargs)
 
     def __str__(self):

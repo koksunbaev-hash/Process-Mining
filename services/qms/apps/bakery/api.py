@@ -52,6 +52,7 @@ from .voice_process_mining import (
     handle_process_mining_callback,
     may_auto_confirm,
     reject_voice_command,
+    resolve_batch,
     send_voice_to_process_mining,
     verify_process_mining_signature,
 )
@@ -358,7 +359,7 @@ class VoiceMessageViewSet(viewsets.ModelViewSet):
         command = getattr(voice, "command", None)
         if command:
             data = dict(command.extracted_data)
-            batch = ProductionBatch.objects.select_related("current_stage").filter(batch_number__iexact=data.get("batch_number", "")).first()
+            batch = resolve_batch(data)
             if batch:
                 data["batch_id"] = batch.pk
                 data["current_stage"] = batch.current_stage.name

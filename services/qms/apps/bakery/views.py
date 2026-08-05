@@ -41,6 +41,16 @@ from .permissions import can_manage_catalog, can_manage_orders, can_move_batch, 
 from .services import confirm_order, move_batch, next_stage_for, pause_batch, previous_stage_for, resume_batch
 
 
+def batch_number_query(value):
+    query = Q(batch_number__icontains=value)
+    normalized = ProductionBatch.short_number_for(value)
+    if normalized.startswith("B-") and normalized[2:].isdigit():
+        query |= Q(batch_number__endswith=f"-{normalized[2:]}")
+    if normalized.startswith("D-") and normalized[2:].isdigit():
+        query |= Q(batch_number__iexact=f"DEMO-B-{int(normalized[2:]):04d}")
+    return query
+
+
 def filter_batches(request):
     qs = ProductionBatch.objects.select_related(
         "order_item__order__customer", "product", "current_stage", "assigned_to"
@@ -48,7 +58,7 @@ def filter_batches(request):
     q = request.GET.get("q", "").strip()
     if q:
         qs = qs.filter(
-            Q(batch_number__icontains=q)
+            batch_number_query(q)
             | Q(product__name__icontains=q)
             | Q(order_item__order__order_number__icontains=q)
             | Q(order_item__order__customer__name__icontains=q)
@@ -82,7 +92,7 @@ def kanban_context(request):
     for index, stage in enumerate(stages):
         items = batches.filter(current_stage=stage)
         if column_search[stage.code]:
-            items = items.filter(Q(product__name__icontains=column_search[stage.code]) | Q(batch_number__icontains=column_search[stage.code]))
+            items = items.filter(Q(product__name__icontains=column_search[stage.code]) | batch_number_query(column_search[stage.code]))
         # prev_stage feeds the "← Назад" button, which exists because HTML5 drag
         # and drop fires no events from touch: on a phone or tablet the buttons
         # are the only way to move a batch at all.

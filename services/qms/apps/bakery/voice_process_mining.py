@@ -101,9 +101,11 @@ def callback_url():
 
 
 def process_mining_context():
+    recent_batches = list(ProductionBatch.objects.order_by("-id")[:50])
     return {
         "stages": ["Очередь", "Замес", "Формовка", "Расстойка", "Печь", "Склад", "Готово"],
-        "batch_numbers": list(ProductionBatch.objects.order_by("-id").values_list("batch_number", flat=True)[:50]),
+        "batch_numbers": [batch.batch_number for batch in recent_batches],
+        "batch_aliases": [batch.short_batch_number for batch in recent_batches],
     }
 
 
@@ -225,7 +227,7 @@ def resolve_batch(data):
             for candidate in ProductionBatch.objects.select_related("current_stage").exclude(
                 status__in=["completed", "cancelled"]
             ):
-                if _squash(candidate.batch_number) == wanted:
+                if _squash(candidate.batch_number) == wanted or _squash(candidate.short_batch_number) == wanted:
                     return candidate
 
     order_number = (data.get("order_number") or "").strip()
@@ -241,6 +243,7 @@ def create_voice_command(voice):
     parsed = parse_voice_command(voice.transcript, voice.confidence)
     batch = resolve_batch(parsed)
     if batch:
+        parsed["spoken_batch_number"] = parsed.get("batch_number", "")
         parsed["batch_number"] = batch.batch_number
         parsed["from_stage"] = batch.current_stage.code
         parsed["current_stage"] = batch.current_stage.name
@@ -310,7 +313,7 @@ def resolve_target_stage(normalized):
 
 def parse_voice_command(text, confidence=None):
     normalized = text.lower().replace("№", " ")
-    batch_match = re.search(r"\bB[-\s]?\d+(?:-\d+)?(?:-\d+)?\b", text, flags=re.IGNORECASE)
+    batch_match = re.search(r"\b(?:DEMO[-\s]?)?[BD][-\s]?\d+(?:-\d+)?(?:-\d+)?\b", text, flags=re.IGNORECASE)
     batch_number = batch_match.group(0).upper().replace(" ", "-") if batch_match else ""
     # An operator names the order as readily as the batch ("заказ 13"), and a
     # spoken number never carries the stored prefix - keep the digits and
@@ -388,6 +391,9 @@ def confirm_voice_command(command, user):
         command.error_message = "Партия не найдена."
         command.save(update_fields=["status", "error_message", "updated_at"])
         raise Http404("Партия не найдена.")
+    if data.get("batch_number") != batch.batch_number:
+        command.extracted_data["spoken_batch_number"] = data.get("batch_number", "")
+        command.extracted_data["batch_number"] = batch.batch_number
     expected_stage = data.get("from_stage") or batch.current_stage.code
     if data.get("from_stage") and batch.current_stage.code != data["from_stage"]:
         raise ConflictError(f"Этап партии изменился: сейчас {batch.current_stage.name}.")
