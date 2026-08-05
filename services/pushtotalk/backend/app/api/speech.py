@@ -38,28 +38,19 @@ ALLOWED_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".mp4", ".mpeg", ".mpga", ".ogg", ".
 
 
 def dispatch_text_command(text: str, *, client_request_id: str | None = None, source: str = "pushtotalk") -> None:
-    """Send recognized text to MQTT and directly to KMS when configured.
-
-    MQTT keeps the voice gateway path useful for future projects. The direct
-    KMS call makes the bakery workflow reliable even when the gateway is down.
-    KMS uses client_request_id for idempotency, so duplicate delivery is safe.
-    """
-    mqtt_delivered = False
+    """Send recognized text to MQTT when configured, with direct KMS as fallback."""
     try:
         mqtt_result = publish_text_command(text, client_request_id=client_request_id, source=source)
     except MqttPublishError as error:
         logger.warning("MQTT publish failed; falling back to KMS: %s", error)
     else:
         if mqtt_result.get("status") != "skipped":
-            mqtt_delivered = True
+            return
 
     try:
         forward_text_command(text, client_request_id=client_request_id, source=source)
     except KmsForwardError as error:
-        if mqtt_delivered:
-            logger.warning("KMS direct forwarding failed after MQTT delivery: %s", error)
-        else:
-            logger.warning("KMS forwarding failed: %s", error)
+        logger.warning("KMS forwarding failed: %s", error)
 
 
 @router.post(
