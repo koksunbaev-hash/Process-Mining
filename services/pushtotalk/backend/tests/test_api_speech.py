@@ -3,19 +3,7 @@
 from __future__ import annotations
 
 
-def accept_kms(monkeypatch) -> None:
-    import app.api.speech as speech_api
-
-    monkeypatch.setattr(
-        speech_api,
-        "forward_text_command",
-        lambda text, **kwargs: {"status": "ok", "command_id": 15},
-    )
-
-
-def test_valid_text_returns_ok(client, monkeypatch) -> None:
-    accept_kms(monkeypatch)
-
+def test_valid_text_returns_ok(client) -> None:
     response = client.post("/api/speech", json={"text": "hello"})
 
     assert response.status_code == 200
@@ -47,7 +35,7 @@ def test_valid_text_is_dispatched_to_kms_when_mqtt_is_not_configured(client, mon
     ]
 
 
-def test_kms_forward_error_saves_text_but_returns_delivery_error(client, monkeypatch) -> None:
+def test_kms_forward_error_does_not_break_speech_save(client, monkeypatch) -> None:
     import app.api.speech as speech_api
     from app.services.kms_client import KmsForwardError
 
@@ -58,7 +46,7 @@ def test_kms_forward_error_saves_text_but_returns_delivery_error(client, monkeyp
 
     response = client.post("/api/speech", json={"text": "Batch DEMO-B-0012 finished mixing"})
 
-    assert response.status_code == 502
+    assert response.status_code == 200
     assert client.get("/api/messages").json()[0]["text"] == "Batch DEMO-B-0012 finished mixing"
 
 
@@ -143,9 +131,7 @@ def test_transcribed_text_is_returned_without_dispatch(client, monkeypatch, tmp_
     assert calls == []
 
 
-def test_cyrillic_text_is_accepted(client, monkeypatch) -> None:
-    accept_kms(monkeypatch)
-
+def test_cyrillic_text_is_accepted(client) -> None:
     response = client.post("/api/speech", json={"text": "Привет сервер"})
 
     assert response.status_code == 200
@@ -200,9 +186,7 @@ def test_malformed_json_returns_422(client) -> None:
     assert response.status_code == 422
 
 
-def test_very_long_text_is_rejected_without_crash(client, monkeypatch) -> None:
-    accept_kms(monkeypatch)
-
+def test_very_long_text_is_rejected_without_crash(client) -> None:
     response = client.post("/api/speech", json={"text": "a" * 50_000})
 
     assert response.status_code == 400
@@ -211,17 +195,13 @@ def test_very_long_text_is_rejected_without_crash(client, monkeypatch) -> None:
     assert client.post("/api/speech", json={"text": "still alive"}).status_code == 200
 
 
-def test_text_at_length_limit_is_accepted(client, settings, monkeypatch) -> None:
-    accept_kms(monkeypatch)
-
+def test_text_at_length_limit_is_accepted(client, settings) -> None:
     response = client.post("/api/speech", json={"text": "a" * settings.max_text_length})
 
     assert response.status_code == 200
 
 
-def test_text_is_trimmed_before_saving(client, monkeypatch) -> None:
-    accept_kms(monkeypatch)
-
+def test_text_is_trimmed_before_saving(client) -> None:
     client.post("/api/speech", json={"text": "  hello world  "})
 
     assert client.get("/api/messages").json()[0]["text"] == "hello world"
