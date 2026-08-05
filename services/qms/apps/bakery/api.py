@@ -65,16 +65,6 @@ def _bearer_token(request):
     return request.headers.get("X-PushToTalk-Token", "").strip()
 
 
-def _pushtotalk_executor_user():
-    users = get_user_model().objects.filter(is_active=True)
-    username = getattr(settings, "PUSHTOTALK_DEFAULT_USERNAME", "")
-    if username:
-        user = users.filter(username=username).first()
-        if user:
-            return user
-    return users.filter(is_superuser=True).order_by("id").first() or users.filter(is_staff=True).order_by("id").first()
-
-
 class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
@@ -469,7 +459,10 @@ class PushToTalkTextCommandView(APIView):
                     }
                 )
 
-        user = _pushtotalk_executor_user()
+        user = None
+        username = getattr(settings, "PUSHTOTALK_DEFAULT_USERNAME", "")
+        if username:
+            user = get_user_model().objects.filter(username=username).first()
 
         confidence = Decimal(str(request.data.get("confidence") or getattr(settings, "PUSHTOTALK_COMMAND_CONFIDENCE", 0.90)))
         with transaction.atomic():

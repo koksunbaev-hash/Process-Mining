@@ -130,6 +130,8 @@ def transcribe_speech(
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
 
+    dispatch_text_command(text, source="pushtotalk-whisper")
+
     return TranscriptionResponse(status="ok", text=text)
 
 

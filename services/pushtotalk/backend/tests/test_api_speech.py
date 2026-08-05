@@ -105,7 +105,7 @@ def test_mqtt_error_falls_back_to_kms(client, monkeypatch) -> None:
     ]
 
 
-def test_transcribed_text_is_returned_without_dispatch(client, monkeypatch, tmp_path) -> None:
+def test_transcribed_text_is_dispatched(client, monkeypatch, tmp_path) -> None:
     import app.api.speech as speech_api
 
     calls = []
@@ -123,7 +123,12 @@ def test_transcribed_text_is_returned_without_dispatch(client, monkeypatch, tmp_
 
     assert response.status_code == 200
     assert response.json()["text"] == "Batch DEMO-B-0012 finished mixing"
-    assert calls == []
+    assert calls == [
+        (
+            "Batch DEMO-B-0012 finished mixing",
+            {"client_request_id": None, "source": "pushtotalk-whisper"},
+        )
+    ]
 
 
 def test_cyrillic_text_is_accepted(client) -> None:
