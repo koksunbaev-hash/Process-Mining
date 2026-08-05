@@ -128,6 +128,10 @@ services:
       # process-mining service appends /stt itself. See docs/STT-PUBLIC-URL.md.
       - key: PM_STT_URL
         sync: false
+      # Required for free ngrok URLs, which otherwise return an HTML warning
+      # page to server-to-server requests.
+      - key: PM_STT_SKIP_NGROK_WARNING
+        value: "true"
 
   # ---- the phone app's backend --------------------------------------------
   - type: web

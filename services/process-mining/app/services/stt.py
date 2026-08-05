@@ -116,6 +116,8 @@ class SttService:
             method="POST",
             headers={"Content-Type": "audio/wav"},
         )
+        if self.settings.stt_skip_ngrok_warning:
+            request.add_header("ngrok-skip-browser-warning", "true")
 
         started = time.perf_counter()
         try:

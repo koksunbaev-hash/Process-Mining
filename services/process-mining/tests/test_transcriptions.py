@@ -198,6 +198,33 @@ def test_sync_separates_retryable_failures_from_permanent_ones(
     assert response.json()["error"]["code"]
 
 
+def test_stt_adds_ngrok_skip_header_when_enabled(settings, monkeypatch):
+    seen = {}
+    service = SttService(settings.model_copy(update={"stt_skip_ngrok_warning": True}))
+    monkeypatch.setattr(service, "decode_to_wav", lambda payload: (b"RIFF" + b"x" * 64, 0.1))
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b"recognized text"
+
+    def fake_urlopen(request, timeout):
+        seen["header"] = request.get_header("ngrok-skip-browser-warning")
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    result = service.transcribe(b"audio")
+
+    assert result["transcript"] == "recognized text"
+    assert seen["header"] == "true"
+
+
 @pytest.mark.parametrize("bad", [b"", b"not audio at all"])
 def test_undecodable_audio_raises_a_typed_error(settings, bad):
     service = SttService(settings)

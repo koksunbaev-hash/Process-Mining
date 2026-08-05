@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     stt_language: str = "ru"
     stt_timeout_seconds: int = 120
     stt_sample_rate: int = 16000
+    stt_skip_ngrok_warning: bool = False
 
     # Callbacks are signed with HMAC-SHA256 over the raw body; the receiver
     # rejects anything unsigned, so an empty secret disables sending.

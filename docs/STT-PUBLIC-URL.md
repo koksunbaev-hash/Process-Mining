@@ -74,6 +74,7 @@ Then set in Render `process-mining`:
 
 ```env
 PM_STT_URL=https://abc-123.ngrok-free.app
+PM_STT_SKIP_NGROK_WARNING=true
 ```
 
 Redeploy `process-mining`.
