@@ -480,12 +480,26 @@ class PushToTalkTextCommandView(APIView):
                 comment=str(request.data.get("source", "pushtotalk")),
             )
             command = create_voice_command(voice)
+        executed = False
+        if command and user and command.status == VoiceCommand.Status.DETECTED:
+            try:
+                command = confirm_voice_command(command, user)
+                executed = command.status == VoiceCommand.Status.EXECUTED
+            except ConflictError as exc:
+                return Response({"detail": str(exc), "voice_message_id": voice.pk, "command_id": command.pk}, status=409)
+            except PermissionDenied as exc:
+                raise ApiPermissionDenied(str(exc))
+            except ValidationError as exc:
+                raise ApiValidationError({"detail": exc.messages})
+            except Http404 as exc:
+                return Response({"detail": str(exc), "voice_message_id": voice.pk, "command_id": command.pk}, status=404)
         return Response(
             {
                 "status": "ok",
                 "voice_message_id": voice.pk,
                 "command_id": command.pk if command else None,
                 "command_status": command.status if command else None,
+                "executed": executed,
             },
             status=201,
         )

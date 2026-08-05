@@ -18,6 +18,8 @@ import com.example.push_to_talk.domain.usecase.StartRecognitionUseCase
 import com.example.push_to_talk.domain.usecase.StopRecognitionUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -48,6 +50,8 @@ class MainViewModel @Inject constructor(
     private val logger: Logger,
 ) : ViewModel() {
 
+    private var pendingDispatchJob: Job? = null
+
     private val localState = MutableStateFlow(
         LocalState(hasMicrophonePermission = checkMicrophonePermission()),
     )
@@ -62,6 +66,7 @@ class MainViewModel @Inject constructor(
                 hasMicrophonePermission = local.hasMicrophonePermission,
                 audioLevel = normalizeRms(session.rmsDb),
                 sendStatus = local.sendStatus,
+                pendingSendSeconds = local.pendingSendSeconds,
                 error = local.error ?: session.error,
             )
         }.stateIn(
@@ -73,7 +78,7 @@ class MainViewModel @Inject constructor(
     init {
         observeRecognition.events()
             .filterIsInstance<SpeechEvent.FinalResult>()
-            .onEach { event -> dispatchToApi(event.text) }
+            .onEach { event -> scheduleDispatch(event.text) }
             .launchIn(viewModelScope)
     }
 
@@ -117,9 +122,19 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun onPendingSendCancelled() {
+        pendingDispatchJob?.cancel()
+        pendingDispatchJob = null
+        localState.update {
+            it.copy(sendStatus = SendStatus.Cancelled, pendingSendSeconds = 0, error = null)
+        }
+    }
+
     private suspend fun start() {
         // Новая сессия убирает результат предыдущей отправки с экрана.
-        localState.update { it.copy(error = null, sendStatus = SendStatus.Idle) }
+        pendingDispatchJob?.cancel()
+        pendingDispatchJob = null
+        localState.update { it.copy(error = null, sendStatus = SendStatus.Idle, pendingSendSeconds = 0) }
         startRecognition(RecognitionConfig(languageTag = "ru-RU")).onFailure { error ->
             logger.w(TAG, "Не удалось начать распознавание: $error")
             localState.update { it.copy(error = error) }
@@ -130,19 +145,30 @@ class MainViewModel @Inject constructor(
      * Отправляет финальный текст на сервер и переводит результат в [SendStatus].
      * Причина сбоя остаётся типизированной ошибкой домена — строку подбирает UI.
      */
-    private fun dispatchToApi(text: String) {
-        viewModelScope.launch {
-            localState.update { it.copy(sendStatus = SendStatus.Sending, error = null) }
-            sendText(text)
-                .onSuccess {
-                    logger.i(TAG, "Текст отправлен во внешний сервис")
-                    localState.update { it.copy(sendStatus = SendStatus.Success) }
+    private fun scheduleDispatch(text: String) {
+        pendingDispatchJob?.cancel()
+        pendingDispatchJob = viewModelScope.launch {
+            for (seconds in SEND_DELAY_SECONDS downTo 1) {
+                localState.update {
+                    it.copy(sendStatus = SendStatus.Pending, pendingSendSeconds = seconds, error = null)
                 }
-                .onFailure { error ->
-                    logger.w(TAG, "Не удалось отправить текст: $error")
-                    localState.update { it.copy(sendStatus = SendStatus.Error, error = error) }
-                }
+                delay(1_000L)
+            }
+            dispatchToApi(text)
         }
+    }
+
+    private suspend fun dispatchToApi(text: String) {
+        localState.update { it.copy(sendStatus = SendStatus.Sending, pendingSendSeconds = 0, error = null) }
+        sendText(text)
+            .onSuccess {
+                logger.i(TAG, "Текст отправлен во внешний сервис")
+                localState.update { it.copy(sendStatus = SendStatus.Success) }
+            }
+            .onFailure { error ->
+                logger.w(TAG, "Не удалось отправить текст: $error")
+                localState.update { it.copy(sendStatus = SendStatus.Error, pendingSendSeconds = 0, error = error) }
+            }
     }
 
     override fun onCleared() {
@@ -159,12 +185,14 @@ class MainViewModel @Inject constructor(
     private data class LocalState(
         val error: AppError? = null,
         val sendStatus: SendStatus = SendStatus.Idle,
+        val pendingSendSeconds: Int = 0,
         val hasMicrophonePermission: Boolean = false,
     )
 
     private companion object {
         const val TAG = "MainViewModel"
         const val STATE_TIMEOUT_MILLIS = 5_000L
+        const val SEND_DELAY_SECONDS = 3
 
         /** Диапазон значений RMS, который отдаёт SpeechRecognizer. */
         const val MIN_RMS_DB = -2f

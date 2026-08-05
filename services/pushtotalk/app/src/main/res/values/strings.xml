@@ -13,8 +13,11 @@
     <string name="recognized_text_label">Текст:</string>
     <string name="recognized_text_placeholder">…</string>
 
+    <string name="send_status_pending">Текст будет отправлен через %1$d с</string>
+    <string name="send_status_cancel">Отмена</string>
     <string name="send_status_sending">Отправляем текст…</string>
     <string name="send_status_success">✅ Отправлено</string>
+    <string name="send_status_cancelled">Отправка отменена</string>
     <string name="send_status_error">❌ Ошибка отправки</string>
 
     <string name="mic_button_start">Начать запись</string>

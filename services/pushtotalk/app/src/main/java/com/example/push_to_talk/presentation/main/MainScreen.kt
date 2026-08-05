@@ -85,6 +85,7 @@ fun MainRoute(
             onMicPressStart = viewModel::onMicPressStart,
             onMicPressEnd = viewModel::onMicPressEnd,
             onErrorDismissed = viewModel::onErrorDismissed,
+            onPendingSendCancelled = viewModel::onPendingSendCancelled,
             modifier = modifier,
         )
     } else {
@@ -110,6 +111,7 @@ fun MainScreen(
     onMicPressStart: () -> Unit,
     onMicPressEnd: () -> Unit,
     onErrorDismissed: () -> Unit,
+    onPendingSendCancelled: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
@@ -157,7 +159,11 @@ fun MainScreen(
 
             RecognizedTextSection(text = uiState.recognizedText)
 
-            SendStatusSection(sendStatus = uiState.sendStatus)
+            SendStatusSection(
+                sendStatus = uiState.sendStatus,
+                pendingSendSeconds = uiState.pendingSendSeconds,
+                onPendingSendCancelled = onPendingSendCancelled,
+            )
 
             uiState.error?.let { error ->
                 Spacer(modifier = Modifier.height(16.dp))
@@ -190,7 +196,12 @@ private fun StatusSection(status: RecognitionStatus, modifier: Modifier = Modifi
  * Пока запрос в пути показывается прогресс-индикатор.
  */
 @Composable
-private fun SendStatusSection(sendStatus: SendStatus, modifier: Modifier = Modifier) {
+private fun SendStatusSection(
+    sendStatus: SendStatus,
+    pendingSendSeconds: Int,
+    onPendingSendCancelled: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val messageRes = sendStatus.messageRes() ?: return
 
     Column(
@@ -200,7 +211,11 @@ private fun SendStatusSection(sendStatus: SendStatus, modifier: Modifier = Modif
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = stringResource(messageRes),
+            text = if (sendStatus == SendStatus.Pending) {
+                stringResource(messageRes, pendingSendSeconds)
+            } else {
+                stringResource(messageRes)
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = when (sendStatus) {
                 SendStatus.Success -> MaterialTheme.colorScheme.primary
@@ -208,6 +223,11 @@ private fun SendStatusSection(sendStatus: SendStatus, modifier: Modifier = Modif
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             },
         )
+        if (sendStatus == SendStatus.Pending) {
+            TextButton(onClick = onPendingSendCancelled) {
+                Text(text = stringResource(R.string.send_status_cancel))
+            }
+        }
         if (sendStatus == SendStatus.Sending) {
             LinearProgressIndicator(
                 modifier = Modifier
@@ -275,6 +295,7 @@ private fun MainScreenIdlePreview() {
             onMicPressStart = {},
             onMicPressEnd = {},
             onErrorDismissed = {},
+            onPendingSendCancelled = {},
         )
     }
 }
@@ -297,6 +318,7 @@ private fun MainScreenListeningPreview() {
             onMicPressStart = {},
             onMicPressEnd = {},
             onErrorDismissed = {},
+            onPendingSendCancelled = {},
         )
     }
 }
@@ -317,6 +339,7 @@ private fun MainScreenSentPreview() {
             onMicPressStart = {},
             onMicPressEnd = {},
             onErrorDismissed = {},
+            onPendingSendCancelled = {},
         )
     }
 }
@@ -338,6 +361,7 @@ private fun MainScreenSendErrorPreview() {
             onMicPressStart = {},
             onMicPressEnd = {},
             onErrorDismissed = {},
+            onPendingSendCancelled = {},
         )
     }
 }
@@ -357,6 +381,7 @@ private fun MainScreenErrorPreview() {
             onMicPressStart = {},
             onMicPressEnd = {},
             onErrorDismissed = {},
+            onPendingSendCancelled = {},
         )
     }
 }

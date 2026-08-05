@@ -28,7 +28,7 @@ class PushToTalkCommandApiTests(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {token}",
         )
 
-    def test_pushtotalk_text_creates_reviewable_command_without_moving_batch(self):
+    def test_pushtotalk_text_executes_command_immediately(self):
         batch = create_batch_at_stage("mixing", self.user)
 
         response = self.post_command(
@@ -45,8 +45,11 @@ class PushToTalkCommandApiTests(TestCase):
         self.assertEqual(voice.audio_file.name, "")
         self.assertTrue(VoiceCommand.objects.filter(voice_message=voice).exists())
         self.assertEqual(response.data["command_id"], voice.command.pk)
+        self.assertTrue(response.data["executed"])
+        voice.command.refresh_from_db()
+        self.assertEqual(voice.command.status, VoiceCommand.Status.EXECUTED)
         batch.refresh_from_db()
-        self.assertEqual(batch.current_stage.code, "mixing")
+        self.assertEqual(batch.current_stage.code, "forming")
 
     def test_pushtotalk_text_is_idempotent_by_client_request_id(self):
         batch = create_batch_at_stage("mixing", self.user)
@@ -88,7 +91,7 @@ class PushToTalkCommandApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Партия")
-        self.assertContains(response, "Подтвердить")
+        self.assertContains(response, "выполнена")
 
     def test_text_command_has_no_public_audio_file(self):
         self.post_command({"text": "Партия B-1 закончила замес", "client_request_id": "ptt-no-audio"})

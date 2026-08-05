@@ -19,6 +19,7 @@ data class MainUiState(
     val audioLevel: Float = 0f,
     /** Чем закончилась последняя попытка отправки текста на сервер. */
     val sendStatus: SendStatus = SendStatus.Idle,
+    val pendingSendSeconds: Int = 0,
     val error: AppError? = null,
 ) {
     /** Идёт запрос к серверу: кнопка заблокирована, показан индикатор. */
@@ -37,11 +38,17 @@ enum class SendStatus {
     /** Отправок ещё не было либо результат уже показан и сброшен. */
     Idle,
 
+    /** Текст распознан и ждёт короткое окно отмены перед отправкой. */
+    Pending,
+
     /** Запрос ушёл, ответа ещё нет. */
     Sending,
 
     /** Сервер подтвердил приём. */
     Success,
+
+    /** Пользователь отменил отправку распознанного текста. */
+    Cancelled,
 
     /** Отправить не удалось; причина лежит в [MainUiState.error]. */
     Error,
