@@ -6,15 +6,18 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -50,6 +53,7 @@ import com.example.push_to_talk.ui.theme.PushtotalkTheme
  * ViewModel и весь слой ниже остаются без изменений.
  */
 private val PushToTalkButtonMode = PushToTalkMode.Tap
+private const val SEND_DELAY_SECONDS = 3
 
 /** Точка входа экрана: связывает ViewModel, разрешения и stateless-UI. */
 @Composable
@@ -224,6 +228,7 @@ private fun SendStatusSection(
             },
         )
         if (sendStatus == SendStatus.Pending) {
+            PendingSendCountdown(secondsLeft = pendingSendSeconds)
             TextButton(onClick = onPendingSendCancelled) {
                 Text(text = stringResource(R.string.send_status_cancel))
             }
@@ -235,6 +240,32 @@ private fun SendStatusSection(
                     .padding(top = 8.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun PendingSendCountdown(secondsLeft: Int, modifier: Modifier = Modifier) {
+    val safeSeconds = secondsLeft.coerceIn(0, SEND_DELAY_SECONDS)
+    val progress = safeSeconds / SEND_DELAY_SECONDS.toFloat()
+
+    Box(
+        modifier = modifier
+            .padding(top = 12.dp)
+            .size(72.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            strokeWidth = 6.dp,
+        )
+        Text(
+            text = safeSeconds.toString(),
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
