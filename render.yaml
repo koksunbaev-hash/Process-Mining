@@ -123,9 +123,11 @@ services:
         sync: false
       - key: PM_CALLBACK_SECRET
         sync: false
-      # Deliberately unset: PM_STT_URL. This instance has no speech container
-      # to talk to, so /api/transcriptions/ here would accept audio and never
-      # answer. Voice goes to the VM instead.
+      # Render cannot resolve docker-compose hostnames such as http://stt:8080.
+      # Set this to a public HTTPS URL that exposes the STT server root. The
+      # process-mining service appends /stt itself. See docs/STT-PUBLIC-URL.md.
+      - key: PM_STT_URL
+        sync: false
 
   # ---- the phone app's backend --------------------------------------------
   - type: web

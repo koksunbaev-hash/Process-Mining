@@ -169,6 +169,11 @@ services:
       # Keeps downloaded weights across restarts - otherwise every recreate
       # re-downloads the model.
       - stt_models:/home/ovos/.cache
+    ports:
+      # Published only on localhost by default. Use this for a public tunnel
+      # such as ngrok/Tailscale/Cloudflare Tunnel, then put that public HTTPS
+      # base URL into PM_STT_URL on Render.
+      - "${STT_BIND_ADDR:-127.0.0.1}:${STT_PORT:-8080}:8080"
     deploy:
       resources:
         limits:
