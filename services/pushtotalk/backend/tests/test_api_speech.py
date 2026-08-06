@@ -35,7 +35,7 @@ def test_valid_text_is_dispatched_to_kms_when_mqtt_is_not_configured(client, mon
     ]
 
 
-def test_kms_forward_error_does_not_break_speech_save(client, monkeypatch) -> None:
+def test_kms_forward_error_returns_502_but_keeps_local_history(client, monkeypatch) -> None:
     import app.api.speech as speech_api
     from app.services.kms_client import KmsForwardError
 
@@ -46,7 +46,8 @@ def test_kms_forward_error_does_not_break_speech_save(client, monkeypatch) -> No
 
     response = client.post("/api/speech", json={"text": "Batch DEMO-B-0012 finished mixing"})
 
-    assert response.status_code == 200
+    assert response.status_code == 502
+    assert response.json()["message"] == "KMS не принял текст. Повторите отправку."
     assert client.get("/api/messages").json()[0]["text"] == "Batch DEMO-B-0012 finished mixing"
 
 
@@ -105,7 +106,7 @@ def test_mqtt_error_falls_back_to_kms(client, monkeypatch) -> None:
     ]
 
 
-def test_transcribed_text_is_dispatched(client, monkeypatch, tmp_path) -> None:
+def test_transcribed_text_is_returned_without_early_dispatch(client, monkeypatch, tmp_path) -> None:
     import app.api.speech as speech_api
 
     calls = []
@@ -123,12 +124,9 @@ def test_transcribed_text_is_dispatched(client, monkeypatch, tmp_path) -> None:
 
     assert response.status_code == 200
     assert response.json()["text"] == "Batch DEMO-B-0012 finished mixing"
-    assert calls == [
-        (
-            "Batch DEMO-B-0012 finished mixing",
-            {"client_request_id": None, "source": "pushtotalk-whisper"},
-        )
-    ]
+    # Android sends the accepted text through POST /api/speech after its cancellable countdown.
+    # Dispatching from the transcription endpoint too created two KMS voice messages.
+    assert calls == []
 
 
 def test_cyrillic_text_is_accepted(client) -> None:

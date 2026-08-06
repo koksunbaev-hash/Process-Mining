@@ -32,7 +32,7 @@ ipconfig                                            # Linux/macOS: ip addr
 
 # 3. Клиент: адрес backend-а задаётся параметром сборки
 cd ..
-./gradlew installDebug -PapiBaseUrl=http://192.168.0.168:8080/
+./gradlew installDebug -PapiBaseUrl=http://192.168.0.137:8002/
 ```
 
 Для эмулятора адрес хоста — `http://10.0.2.2:8080/`.
@@ -210,7 +210,7 @@ FinalResult ──► SendTextUseCase ──► NetworkRepository ──► POST
 ### Адрес backend-а
 
 Адрес не хранится в коде: он приходит в `BuildConfig.API_BASE_URL` из параметра сборки
-`apiBaseUrl` (`gradle.properties`, значение по умолчанию `http://192.168.0.168:8080/`).
+`apiBaseUrl` (`gradle.properties`, значение по умолчанию `http://192.168.0.137:8002/`).
 
 ```bash
 ./gradlew assembleDebug -PapiBaseUrl=http://10.0.2.2:8080/    # эмулятор
@@ -318,7 +318,7 @@ cd backend && pytest             # тесты backend-а
 
 ```bash
 ./gradlew testDebugUnitTest --tests '*RealBackendIntegrationTest*' \
-    -PbackendUrl=http://192.168.0.168:8080/
+    -PbackendUrl=http://192.168.0.137:8002/
 ```
 
 ### Backend — 50 тестов, покрытие 100 %

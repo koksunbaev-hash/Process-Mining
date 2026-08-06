@@ -17,7 +17,7 @@
     <domain-config cleartextTrafficPermitted="true">
         <!-- Адреса сервиса в локальной сети. -->
         <domain includeSubdomains="false">192.168.0.105</domain>
-        <domain includeSubdomains="false">192.168.0.168</domain>
+        <domain includeSubdomains="false">192.168.0.137</domain>
         <!-- Хост разработчика: 10.0.2.2 — это localhost для эмулятора Android. -->
         <domain includeSubdomains="false">10.0.2.2</domain>
         <domain includeSubdomains="false">localhost</domain>

@@ -24,7 +24,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 Принимает реплику.
 
 ```bash
-curl -X POST http://192.168.0.168:8080/api/speech \
+curl -X POST http://192.168.0.137:8002/api/speech \
   -H "Content-Type: application/json" \
   -d '{"text":"hello"}'
 ```
@@ -45,7 +45,7 @@ curl -X POST http://192.168.0.168:8080/api/speech \
 Последние сообщения, новые сверху. По умолчанию 50, параметр `limit` сужает выборку.
 
 ```bash
-curl http://192.168.0.168:8080/api/messages
+curl http://192.168.0.137:8002/api/messages
 ```
 
 ```json

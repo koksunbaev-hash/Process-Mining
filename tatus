@@ -1,0 +1,226 @@
+[1mdiff --git a/.env.example b/.env.example[m
+[1mindex 22f1ef7..171a3a8 100644[m
+[1m--- a/.env.example[m
+[1m+++ b/.env.example[m
+[36m@@ -81,6 +81,7 @@[m [mPUSHTOTALK_COMMAND_CONFIDENCE=0.90[m
+ [m
+ # Host port for the backend, and the TLS port the proxy publishes it on.[m
+ # 10000 is not arbitrary: Tailscale Funnel serves 443, 8443 and 10000 only.[m
+[32m+[m[32mPTT_BIND_ADDR=0.0.0.0[m
+ PTT_PORT=8002[m
+ PTT_HTTPS_PORT=10000[m
+ PTT_LOG_LEVEL=INFO[m
+[1mdiff --git a/docker-compose.yml b/docker-compose.yml[m
+[1mindex fa06211..5d412f4 100644[m
+[1m--- a/docker-compose.yml[m
+[1m+++ b/docker-compose.yml[m
+[36m@@ -127,7 +127,7 @@[m [mservices:[m
+       PTT_MQTT_TOPIC: ${PTT_MQTT_TOPIC:-voice/commands/recognized}[m
+       PTT_MQTT_PROJECT: ${PTT_MQTT_PROJECT:-kms}[m
+     ports:[m
+[31m-      - "${BIND_ADDR:-127.0.0.1}:${PTT_PORT:-8002}:8000"[m
+[32m+[m[32m      - "${PTT_BIND_ADDR:-0.0.0.0}:${PTT_PORT:-8002}:8000"[m
+     volumes:[m
+       - ptt_data:/srv/ptt[m
+     depends_on:[m
+[1mdiff --git a/services/pushtotalk/README.md b/services/pushtotalk/README.md[m
+[1mindex 6896549..9c9127b 100644[m
+[1m--- a/services/pushtotalk/README.md[m
+[1m+++ b/services/pushtotalk/README.md[m
+[36m@@ -32,7 +32,7 @@[m [mipconfig                                            # Linux/macOS: ip addr[m
+ [m
+ # 3. Клиент: адрес backend-а задаётся параметром сборки[m
+ cd ..[m
+[31m-./gradlew installDebug -PapiBaseUrl=http://192.168.0.168:8080/[m
+[32m+[m[32m./gradlew installDebug -PapiBaseUrl=http://192.168.0.137:8002/[m
+ ```[m
+ [m
+ Для эмулятора адрес хоста — `http://10.0.2.2:8080/`.[m
+[36m@@ -210,7 +210,7 @@[m [mFinalResult ──► SendTextUseCase ──► NetworkRepository ──► POST[m
+ ### Адрес backend-а[m
+ [m
+ Адрес не хранится в коде: он приходит в `BuildConfig.API_BASE_URL` из параметра сборки[m
+[31m-`apiBaseUrl` (`gradle.properties`, значение по умолчанию `http://192.168.0.168:8080/`).[m
+[32m+[m[32m`apiBaseUrl` (`gradle.properties`, значение по умолчанию `http://192.168.0.137:8002/`).[m
+ [m
+ ```bash[m
+ ./gradlew assembleDebug -PapiBaseUrl=http://10.0.2.2:8080/    # эмулятор[m
+[36m@@ -318,7 +318,7 @@[m [mcd backend && pytest             # тесты backend-а[m
+ [m
+ ```bash[m
+ ./gradlew testDebugUnitTest --tests '*RealBackendIntegrationTest*' \[m
+[31m-    -PbackendUrl=http://192.168.0.168:8080/[m
+[32m+[m[32m    -PbackendUrl=http://192.168.0.137:8002/[m
+ ```[m
+ [m
+ ### Backend — 50 тестов, покрытие 100 %[m
+[1mdiff --git a/services/pushtotalk/app/build.gradle.kts b/services/pushtotalk/app/build.gradle.kts[m
+[1mindex dd3f408..a024ac5 100644[m
+[1m--- a/services/pushtotalk/app/build.gradle.kts[m
+[1m+++ b/services/pushtotalk/app/build.gradle.kts[m
+[36m@@ -14,7 +14,7 @@[m [mplugins {[m
+  */[m
+ val apiBaseUrl: String = (project.findProperty("apiBaseUrl") as String?)[m
+     ?.takeIf { it.isNotBlank() }[m
+[31m-    ?: "http://192.168.0.168:8080/"[m
+[32m+[m[32m    ?: "http://192.168.0.137:8002/"[m
+ [m
+ val releaseApiBaseUrl: String = (project.findProperty("releaseApiBaseUrl") as String?)[m
+     ?.takeIf { it.isNotBlank() }[m
+[1mdiff --git a/services/pushtotalk/app/src/main/res/xml/network_security_config.xml b/services/pushtotalk/app/src/main/res/xml/network_security_config.xml[m
+[1mindex 1b05848..fcf9c56 100644[m
+[1m--- a/services/pushtotalk/app/src/main/res/xml/network_security_config.xml[m
+[1m+++ b/services/pushtotalk/app/src/main/res/xml/network_security_config.xml[m
+[36m@@ -17,7 +17,7 @@[m
+     <domain-config cleartextTrafficPermitted="true">[m
+         <!-- Адреса сервиса в локальной сети. -->[m
+         <domain includeSubdomains="false">192.168.0.105</domain>[m
+[31m-        <domain includeSubdomains="false">192.168.0.168</domain>[m
+[32m+[m[32m        <domain includeSubdomains="false">192.168.0.137</domain>[m
+         <!-- Хост разработчика: 10.0.2.2 — это localhost для эмулятора Android. -->[m
+         <domain includeSubdomains="false">10.0.2.2</domain>[m
+         <domain includeSubdomains="false">localhost</domain>[m
+[1mdiff --git a/services/pushtotalk/app/src/test/java/com/example/push_to_talk/data/repository/RealBackendIntegrationTest.kt b/services/pushtotalk/app/src/test/java/com/example/push_to_talk/data/repository/RealBackendIntegrationTest.kt[m
+[1mindex 0a72b65..2052fd3 100644[m
+[1m--- a/services/pushtotalk/app/src/test/java/com/example/push_to_talk/data/repository/RealBackendIntegrationTest.kt[m
+[1m+++ b/services/pushtotalk/app/src/test/java/com/example/push_to_talk/data/repository/RealBackendIntegrationTest.kt[m
+[36m@@ -25,7 +25,7 @@[m [mimport java.util.concurrent.TimeUnit[m
+  * сервиса и не ломает CI. Чтобы прогнать его, укажите адрес:[m
+  *[m
+  *     ./gradlew testDebugUnitTest --tests '*RealBackendIntegrationTest*' \[m
+[31m- *         -PbackendUrl=http://192.168.0.168:8080/[m
+[32m+[m[32m *         -PbackendUrl=http://192.168.0.137:8002/[m
+  *[m
+  * либо задайте переменную окружения `PTT_BACKEND_URL`.[m
+  */[m
+[1mdiff --git a/services/pushtotalk/backend/README.md b/services/pushtotalk/backend/README.md[m
+[1mindex a39f93b..cf0368b 100644[m
+[1m--- a/services/pushtotalk/backend/README.md[m
+[1m+++ b/services/pushtotalk/backend/README.md[m
+[36m@@ -24,7 +24,7 @@[m [muvicorn app.main:app --host 0.0.0.0 --port 8080[m
+ Принимает реплику.[m
+ [m
+ ```bash[m
+[31m-curl -X POST http://192.168.0.168:8080/api/speech \[m
+[32m+[m[32mcurl -X POST http://192.168.0.137:8002/api/speech \[m
+   -H "Content-Type: application/json" \[m
+   -d '{"text":"hello"}'[m
+ ```[m
+[36m@@ -45,7 +45,7 @@[m [mcurl -X POST http://192.168.0.168:8080/api/speech \[m
+ Последние сообщения, новые сверху. По умолчанию 50, параметр `limit` сужает выборку.[m
+ [m
+ ```bash[m
+[31m-curl http://192.168.0.168:8080/api/messages[m
+[32m+[m[32mcurl http://192.168.0.137:8002/api/messages[m
+ ```[m
+ [m
+ ```json[m
+[1mdiff --git a/services/pushtotalk/backend/app/api/speech.py b/services/pushtotalk/backend/app/api/speech.py[m
+[1mindex 6c58834..8d230c2 100644[m
+[1m--- a/services/pushtotalk/backend/app/api/speech.py[m
+[1m+++ b/services/pushtotalk/backend/app/api/speech.py[m
+[36m@@ -50,13 +50,14 @@[m [mdef dispatch_text_command(text: str, *, client_request_id: str | None = None, so[m
+     try:[m
+         forward_text_command(text, client_request_id=client_request_id, source=source)[m
+     except KmsForwardError as error:[m
+[31m-        logger.warning("KMS forwarding failed: %s", error)[m
+[32m+[m[32m        logger.error("KMS forwarding failed: %s", error)[m
+[32m+[m[32m        raise[m
+ [m
+ [m
+ @router.post([m
+     "/speech",[m
+     response_model=SpeechResponse,[m
+[31m-    responses={400: {"model": ErrorResponse}},[m
+[32m+[m[32m    responses={400: {"model": ErrorResponse}, 502: {"model": ErrorResponse}},[m
+     summary="Принять распознанный текст",[m
+ )[m
+ def receive_speech([m
+[36m@@ -81,7 +82,13 @@[m [mdef receive_speech([m
+             content=ErrorResponse(message=str(error)).model_dump(),[m
+         )[m
+ [m
+[31m-    dispatch_text_command(message.text, client_request_id=f"speech-{message.id}")[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        dispatch_text_command(message.text, client_request_id=f"speech-{message.id}")[m
+[32m+[m[32m    except KmsForwardError:[m
+[32m+[m[32m        return JSONResponse([m
+[32m+[m[32m            status_code=status.HTTP_502_BAD_GATEWAY,[m
+[32m+[m[32m            content=ErrorResponse(message="KMS не принял текст. Повторите отправку.").model_dump(),[m
+[32m+[m[32m        )[m
+ [m
+     return SpeechResponse(status="ok", id=message.id)[m
+ [m
+[36m@@ -130,8 +137,6 @@[m [mdef transcribe_speech([m
+         if tmp_path is not None:[m
+             tmp_path.unlink(missing_ok=True)[m
+ [m
+[31m-    dispatch_text_command(text, source="pushtotalk-whisper")[m
+[31m-[m
+     return TranscriptionResponse(status="ok", text=text)[m
+ [m
+ [m
+[1mdiff --git a/services/pushtotalk/backend/tests/test_api_speech.py b/services/pushtotalk/backend/tests/test_api_speech.py[m
+[1mindex 29bb86b..38887ac 100644[m
+[1m--- a/services/pushtotalk/backend/tests/test_api_speech.py[m
+[1m+++ b/services/pushtotalk/backend/tests/test_api_speech.py[m
+[36m@@ -35,7 +35,7 @@[m [mdef test_valid_text_is_dispatched_to_kms_when_mqtt_is_not_configured(client, mon[m
+     ][m
+ [m
+ [m
+[31m-def test_kms_forward_error_does_not_break_speech_save(client, monkeypatch) -> None:[m
+[32m+[m[32mdef test_kms_forward_error_returns_502_but_keeps_local_history(client, monkeypatch) -> None:[m
+     import app.api.speech as speech_api[m
+     from app.services.kms_client import KmsForwardError[m
+ [m
+[36m@@ -46,7 +46,8 @@[m [mdef test_kms_forward_error_does_not_break_speech_save(client, monkeypatch) -> No[m
+ [m
+     response = client.post("/api/speech", json={"text": "Batch DEMO-B-0012 finished mixing"})[m
+ [m
+[31m-    assert response.status_code == 200[m
+[32m+[m[32m    assert response.status_code == 502[m
+[32m+[m[32m    assert response.json()["message"] == "KMS не принял текст. Повторите отправку."[m
+     assert client.get("/api/messages").json()[0]["text"] == "Batch DEMO-B-0012 finished mixing"[m
+ [m
+ [m
+[36m@@ -105,7 +106,7 @@[m [mdef test_mqtt_error_falls_back_to_kms(client, monkeypatch) -> None:[m
+     ][m
+ [m
+ [m
+[31m-def test_transcribed_text_is_dispatched(client, monkeypatch, tmp_path) -> None:[m
+[32m+[m[32mdef test_transcribed_text_is_returned_without_early_dispatch(client, monkeypatch, tmp_path) -> None:[m
+     import app.api.speech as speech_api[m
+ [m
+     calls = [][m
+[36m@@ -123,12 +124,9 @@[m [mdef test_transcribed_text_is_dispatched(client, monkeypatch, tmp_path) -> None:[m
+ [m
+     assert response.status_code == 200[m
+     assert response.json()["text"] == "Batch DEMO-B-0012 finished mixing"[m
+[31m-    assert calls == [[m
+[31m-        ([m
+[31m-            "Batch DEMO-B-0012 finished mixing",[m
+[31m-            {"client_request_id": None, "source": "pushtotalk-whisper"},[m
+[31m-        )[m
+[31m-    ][m
+[32m+[m[32m    # Android sends the accepted text through POST /api/speech after its cancellable countdown.[m
+[32m+[m[32m    # Dispatching from the transcription endpoint too created two KMS voice messages.[m
+[32m+[m[32m    assert calls == [][m
+ [m
+ [m
+ def test_cyrillic_text_is_accepted(client) -> None:[m
+[1mdiff --git a/services/pushtotalk/gradle.properties b/services/pushtotalk/gradle.properties[m
+[1mindex aa623b5..0333e9b 100644[m
+[1m--- a/services/pushtotalk/gradle.properties[m
+[1m+++ b/services/pushtotalk/gradle.properties[m
+[36m@@ -22,8 +22,8 @@[m [mkotlin.code.style=official[m
+ # Переопределяется из командной строки: ./gradlew assembleDebug -PapiBaseUrl=...[m
+ # Для эмулятора Android используйте http://10.0.2.2:8080/[m
+ #[m
+[31m-# Это должен быть IP машины, где запущен uvicorn, в той же сети, что и телефон.[m
+[32m+[m[32m# Это должен быть IP машины, где запущен контейнер pushtotalk, в той же сети, что и телефон.[m
+ # Узнать его: Windows — ipconfig, Linux/macOS — ip addr / ifconfig.[m
+[31m-apiBaseUrl=http://192.168.0.168:8080/[m
+[32m+[m[32mapiBaseUrl=http://192.168.0.137:8002/[m
+ # Адрес для release-сборки; если не задан, используется apiBaseUrl.[m
+ # releaseApiBaseUrl=https://ptt.example.com/[m
+\ No newline at end of file[m

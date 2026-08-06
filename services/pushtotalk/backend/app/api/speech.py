@@ -50,13 +50,14 @@ def dispatch_text_command(text: str, *, client_request_id: str | None = None, so
     try:
         forward_text_command(text, client_request_id=client_request_id, source=source)
     except KmsForwardError as error:
-        logger.warning("KMS forwarding failed: %s", error)
+        logger.error("KMS forwarding failed: %s", error)
+        raise
 
 
 @router.post(
     "/speech",
     response_model=SpeechResponse,
-    responses={400: {"model": ErrorResponse}},
+    responses={400: {"model": ErrorResponse}, 502: {"model": ErrorResponse}},
     summary="Принять распознанный текст",
 )
 def receive_speech(
@@ -81,7 +82,13 @@ def receive_speech(
             content=ErrorResponse(message=str(error)).model_dump(),
         )
 
-    dispatch_text_command(message.text, client_request_id=f"speech-{message.id}")
+    try:
+        dispatch_text_command(message.text, client_request_id=f"speech-{message.id}")
+    except KmsForwardError:
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content=ErrorResponse(message="KMS не принял текст. Повторите отправку.").model_dump(),
+        )
 
     return SpeechResponse(status="ok", id=message.id)
 
@@ -129,8 +136,6 @@ def transcribe_speech(
         file.file.close()
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
-
-    dispatch_text_command(text, source="pushtotalk-whisper")
 
     return TranscriptionResponse(status="ok", text=text)
 

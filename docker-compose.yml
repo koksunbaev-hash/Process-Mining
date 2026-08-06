@@ -127,7 +127,7 @@ services:
       PTT_MQTT_TOPIC: ${PTT_MQTT_TOPIC:-voice/commands/recognized}
       PTT_MQTT_PROJECT: ${PTT_MQTT_PROJECT:-kms}
     ports:
-      - "${BIND_ADDR:-127.0.0.1}:${PTT_PORT:-8002}:8000"
+      - "${PTT_BIND_ADDR:-0.0.0.0}:${PTT_PORT:-8002}:8000"
     volumes:
       - ptt_data:/srv/ptt
     depends_on:

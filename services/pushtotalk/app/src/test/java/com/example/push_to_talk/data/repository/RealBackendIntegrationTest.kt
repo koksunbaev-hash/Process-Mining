@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
  * сервиса и не ломает CI. Чтобы прогнать его, укажите адрес:
  *
  *     ./gradlew testDebugUnitTest --tests '*RealBackendIntegrationTest*' \
- *         -PbackendUrl=http://192.168.0.168:8080/
+ *         -PbackendUrl=http://192.168.0.137:8002/
  *
  * либо задайте переменную окружения `PTT_BACKEND_URL`.
  */

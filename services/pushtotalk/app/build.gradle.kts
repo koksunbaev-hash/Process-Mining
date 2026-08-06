@@ -14,7 +14,7 @@ plugins {
  */
 val apiBaseUrl: String = (project.findProperty("apiBaseUrl") as String?)
     ?.takeIf { it.isNotBlank() }
-    ?: "http://192.168.0.168:8080/"
+    ?: "http://192.168.0.137:8002/"
 
 val releaseApiBaseUrl: String = (project.findProperty("releaseApiBaseUrl") as String?)
     ?.takeIf { it.isNotBlank() }
