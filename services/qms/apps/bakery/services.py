@@ -14,6 +14,7 @@ from .models import (
     OrderEvent,
     ProductionBatch,
     ProductionOrder,
+    ProductionOrderItem,
     ProductionStage,
     stock_expiration_for,
 )
@@ -22,6 +23,73 @@ from .permissions import can_move_batch
 
 def log_order_event(order, message, event_type="info", user=None, batch=None):
     return OrderEvent.objects.create(order=order, batch=batch, event_type=event_type, message=message, created_by=user)
+@transaction.atomic
+def repeat_order_for_next_week(source_order, quantities, user):
+    source_items = list(
+        source_order.items.select_related("product", "recipe")
+    )
+
+    if not source_items:
+        raise ValidationError("В исходном заказе нет продукции.")
+
+    new_order = ProductionOrder.objects.create(
+        customer=source_order.customer,
+        order_date=source_order.order_date + timedelta(days=7),
+        required_date=source_order.required_date + timedelta(days=7),
+        priority=source_order.priority,
+        status=ProductionOrder.Status.DRAFT,
+        notes=f"Повтор заказа №{source_order.order_number}. {source_order.notes}".strip(),
+        created_by=user,
+        is_demo=False,
+    )
+
+    new_items = []
+
+    for source_item in source_items:
+        quantity = quantities.get(source_item.pk)
+
+        if quantity is None or quantity <= 0:
+            raise ValidationError(
+                f"Укажите корректное количество для продукта "
+                f"«{source_item.product.name}»."
+            )
+
+        new_items.append(
+            ProductionOrderItem(
+                order=new_order,
+                product=source_item.product,
+                quantity=quantity,
+                unit=source_item.unit,
+                recipe=source_item.recipe,
+                notes=source_item.notes,
+                is_demo=False,
+            )
+        )
+
+    ProductionOrderItem.objects.bulk_create(new_items)
+
+    log_order_event(
+        new_order,
+        f"План повторён на основе заказа №{source_order.order_number}.",
+        "order_repeated",
+        user=user,
+    )
+
+    safe_record_process_event(
+        case_id=f"ORDER-{new_order.order_number}",
+        case_type="order",
+        activity="Повторение производственного плана",
+        order=new_order,
+        user=user,
+        status=new_order.status,
+        event_data={
+            "source_order_id": source_order.pk,
+            "source_order_number": source_order.order_number,
+            "shift_days": 7,
+        },
+    )
+
+    return new_order
 
 
 @transaction.atomic

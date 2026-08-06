@@ -1,3 +1,4 @@
+from decimal import Decimal, InvalidOperation
 import mimetypes
 import os
 import time
@@ -40,7 +41,15 @@ from .models import (
     VoiceMessage,
 )
 from .permissions import can_manage_catalog, can_manage_orders, can_move_batch, can_view_voice, role
-from .services import confirm_order, move_batch, next_stage_for, pause_batch, previous_stage_for, resume_batch
+from .services import (
+    confirm_order,
+    move_batch,
+    next_stage_for,
+    pause_batch,
+    previous_stage_for,
+    repeat_order_for_next_week,
+    resume_batch,
+)
 
 
 def batch_number_query(value):
@@ -344,21 +353,94 @@ def order_list(request):
 
 @login_required
 def order_detail(request, pk):
-    order = get_object_or_404(ProductionOrder.objects.select_related("customer").prefetch_related("items__product", "items__recipe__items__ingredient", "items__batches__current_stage"), pk=pk)
+    order = get_object_or_404(
+        ProductionOrder.objects
+        .select_related("customer")
+        .prefetch_related(
+            "items__product",
+            "items__recipe__items__ingredient",
+            "items__batches__current_stage",
+        ),
+        pk=pk,
+    )
+
     item_form = ProductionOrderItemForm()
+
     if request.method == "POST" and can_manage_orders(request.user):
-        if request.POST.get("action") == "confirm":
+        action = request.POST.get("action")
+
+        if action == "confirm":
             confirm_order(order, user=request.user)
-            messages.success(request, "Заказ подтверждён, партии созданы.")
+            messages.success(
+                request,
+                "Заказ подтверждён, партии созданы.",
+            )
             return redirect("bakery:order_detail", pk=order.pk)
-        item_form = ProductionOrderItemForm(request.POST)
-        if item_form.is_valid():
-            line = item_form.save(commit=False)
-            line.order = order
-            line.save()
-            messages.success(request, "Позиция добавлена.")
-            return redirect("bakery:order_detail", pk=order.pk)
-    return render(request, "bakery/order_detail.html", {"order": order, "item_form": item_form})
+
+        if action == "repeat_next_week":
+            quantities = {}
+
+            try:
+                for line in order.items.all():
+                    raw_quantity = request.POST.get(
+                        f"quantity_{line.pk}",
+                        "",
+                    ).replace(",", ".")
+
+                    quantities[line.pk] = Decimal(raw_quantity)
+
+                new_order = repeat_order_for_next_week(
+                    source_order=order,
+                    quantities=quantities,
+                    user=request.user,
+                )
+
+            except (InvalidOperation, ValueError):
+                messages.error(
+                    request,
+                    "Проверьте введённые количества.",
+                )
+
+            except ValidationError as exc:
+                messages.error(
+                    request,
+                    " ".join(exc.messages),
+                )
+
+            else:
+                messages.success(
+                    request,
+                    f"Создан план на следующую неделю: "
+                    f"заказ №{new_order.order_number}.",
+                )
+                return redirect(
+                    "bakery:order_detail",
+                    pk=new_order.pk,
+                )
+
+        else:
+            item_form = ProductionOrderItemForm(request.POST)
+
+            if item_form.is_valid():
+                line = item_form.save(commit=False)
+                line.order = order
+                line.save()
+
+                messages.success(request, "Позиция добавлена.")
+
+                return redirect(
+                    "bakery:order_detail",
+                    pk=order.pk,
+                )
+
+    return render(
+        request,
+        "bakery/order_detail.html",
+        {
+            "order": order,
+            "item_form": item_form,
+        },
+    )
 
 
 @login_required
