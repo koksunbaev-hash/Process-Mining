@@ -313,8 +313,17 @@ def resolve_target_stage(normalized):
 
 def parse_voice_command(text, confidence=None):
     normalized = text.lower().replace("№", " ")
-    batch_match = re.search(r"\b(?:DEMO[-\s]?)?[BD][-\s]?\d+(?:-\d+)?(?:-\d+)?\b", text, flags=re.IGNORECASE)
-    batch_number = batch_match.group(0).upper().replace(" ", "-") if batch_match else ""
+    batch_match = re.search(
+    r"\b(?:парт(?:ия|ию|ии)\s*[№#]?\s*)?((?:DEMO[-\s]?)?[BD][-\s]?\d+(?:-\d+)?(?:-\d+)?|\d+)\b",
+    text,
+    flags=re.IGNORECASE,
+    )
+
+    batch_number = (
+    batch_match.group(1).upper().replace(" ", "-")
+    if batch_match
+    else ""
+    )
     # An operator names the order as readily as the batch ("заказ 13"), and a
     # spoken number never carries the stored prefix - keep the digits and
     # resolve them loosely in resolve_batch().

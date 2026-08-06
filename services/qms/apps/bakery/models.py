@@ -314,14 +314,22 @@ class ProductionBatch(TimestampedModel):
     @staticmethod
     def short_number_for(value):
         value = (value or "").strip().upper()
+
         if not value:
             return ""
+
         demo_match = re.fullmatch(r"DEMO-B-0*(\d+)", value)
         if demo_match:
             return f"D-{int(demo_match.group(1))}"
+
         old_match = re.fullmatch(r"B-\d{4}-\d+-0*(\d+)", value)
         if old_match:
-            return f"B-{int(old_match.group(1))}"
+            return str(int(old_match.group(1)))
+
+        new_match = re.fullmatch(r"B-0*(\d+)", value)
+        if new_match:
+            return str(int(new_match.group(1)))
+
         return value
 
     @property
