@@ -35,6 +35,9 @@
   flex-direction: column;
   max-height: calc(100vh - 96px);
 }
+.voice-widget__panel[hidden] {
+  display: none !important;
+}
 
 .voice-widget__header {
   display: flex;
