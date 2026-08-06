@@ -27,6 +27,7 @@ STAGE_ALIASES = {
     "очеред": "queue",
     "замес": "mixing",
     "формов": "forming",
+    "фармов": "forming",
     "рассто": "proofing",
     "печ": "oven",
     "выпеч": "oven",
