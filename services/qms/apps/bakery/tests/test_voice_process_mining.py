@@ -12,7 +12,7 @@ from apps.accounts.models import UserProfile
 from apps.audit.models import AuditLog
 from apps.bakery.models import BatchStageHistory, ProductionBatch, VoiceCommand, VoiceMessage
 from apps.bakery.services import move_batch
-from apps.bakery.voice_process_mining import may_auto_confirm, parse_voice_command
+from apps.bakery.voice_process_mining import may_auto_confirm, parse_voice_command, resolve_batch
 from apps.bakery.tests.batch_workflow.factories import create_manual_batch, create_user
 from apps.bakery.tests.batch_workflow.helpers import create_batch_at_stage, stage
 from apps.notifications.models import Notification
@@ -399,3 +399,69 @@ class AutoConfirmRuleTests(TestCase):
         payload = client.get(f"/api/voice-messages/{command.voice_message.pk}/status/").data["command"]
         self.assertIs(payload["auto_confirm"], True)
         self.assertEqual(payload["auto_confirm_seconds"], 3)
+
+
+class KazakhCommandParsingTests(TestCase):
+    """Команда на казахском доходит до того же намерения, что и русская.
+
+    На производстве говорят смешанно: название этапа остаётся русским и
+    получает казахское окончание («формовкаға»), а номер партии называют
+    по-казахски. Разбор обязан пережить и то, и другое.
+    """
+
+    def test_a_batch_number_said_in_kazakh_words(self):
+        parsed = parse_voice_command("партия бір бес төрт формовкаға")
+        self.assertEqual(parsed["batch_number"], "154")
+        self.assertEqual(parsed["to_stage"], "forming")
+        self.assertEqual(parsed["intent"], VoiceCommand.Intent.MOVE_BATCH)
+
+    def test_a_spoken_prefix_letter_becomes_the_stored_one(self):
+        parsed = parse_voice_command("б бір нөл екі складқа")
+        self.assertEqual(parsed["batch_number"], "B-102")
+        self.assertEqual(parsed["to_stage"], "warehouse")
+        self.assertEqual(parsed["intent"], VoiceCommand.Intent.ACCEPT_TO_WAREHOUSE)
+
+    def test_dayin_completes_the_batch(self):
+        parsed = parse_voice_command("B-154 дайын")
+        self.assertEqual(parsed["batch_number"], "B-154")
+        self.assertEqual(parsed["to_stage"], "done")
+        self.assertEqual(parsed["intent"], VoiceCommand.Intent.COMPLETE_BATCH)
+
+    def test_the_oven_is_matched_by_the_dative_not_by_a_bare_stem(self):
+        self.assertEqual(parse_voice_command("B-154 пешке")["to_stage"], "oven")
+        # "успешно" содержит "пеш", и подстрочный поиск их не различает -
+        # поэтому в словаре стоит "пешке", а не "пеш".
+        self.assertNotEqual(parse_voice_command("B-154 успешно")["to_stage"], "oven")
+
+    def test_the_destination_is_the_last_stage_in_the_sentence(self):
+        """«замес закончен, на формовку» - партия едет в формовку, не в замес."""
+        parsed = parse_voice_command("B-154 замес бітті, формовкаға")
+        self.assertEqual(parsed["to_stage"], "forming")
+
+    def test_a_composed_number_is_understood_too(self):
+        parsed = parse_voice_command("жүз елу төрт дайын")
+        self.assertEqual(parsed["batch_number"], "154")
+
+    def test_russian_commands_are_unaffected(self):
+        parsed = parse_voice_command("партия B-154 закончила замес, передать на формовку")
+        self.assertEqual(parsed["batch_number"], "B-154")
+        self.assertEqual(parsed["to_stage"], "forming")
+
+    def _batch_numbered(self, number):
+        batch = create_batch_at_stage("mixing")
+        batch.batch_number = number
+        batch.save(update_fields=["batch_number"])
+        return batch
+
+    def test_digits_alone_find_the_only_batch_that_ends_with_them(self):
+        """«бір бес төрт» без буквы - партия всё равно должна найтись."""
+        batch = self._batch_numbered("B-154")
+        found = resolve_batch({"batch_number": "154"})
+        self.assertIsNotNone(found)
+        self.assertEqual(found.pk, batch.pk)
+
+    def test_digits_alone_refuse_when_two_batches_end_with_them(self):
+        """Двусмысленность отказывает, а не двигает наугад."""
+        self._batch_numbered("B-154")
+        self._batch_numbered("D-154")
+        self.assertIsNone(resolve_batch({"batch_number": "154"}))

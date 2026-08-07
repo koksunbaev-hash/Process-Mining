@@ -18,6 +18,7 @@ from apps.nonconformities.models import DefectType, Nonconformity
 from apps.notifications.services import notify
 from apps.quality.models import ControlPost, ControlType, Department, QualityObject
 
+from . import speech_kk
 from .models import ProductionBatch, ProductionStage, VoiceCommand, VoiceMessage
 from .permissions import can_view_voice
 from .services import log_order_event, move_batch, pause_batch, resume_batch
@@ -33,6 +34,16 @@ STAGE_ALIASES = {
     "выпеч": "oven",
     "склад": "warehouse",
     "готов": "done",
+    # Kazakh. The stage names themselves are Russian loanwords and are already
+    # matched above - "замеске" contains "замес", "формовкаға" contains
+    # "формов" - so only the words that are genuinely Kazakh need listing.
+    #
+    # "пешке"/"пеште" rather than a bare "пеш": that fragment also sits inside
+    # "успешно", and a substring match cannot tell the difference.
+    "кезек": "queue",
+    "пешке": "oven",
+    "пеште": "oven",
+    "дайын": "done",
 }
 
 STAGE_ORDER = ["queue", "mixing", "forming", "proofing", "oven", "warehouse", "done"]
@@ -231,6 +242,23 @@ def resolve_batch(data):
                 if _squash(candidate.batch_number) == wanted or _squash(candidate.short_batch_number) == wanted:
                     return candidate
 
+        # Spoken Kazakh often drops the letter entirely - the operator says the
+        # digits and nothing else. Digits alone are not enough to identify a
+        # batch when B-154 and D-154 can both exist, so this only answers when
+        # exactly one batch in flight ends with them. Same rule as the order
+        # fallback below: ambiguity refuses rather than guesses.
+        if wanted.isdigit():
+            matches = [
+                candidate
+                for candidate in ProductionBatch.objects.select_related("current_stage").exclude(
+                    status__in=["completed", "cancelled"]
+                )
+                if _squash(candidate.batch_number).endswith(wanted)
+                or _squash(candidate.short_batch_number).endswith(wanted)
+            ]
+            if len(matches) == 1:
+                return matches[0]
+
     order_number = (data.get("order_number") or "").strip()
     if not order_number:
         return None
@@ -305,14 +333,27 @@ def resolve_target_stage(normalized):
             if index + 1 < len(STAGE_ORDER):
                 return STAGE_ORDER[index + 1]
 
+    # Last one wins - but last in the sentence, not last in this dictionary.
+    # Kazakh leans on this branch far more than Russian does, because the
+    # destination is carried by the ending rather than by a verb: "формовкаға"
+    # *is* the instruction. In "замес бітті, формовкаға" both stages appear, and
+    # only word order says which one the batch is going to.
     found = ""
+    rightmost = -1
     for part, code in STAGE_ALIASES.items():
-        if part in normalized:
+        position = normalized.rfind(part)
+        if position > rightmost:
+            rightmost = position
             found = code
     return found
 
 
 def parse_voice_command(text, confidence=None):
+    # Kazakh arrives with the batch number spelled out - "бір бес төрт" - and
+    # the prefix letter in Cyrillic, because speech carries no alphabet. Both
+    # are rewritten before anything below goes looking for a batch. Russian
+    # transcripts pass through this untouched.
+    text = speech_kk.prepare(text)
     normalized = text.lower().replace("№", " ")
     batch_match = re.search(
     r"\b(?:парт(?:ия|ию|ии)\s*[№#]?\s*)?((?:DEMO[-\s]?)?[BD][-\s]?\d+(?:-\d+)?(?:-\d+)?|\d+)\b",
