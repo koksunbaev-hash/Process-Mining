@@ -39,4 +39,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 # while pm4py reads it. That is a fair trade against job_ids that go missing,
 # but it is the thing to fix before raising the count, along with moving job
 # state and the cache out of process memory.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+#
+# ${PORT:-8000} rather than a literal: a PaaS assigns the port and routes only
+# there, while compose leaves PORT unset and keeps the 8000 every other service
+# in this repository addresses by container name.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
