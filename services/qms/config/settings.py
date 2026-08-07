@@ -174,6 +174,12 @@ LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard:index"
 LOGOUT_REDIRECT_URL = "login"
 
+# Language handed to speech recognition. Empty means the analytics service
+# decides from its own PM_STT_LANGUAGE, which is the only place worth setting
+# it - two services disagreeing about the language of the same recording is how
+# Kazakh ended up being transcribed as Russian.
+VOICE_LANGUAGE = env("VOICE_LANGUAGE", default="")
+
 MAX_UPLOAD_SIZE_MB = env("MAX_UPLOAD_SIZE_MB")
 MAX_VOICE_MESSAGE_SIZE_MB = env("MAX_VOICE_MESSAGE_SIZE_MB")
 # Seconds a recognised command waits, cancellable, before it runs itself. Only

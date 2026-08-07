@@ -83,7 +83,10 @@ async def create_transcription(
     external_id: Annotated[str, Form(description="Caller's id for this recording")],
     client_request_id: Annotated[str, Form(description="Idempotency key")] = "",
     callback_url: Annotated[str, Form(description="Absolute URL to POST the result to")] = "",
-    language: Annotated[str, Form()] = "ru",
+    # Empty rather than "ru": a caller that says nothing about language gets
+    # PM_STT_LANGUAGE, which is where this deployment's answer lives. A default
+    # here silently outranked that setting.
+    language: Annotated[str, Form()] = "",
     context: Annotated[str, Form(description="JSON hints: stages, batch_numbers")] = "",
 ) -> dict[str, Any]:
     settings = request.app.state.settings

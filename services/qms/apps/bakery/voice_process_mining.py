@@ -156,7 +156,11 @@ def send_voice_to_process_mining(voice_message):
     payload = {
         "external_id": str(voice_message.pk),
         "client_request_id": voice_message.client_request_id or "",
-        "language": "ru",
+        # Empty means "whatever the analytics service is configured for". The
+        # language of the shop floor is a property of the deployment, not of
+        # this call, and hardcoding "ru" here quietly overrode PM_STT_LANGUAGE
+        # - the setting looked applied and the model kept being told Russian.
+        "language": settings.VOICE_LANGUAGE,
         "callback_url": callback_url(),
         "context": json.dumps(process_mining_context(), ensure_ascii=False),
     }

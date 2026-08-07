@@ -214,7 +214,10 @@ def test_stt_adds_ngrok_skip_header_when_enabled(settings, monkeypatch):
             return b"recognized text"
 
     def fake_urlopen(request, timeout):
-        seen["header"] = request.get_header("ngrok-skip-browser-warning")
+        # urllib stores header names capitalised - add_header() does the
+        # capitalising, get_header() does not - so this is the only spelling
+        # that finds it. On the wire the case does not matter.
+        seen["header"] = request.get_header("Ngrok-skip-browser-warning")
         return Response()
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
