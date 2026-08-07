@@ -60,6 +60,40 @@ class NumberTests(unittest.TestCase):
         self.assertEqual(numbers_to_digits("B-154 количество 20"), "B-154 количество 20")
 
 
+class RussianNumberTests(unittest.TestCase):
+    """Модель пишет число так, как его произнесли - на любом из двух языков.
+
+    Whisper отвечал «341» и прятал это; NeMo отвечает «триста сорок три», то
+    есть тем, что человек на самом деле сказал. Партия из-за этого не находилась.
+    """
+
+    def test_a_composed_russian_number(self):
+        self.assertEqual(numbers_to_digits("триста сорок три"), "343")
+        self.assertEqual(numbers_to_digits("сто сорок один"), "141")
+        self.assertEqual(numbers_to_digits("двести пятьдесят четыре"), "254")
+
+    def test_russian_hundreds_are_words_not_multiplications(self):
+        """«триста» - одно слово, а не «три сто»; «үш жүз» - наоборот."""
+        self.assertEqual(numbers_to_digits("триста"), "300")
+        self.assertEqual(numbers_to_digits("девятьсот девяносто девять"), "999")
+
+    def test_teens_are_single_words(self):
+        self.assertEqual(numbers_to_digits("девятнадцать"), "19")
+        self.assertEqual(numbers_to_digits("одиннадцать"), "11")
+
+    def test_thousands_multiply(self):
+        self.assertEqual(numbers_to_digits("две тысячи пятьсот"), "2500")
+
+    def test_digits_read_one_by_one_in_russian_too(self):
+        self.assertEqual(numbers_to_digits("три четыре три"), "343")
+
+    def test_a_whole_russian_command(self):
+        self.assertEqual(prepare("триста сорок три на формовку"), "343 на формовку")
+
+    def test_a_spoken_quantity(self):
+        self.assertEqual(prepare("количество двадцать"), "количество 20")
+
+
 class PrefixTests(unittest.TestCase):
     def test_a_spoken_cyrillic_letter_becomes_the_stored_latin_one(self):
         self.assertEqual(latin_batch_prefix("Б-102"), "B-102")

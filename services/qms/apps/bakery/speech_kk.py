@@ -30,15 +30,39 @@ def fold(value: str) -> str:
 
 
 # Keys are folded, so "төрт" and "торт" both find 4.
+#
+# Russian is here for the same reason Kazakh is: the model writes numbers the
+# way they were said. Whisper answered "341" and hid this; NeMo answers "триста
+# сорок три", which is what the operator actually pronounced. The same shift
+# happens whenever the recogniser changes, so both languages live in one table
+# and the algorithm below does not care which one it is reading.
 _UNITS = {
     "нол": 0, "бир": 1, "еки": 2, "уш": 3, "торт": 4,
     "бес": 5, "алты": 6, "жети": 7, "сегиз": 8, "тогыз": 9,
+    "ноль": 0, "нуль": 0, "один": 1, "одна": 1, "одну": 1, "два": 2, "две": 2,
+    "три": 3, "четыре": 4, "пять": 5, "шесть": 6, "семь": 7, "восемь": 8,
+    "девять": 9,
 }
+
+# Everything that simply adds up. Russian hundreds are irregular words rather
+# than "three" plus "hundred", so they belong here and not among the multipliers.
 _TENS = {
     "он": 10, "жиырма": 20, "отыз": 30, "кырык": 40, "елу": 50,
     "алпыс": 60, "жетпис": 70, "сексен": 80, "токсан": 90,
+    "десять": 10, "одиннадцать": 11, "двенадцать": 12, "тринадцать": 13,
+    "четырнадцать": 14, "пятнадцать": 15, "шестнадцать": 16,
+    "семнадцать": 17, "восемнадцать": 18, "девятнадцать": 19,
+    "двадцать": 20, "тридцать": 30, "сорок": 40, "пятьдесят": 50,
+    "шестьдесят": 60, "семьдесят": 70, "восемьдесят": 80, "девяносто": 90,
+    "сто": 100, "двести": 200, "триста": 300, "четыреста": 400, "пятьсот": 500,
+    "шестьсот": 600, "семьсот": 700, "восемьсот": 800, "девятьсот": 900,
 }
-_SCALES = {"жуз": 100, "мын": 1000}
+
+# Multipliers: "үш жүз" is three hundreds, "две тысячи" is two thousands.
+_SCALES = {
+    "жуз": 100, "мын": 1000,
+    "тысяча": 1000, "тысячи": 1000, "тысяч": 1000,
+}
 
 _NUMBER_WORDS = set(_UNITS) | set(_TENS) | set(_SCALES)
 
