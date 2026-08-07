@@ -77,8 +77,12 @@ services:
       PM_STORAGE_BACKEND: sqlite
       PM_SQLITE_PATH: /srv/data/pm.db
       PM_ARTIFACT_DIR: /srv/data/artifacts
-      PM_STT_URL: http://stt:8080
-      PM_STT_LANGUAGE: ${PM_STT_LANGUAGE:-ru}
+      # Which recogniser answers. Both speak the same contract, so this is the
+      # whole of the switch - and the whole of the rollback:
+      #   http://stt-nemo:8080   NeMo FastConformer, bilingual kk/ru, CPU
+      #   http://stt:8080        OVOS + Whisper
+      PM_STT_URL: ${PM_STT_URL:-http://stt-nemo:8080}
+      PM_STT_LANGUAGE: ${PM_STT_LANGUAGE:-kk}
       # Read by the 1C connector (app/connectors/onec.py), which runs on demand
       # rather than as part of the service.
       ONEC_URL: ${ONEC_URL:-}
@@ -152,6 +156,38 @@ services:
       qms:
         condition: service_started
 
+  # Speech recognition on NeMo FastConformer, bilingual Kazakh/Russian.
+  #
+  # It wears the same contract as the OVOS container below - POST /stt?lang=xx
+  # with a WAV body, a bare string back - so switching between them is one
+  # variable, PM_STT_URL, and so is switching back:
+  #
+  #   PM_STT_URL=http://stt-nemo:8080     this one
+  #   PM_STT_URL=http://stt:8080          the OVOS/Whisper one
+  #
+  # Measured on eight recordings from the floor, same audio through both:
+  # the batch number survived 7 times out of 8 here against 2 with Whisper, and
+  # 23.3 seconds of audio took 0.7 seconds on four CPU threads against 256.
+  # No GPU: FastConformer labels the audio in one pass instead of generating it.
+  stt-nemo:
+    build: ./services/stt-nemo
+    restart: unless-stopped
+    environment:
+      NEMO_MODEL: ${NEMO_MODEL:-nvidia/stt_kk_ru_fastconformer_hybrid_large}
+      NEMO_THREADS: ${NEMO_THREADS:-4}
+    volumes:
+      # ~600 MB of weights, fetched once. Without this every recreate downloads
+      # them again - the same reason the OVOS container has its own cache.
+      - nemo_models:/cache
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${STT_NEMO_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 300s
+
   # Speech-to-text. Separate container on purpose: the model is the heaviest
   # thing in the stack, and this way it can be swapped, given a GPU or moved to
   # another host without touching anything else.
@@ -207,4 +243,5 @@ volumes:
   qms_media:
   pm_data:
   ptt_data:
+  nemo_models:
   stt_models:

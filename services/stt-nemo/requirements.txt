@@ -1,0 +1,6 @@
+# torch and torchaudio are installed separately in the Dockerfile, from the CPU
+# index - listing them here would let pip resolve the CUDA build instead.
+nemo_toolkit[asr]>=3.0,<4.0
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+soundfile>=0.12,<1.0
