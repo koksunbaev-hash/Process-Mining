@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import unittest
 
-from apps.bakery.speech_kk import fold, latin_batch_prefix, numbers_to_digits, prepare
+from apps.bakery.speech_kk import (
+    fold,
+    latin_batch_prefix,
+    numbers_to_digits,
+    prepare,
+    spoken_letter_prefix,
+)
 
 
 class FoldTests(unittest.TestCase):
@@ -69,6 +75,15 @@ class PrefixTests(unittest.TestCase):
         self.assertEqual(latin_batch_prefix("B-154"), "B-154")
 
 
+class SpokenLetterTests(unittest.TestCase):
+    def test_a_letter_named_aloud_becomes_a_letter(self):
+        self.assertEqual(spoken_letter_prefix("бэ 154"), "б 154")
+        self.assertEqual(spoken_letter_prefix("дэ-7"), "д-7")
+
+    def test_a_word_that_merely_starts_the_same_is_left_alone(self):
+        self.assertEqual(spoken_letter_prefix("бесеу 5"), "бесеу 5")
+
+
 class PrepareTests(unittest.TestCase):
     def test_the_whole_kazakh_phrase(self):
         self.assertEqual(
@@ -83,6 +98,9 @@ class PrepareTests(unittest.TestCase):
     def test_a_russian_command_passes_through_untouched(self):
         phrase = "партия B-154 закончила замес, передать на формовку"
         self.assertEqual(prepare(phrase), phrase)
+
+    def test_a_letter_said_as_a_word_still_reaches_the_prefix(self):
+        self.assertEqual(prepare("бэ бір бес төрт формовкаға"), "B 154 формовкаға")
 
     def test_empty_input(self):
         self.assertEqual(prepare(""), "")

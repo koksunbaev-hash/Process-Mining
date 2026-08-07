@@ -465,3 +465,38 @@ class KazakhCommandParsingTests(TestCase):
         self._batch_numbered("B-154")
         self._batch_numbered("D-154")
         self.assertIsNone(resolve_batch({"batch_number": "154"}))
+
+    def test_kazakh_stops_and_resumes_a_batch(self):
+        self.assertEqual(
+            parse_voice_command("B-154 тоқтат")["intent"],
+            VoiceCommand.Intent.PAUSE_BATCH,
+        )
+        self.assertEqual(
+            parse_voice_command("B-154 жалғастыр")["intent"],
+            VoiceCommand.Intent.RESUME_BATCH,
+        )
+
+    def test_kazakh_raises_a_problem(self):
+        for phrase in ("B-154 мәселе бар", "B-154 күйіп кетті", "B-154 ақау"):
+            with self.subTest(phrase=phrase):
+                self.assertEqual(
+                    parse_voice_command(phrase)["intent"],
+                    VoiceCommand.Intent.CREATE_PROBLEM,
+                )
+
+    def test_the_kazakh_warehouse(self):
+        parsed = parse_voice_command("B-154 қоймаға")
+        self.assertEqual(parsed["to_stage"], "warehouse")
+        self.assertEqual(parsed["intent"], VoiceCommand.Intent.ACCEPT_TO_WAREHOUSE)
+
+    def test_a_finished_stage_sends_the_batch_forward_not_back(self):
+        """«замес бітті» - замес закончен, значит партия едет в формовку."""
+        self.assertEqual(parse_voice_command("B-154 замес бітті")["to_stage"], "forming")
+        self.assertEqual(
+            parse_voice_command("B-154 формовка аяқталды")["to_stage"], "proofing"
+        )
+
+    def test_a_letter_said_as_a_word(self):
+        parsed = parse_voice_command("бэ бір бес төрт формовкаға")
+        self.assertEqual(parsed["batch_number"], "B-154")
+        self.assertEqual(parsed["to_stage"], "forming")

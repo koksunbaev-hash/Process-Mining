@@ -40,9 +40,13 @@ STAGE_ALIASES = {
     #
     # "пешке"/"пеште" rather than a bare "пеш": that fragment also sits inside
     # "успешно", and a substring match cannot tell the difference.
+    # Written folded (see speech_kk.fold): "қойма" is matched as "койма",
+    # because that is what the text has been reduced to by the time it gets
+    # here. One spelling instead of the several Whisper produces.
     "кезек": "queue",
     "пешке": "oven",
     "пеште": "oven",
+    "койма": "warehouse",
     "дайын": "done",
 }
 
@@ -62,6 +66,27 @@ DIRECTIVE_RE = re.compile(
 # Gender and number vary in speech - "закончил", "закончила", "завершили" - so
 # match the stem rather than listing every form.
 COMPLETED_RE = re.compile(r"(?:законч|заверш|сдела|доде?ла)\w*\s+(?:этап\s+)?([а-яё]+)", re.IGNORECASE)
+
+# The same sentence in Kazakh puts the verb last: "замес бітті" is "mixing is
+# finished", so the batch moves on rather than back. Without this the stage name
+# is the only word the fallback can see, and it would send the batch to the
+# stage it has just left.
+KK_COMPLETED_RE = re.compile(
+    r"([а-яё]+)\s+(?:битти|битирди|аякталды|дайын болды)",
+    re.IGNORECASE,
+)
+
+# Kazakh words for the actions that are not a move. Folded, same as the stages.
+KK_INTENT_WORDS = {
+    "pause": ("токтат", "токта", "кидирт", "уакытша"),
+    "resume": ("жалгастыр", "жалгас", "кайта баста"),
+    "problem": ("маселе", "акау", "куйип", "куйди", "бузылды", "жараксыз"),
+    "comment": ("пикир", "ескертпе", "тусиниктеме"),
+}
+
+
+def _said(folded, group):
+    return any(word in folded for word in KK_INTENT_WORDS[group])
 
 NEXT_BY_PHRASE = {
     "закончила замес": "forming",
@@ -315,6 +340,11 @@ def resolve_target_stage(normalized):
     3. Any stage mentioned at all, last one wins. The old behaviour, kept as a
        fallback for phrasings the two rules above do not cover.
     """
+    # Kazakh letters down to their Russian lookalikes once, here, so every
+    # pattern and every dictionary below needs a single spelling. Russian text
+    # contains none of those letters and passes through unchanged.
+    normalized = speech_kk.fold(normalized)
+
     directive = DIRECTIVE_RE.search(normalized)
     if directive:
         code = stage_from_word(directive.group(1))
@@ -325,13 +355,14 @@ def resolve_target_stage(normalized):
         if phrase in normalized:
             return code
 
-    completed = COMPLETED_RE.search(normalized)
-    if completed:
-        code = stage_from_word(completed.group(1))
-        if code in STAGE_ORDER:
-            index = STAGE_ORDER.index(code)
-            if index + 1 < len(STAGE_ORDER):
-                return STAGE_ORDER[index + 1]
+    for pattern in (COMPLETED_RE, KK_COMPLETED_RE):
+        completed = pattern.search(normalized)
+        if completed:
+            code = stage_from_word(completed.group(1))
+            if code in STAGE_ORDER:
+                index = STAGE_ORDER.index(code)
+                if index + 1 < len(STAGE_ORDER):
+                    return STAGE_ORDER[index + 1]
 
     # Last one wins - but last in the sentence, not last in this dictionary.
     # Kazakh leans on this branch far more than Russian does, because the
@@ -372,17 +403,23 @@ def parse_voice_command(text, confidence=None):
     order_match = re.search(r"заказ\w*\s*([a-zа-я0-9][a-zа-я0-9\-]*)", normalized, flags=re.IGNORECASE)
     order_number = order_match.group(1).upper().strip("-") if order_match else ""
     to_stage = resolve_target_stage(normalized)
-    if "пауз" in normalized or "останов" in normalized:
+    folded = speech_kk.fold(normalized)
+    if "пауз" in folded or "останов" in folded or _said(folded, "pause"):
         intent = VoiceCommand.Intent.PAUSE_BATCH
-    elif "возобнов" in normalized or "продолж" in normalized:
+    elif "возобнов" in folded or "продолж" in folded or _said(folded, "resume"):
         intent = VoiceCommand.Intent.RESUME_BATCH
-    elif "проблем" in normalized or "обнаруж" in normalized or "подгора" in normalized:
+    elif (
+        "проблем" in folded
+        or "обнаруж" in folded
+        or "подгора" in folded
+        or _said(folded, "problem")
+    ):
         intent = VoiceCommand.Intent.CREATE_PROBLEM
     elif to_stage == "warehouse":
         intent = VoiceCommand.Intent.ACCEPT_TO_WAREHOUSE
     elif to_stage == "done":
         intent = VoiceCommand.Intent.COMPLETE_BATCH
-    elif "коммент" in normalized:
+    elif "коммент" in folded or _said(folded, "comment"):
         intent = VoiceCommand.Intent.ADD_COMMENT
     else:
         intent = VoiceCommand.Intent.MOVE_BATCH

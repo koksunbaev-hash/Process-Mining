@@ -145,10 +145,32 @@ def latin_batch_prefix(text: str) -> str:
     return re.sub(r"(?<![а-яёәғқңөұүһі])([бдБД])([-\s]?)(\d)", replace, text)
 
 
+# The letter of a batch code, said out loud rather than spelled. Whisper writes
+# it as a word, and a word is not a prefix until it is one letter again.
+_SPOKEN_LETTERS = {
+    "бэ": "б", "бе": "б", "би": "б",
+    "дэ": "д", "де": "д", "ди": "д",
+}
+
+
+def spoken_letter_prefix(text: str) -> str:
+    """"бэ 154" -> "б 154", so the rule below can make it "B-154"."""
+    def replace(match: re.Match) -> str:
+        return f"{_SPOKEN_LETTERS[fold(match.group(1))]}{match.group(2)}{match.group(3)}"
+
+    return re.sub(
+        r"\b(бэ|бе|би|дэ|де|ди)([-\s]+)(\d)",
+        replace,
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
 def prepare(text: str) -> str:
     """Everything the Kazakh path needs, in the order it has to happen.
 
     Numbers first: "б бир бес торт" has to become "б 154" before the letter in
-    front of it can be recognised as a batch prefix.
+    front of it can be recognised as a batch prefix. A letter said as a word
+    ("бэ") becomes a letter in between.
     """
-    return latin_batch_prefix(numbers_to_digits(text or ""))
+    return latin_batch_prefix(spoken_letter_prefix(numbers_to_digits(text or "")))
