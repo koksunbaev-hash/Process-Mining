@@ -180,7 +180,8 @@ Showing the system to someone: [docs/DEMO-CHECKLIST.md](docs/DEMO-CHECKLIST.md)
 for the deploy and the checks worth doing beforehand,
 [docs/VOICE-DEMO.md](docs/VOICE-DEMO.md) for the voice walkthrough.
 
-Reaching it from outside the LAN — a public address without a domain, without
-forwarding a port, and SSH from anywhere: [docs/PUBLIC-ACCESS.md](docs/PUBLIC-ACCESS.md).
-Read section 0 first; it is the part that has to happen before anything is
-published.
+Putting it on a permanent public address of your own — the arrangement the
+temporary one already uses, a rented host fronting the VM over a tunnel:
+[docs/PUBLIC-DEPLOY.md](docs/PUBLIC-DEPLOY.md). Section 0 first; it is what
+has to happen before anything is published. For the tunnel-only variant
+without a rented host, see [docs/PUBLIC-ACCESS.md](docs/PUBLIC-ACCESS.md).
