@@ -268,29 +268,30 @@ def resolve_batch(data):
         # fails on a command that was spoken perfectly. Compare the way it
         # sounds instead: letters and digits only.
         wanted = _squash(number)
+        active_candidates = ProductionBatch.objects.select_related("current_stage").exclude(
+            status__in=["completed", "cancelled"]
+        )
         if wanted:
-            for candidate in ProductionBatch.objects.select_related("current_stage").exclude(
-                status__in=["completed", "cancelled"]
-            ):
-                if _squash(candidate.batch_number) == wanted or _squash(candidate.short_batch_number) == wanted:
-                    return candidate
-
-        # Spoken Kazakh often drops the letter entirely - the operator says the
-        # digits and nothing else. Digits alone are not enough to identify a
-        # batch when B-154 and D-154 can both exist, so this only answers when
-        # exactly one batch in flight ends with them. Same rule as the order
-        # fallback below: ambiguity refuses rather than guesses.
-        if wanted.isdigit():
-            matches = [
-                candidate
-                for candidate in ProductionBatch.objects.select_related("current_stage").exclude(
-                    status__in=["completed", "cancelled"]
-                )
-                if _squash(candidate.batch_number).endswith(wanted)
-                or _squash(candidate.short_batch_number).endswith(wanted)
-            ]
-            if len(matches) == 1:
-                return matches[0]
+            if wanted.isdigit():
+                # Spoken Kazakh often drops the letter entirely - the operator
+                # says the digits and nothing else. Digits alone are not enough
+                # to identify a batch when B-154 and D-154 can both exist, so
+                # this only answers when exactly one batch in flight ends with
+                # them.
+                matches = [
+                    candidate
+                    for candidate in active_candidates
+                    if _squash(candidate.batch_number).endswith(wanted)
+                    or _squash(candidate.short_batch_number).endswith(wanted)
+                ]
+                if len(matches) == 1:
+                    return matches[0]
+            else:
+                for candidate in active_candidates:
+                    short = _squash(candidate.short_batch_number)
+                    prefix_short = f"{_squash(candidate.batch_number)[:1]}{short}" if short else ""
+                    if _squash(candidate.batch_number) == wanted or short == wanted or prefix_short == wanted:
+                        return candidate
 
     order_number = (data.get("order_number") or "").strip()
     if not order_number:
@@ -302,6 +303,12 @@ def resolve_batch(data):
 
 
 def create_voice_command(voice):
+    try:
+        existing = voice.command
+    except VoiceCommand.DoesNotExist:
+        existing = None
+    if existing and existing.status in {VoiceCommand.Status.EXECUTED, VoiceCommand.Status.REJECTED}:
+        return existing
     parsed = parse_voice_command(voice.transcript, voice.confidence)
     batch = resolve_batch(parsed)
     if batch:

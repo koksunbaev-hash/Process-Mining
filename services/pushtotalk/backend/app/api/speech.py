@@ -37,21 +37,24 @@ router = APIRouter(prefix="/api", tags=["speech"])
 ALLOWED_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".mp4", ".mpeg", ".mpga", ".ogg", ".wav", ".webm"}
 
 
-def dispatch_text_command(text: str, *, client_request_id: str | None = None, source: str = "pushtotalk") -> None:
-    """Send recognized text to MQTT when configured, with direct KMS as fallback."""
+def dispatch_text_command(text: str, *, client_request_id: str | None = None, source: str = "pushtotalk") -> dict:
+    """Send recognized text to KMS and MQTT, returning the KMS command result when available."""
+    mqtt_result: dict = {"status": "skipped", "reason": "not_configured"}
     try:
         mqtt_result = publish_text_command(text, client_request_id=client_request_id, source=source)
     except MqttPublishError as error:
         logger.warning("MQTT publish failed; falling back to KMS: %s", error)
-    else:
-        if mqtt_result.get("status") != "skipped":
-            return
 
     try:
-        forward_text_command(text, client_request_id=client_request_id, source=source)
+        kms_result = forward_text_command(text, client_request_id=client_request_id, source=source)
     except KmsForwardError as error:
         logger.error("KMS forwarding failed: %s", error)
         raise
+    if kms_result.get("status") != "skipped":
+        return {"status": "ok", "forwarded": True, "kms": kms_result, "mqtt": mqtt_result}
+    if mqtt_result.get("status") != "skipped":
+        return {"status": "ok", "forwarded": True, "kms": kms_result, "mqtt": mqtt_result}
+    return {"status": "skipped", "forwarded": False, "kms": kms_result, "mqtt": mqtt_result}
 
 
 @router.post(
@@ -82,15 +85,26 @@ def receive_speech(
             content=ErrorResponse(message=str(error)).model_dump(),
         )
 
+    dispatch_result: dict = {}
     try:
-        dispatch_text_command(message.text, client_request_id=f"speech-{message.id}")
+        dispatch_result = dispatch_text_command(message.text, client_request_id=f"speech-{message.id}")
     except KmsForwardError:
         return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,
             content=ErrorResponse(message="KMS не принял текст. Повторите отправку.").model_dump(),
         )
 
-    return SpeechResponse(status="ok", id=message.id)
+    kms_result = dispatch_result.get("kms") or {}
+    return SpeechResponse(
+        status="ok",
+        id=message.id,
+        forwarded=bool(dispatch_result.get("forwarded")),
+        executed=bool(kms_result.get("executed")),
+        command_status=kms_result.get("command_status"),
+        command_id=kms_result.get("command_id"),
+        voice_message_id=kms_result.get("voice_message_id"),
+        reason=kms_result.get("reason") or kms_result.get("detail"),
+    )
 
 
 @router.post(

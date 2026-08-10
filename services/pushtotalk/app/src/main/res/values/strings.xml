@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Push-to-Talk</string>
+    <string name="app_name">Push-to-Talk KMS</string>
 
     <string name="status_label">Статус</string>
     <string name="status_idle">Idle</string>
@@ -17,6 +17,7 @@
     <string name="send_status_cancel">Отмена</string>
     <string name="send_status_sending">Отправляем текст…</string>
     <string name="send_status_success">✅ Отправлено</string>
+    <string name="send_status_command_rejected">Команда не выполнена</string>
     <string name="send_status_cancelled">Отправка отменена</string>
     <string name="send_status_error">❌ Ошибка отправки</string>
 

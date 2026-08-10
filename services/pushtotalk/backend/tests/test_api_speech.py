@@ -51,7 +51,7 @@ def test_kms_forward_error_returns_502_but_keeps_local_history(client, monkeypat
     assert client.get("/api/messages").json()[0]["text"] == "Batch DEMO-B-0012 finished mixing"
 
 
-def test_mqtt_publish_is_preferred_over_direct_kms(client, monkeypatch) -> None:
+def test_mqtt_publish_keeps_direct_kms_result_for_android_feedback(client, monkeypatch) -> None:
     import app.api.speech as speech_api
 
     mqtt_calls = []
@@ -64,7 +64,8 @@ def test_mqtt_publish_is_preferred_over_direct_kms(client, monkeypatch) -> None:
     monkeypatch.setattr(
         speech_api,
         "forward_text_command",
-        lambda text, **kwargs: kms_calls.append((text, kwargs)) or {"status": "ok"},
+        lambda text, **kwargs: kms_calls.append((text, kwargs))
+        or {"status": "ok", "executed": False, "command_status": "needs_review", "reason": "Не понял этап."},
     )
 
     response = client.post("/api/speech", json={"text": "DEMO-B-0012 ready"})
@@ -76,7 +77,14 @@ def test_mqtt_publish_is_preferred_over_direct_kms(client, monkeypatch) -> None:
             {"client_request_id": f"speech-{response.json()['id']}", "source": "pushtotalk"},
         )
     ]
-    assert kms_calls == []
+    assert kms_calls == [
+        (
+            "DEMO-B-0012 ready",
+            {"client_request_id": f"speech-{response.json()['id']}", "source": "pushtotalk"},
+        )
+    ]
+    assert response.json()["command_status"] == "needs_review"
+    assert response.json()["reason"] == "Не понял этап."
 
 
 def test_mqtt_error_falls_back_to_kms(client, monkeypatch) -> None:

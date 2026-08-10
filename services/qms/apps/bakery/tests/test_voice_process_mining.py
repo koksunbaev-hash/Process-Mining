@@ -34,6 +34,7 @@ def signed_callback(payload, secret="callback-secret"):
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     },
     PROCESS_MINING_CALLBACK_SECRET="callback-secret",
+    PUSHTOTALK_DEFAULT_USERNAME="voice-dispatcher",
 )
 class VoiceProcessMiningTests(TestCase):
     def setUp(self):
@@ -141,6 +142,34 @@ class VoiceProcessMiningTests(TestCase):
         self.callback(voice, f"Партия {batch.batch_number} закончила замес")
         self.assertTrue(VoiceCommand.objects.filter(voice_message=voice).exists())
 
+    def test_callback_executes_clear_command_immediately(self):
+        batch = create_batch_at_stage("mixing", self.user)
+        self.upload_voice()
+        voice = VoiceMessage.objects.get()
+
+        response = self.callback(voice, f"Партия {batch.batch_number} закончила замес, передать на формовку")
+
+        self.assertEqual(response.status_code, 200)
+        batch.refresh_from_db()
+        voice.command.refresh_from_db()
+        self.assertEqual(batch.current_stage.code, "forming")
+        self.assertEqual(voice.command.status, VoiceCommand.Status.EXECUTED)
+
+    def test_callback_keeps_unclear_command_for_manual_review(self):
+        batch = create_batch_at_stage("forming", self.user)
+        self.upload_voice()
+        voice = VoiceMessage.objects.get()
+
+        response = self.callback(voice, f"Партия {batch.batch_number} семь накабан")
+
+        self.assertEqual(response.status_code, 200)
+        batch.refresh_from_db()
+        voice.command.refresh_from_db()
+        self.assertEqual(batch.current_stage.code, "forming")
+        self.assertEqual(voice.command.status, VoiceCommand.Status.NEEDS_REVIEW)
+        self.assertEqual(voice.command.extracted_data["to_stage"], "")
+        self.assertIn("review_reason", voice.command.extracted_data)
+
     def test_low_confidence_requires_review(self):
         batch = create_batch_at_stage("mixing", self.user)
         self.upload_voice()
@@ -159,24 +188,21 @@ class VoiceProcessMiningTests(TestCase):
         self.upload_voice()
         voice = VoiceMessage.objects.get()
         self.callback(voice, f"Партия {batch.batch_number} закончила замес", confidence=0)
-        self.assertEqual(voice.command.status, VoiceCommand.Status.DETECTED)
+        self.assertEqual(voice.command.status, VoiceCommand.Status.EXECUTED)
         payload = self.client.get(f"/api/voice-messages/{voice.pk}/status/").data["command"]
-        self.assertIs(payload["auto_confirm"], True)
-        self.assertEqual(payload["auto_confirm_seconds"], 3)
+        self.assertIs(payload["auto_confirm"], False)
 
     def test_confirm_calls_existing_batch_service(self):
         batch = create_batch_at_stage("mixing", self.user)
         self.upload_voice()
         voice = VoiceMessage.objects.get()
         self.callback(voice, f"Партия {batch.batch_number} закончила замес")
-        response = self.client.post(f"/api/voice-commands/{voice.command.pk}/confirm/")
         batch.refresh_from_db()
-        self.assertEqual(response.status_code, 200)
         self.assertEqual(batch.current_stage.code, "forming")
 
     def test_old_long_batch_number_has_short_alias(self):
         batch = create_manual_batch("mixing", self.user, batch_number="B-2026-0404-404")
-        self.assertEqual(batch.short_batch_number, "B-404")
+        self.assertEqual(batch.short_batch_number, "404")
         self.assertEqual(ProductionBatch.short_number_for("DEMO-B-0012"), "D-12")
 
     def test_confirm_accepts_short_spoken_batch_number(self):
@@ -275,7 +301,6 @@ class VoiceProcessMiningTests(TestCase):
         self.upload_voice()
         voice = VoiceMessage.objects.get()
         self.callback(voice, f"Партия {batch.batch_number} закончила замес")
-        self.client.post(f"/api/voice-commands/{voice.command.pk}/confirm/")
         self.assertTrue(BatchStageHistory.objects.filter(batch=batch, to_stage__code="forming").exists())
         self.assertTrue(AuditLog.objects.filter(action="voice_command_executed").exists())
         self.assertTrue(Notification.objects.filter(notification_type="stage_changed").exists())
@@ -305,9 +330,7 @@ class VoiceProcessMiningTests(TestCase):
         self.callback(voice, f"Партия {batch.batch_number} закончила замес, передать на формовку")
         status_response = self.client.get(f"/api/voice-messages/{voice.pk}/status/")
         self.assertEqual(status_response.data["command"]["extracted_data"]["next_stage"], "Формовка")
-        confirm_response = self.client.post(f"/api/voice-commands/{voice.command.pk}/confirm/")
         batch.refresh_from_db()
-        self.assertEqual(confirm_response.status_code, 200)
         self.assertEqual(batch.current_stage.code, "forming")
 
 

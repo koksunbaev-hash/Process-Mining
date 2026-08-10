@@ -165,6 +165,7 @@ fun MainScreen(
 
             SendStatusSection(
                 sendStatus = uiState.sendStatus,
+                sendDetail = uiState.sendDetail,
                 pendingSendSeconds = uiState.pendingSendSeconds,
                 onPendingSendCancelled = onPendingSendCancelled,
             )
@@ -202,6 +203,7 @@ private fun StatusSection(status: RecognitionStatus, modifier: Modifier = Modifi
 @Composable
 private fun SendStatusSection(
     sendStatus: SendStatus,
+    sendDetail: String?,
     pendingSendSeconds: Int,
     onPendingSendCancelled: () -> Unit,
     modifier: Modifier = Modifier,
@@ -223,10 +225,20 @@ private fun SendStatusSection(
             style = MaterialTheme.typography.bodyMedium,
             color = when (sendStatus) {
                 SendStatus.Success -> MaterialTheme.colorScheme.primary
+                SendStatus.CommandRejected -> MaterialTheme.colorScheme.error
                 SendStatus.Error -> MaterialTheme.colorScheme.error
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             },
         )
+        if (!sendDetail.isNullOrBlank()) {
+            Text(
+                text = sendDetail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
         if (sendStatus == SendStatus.Pending) {
             PendingSendCountdown(secondsLeft = pendingSendSeconds)
             TextButton(onClick = onPendingSendCancelled) {

@@ -51,6 +51,23 @@ class PushToTalkCommandApiTests(TestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.current_stage.code, "forming")
 
+    def test_pushtotalk_text_returns_review_reason_for_unclear_command(self):
+        response = self.post_command(
+            {
+                "text": "семь сакабан",
+                "client_request_id": "ptt-unclear",
+            }
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.data["executed"])
+        self.assertEqual(response.data["command_status"], VoiceCommand.Status.NEEDS_REVIEW)
+        self.assertTrue(response.data["reason"])
+        voice = VoiceMessage.objects.get(client_request_id="ptt-unclear")
+        voice.command.refresh_from_db()
+        self.assertEqual(voice.command.status, VoiceCommand.Status.NEEDS_REVIEW)
+        self.assertEqual(voice.command.error_message, response.data["reason"])
+
     def test_pushtotalk_text_is_idempotent_by_client_request_id(self):
         batch = create_batch_at_stage("mixing", self.user)
         payload = {"text": f"Партия {batch.batch_number} закончила замес", "client_request_id": "ptt-same"}

@@ -19,6 +19,7 @@ data class MainUiState(
     val audioLevel: Float = 0f,
     /** Чем закончилась последняя попытка отправки текста на сервер. */
     val sendStatus: SendStatus = SendStatus.Idle,
+    val sendDetail: String? = null,
     val pendingSendSeconds: Int = 0,
     val error: AppError? = null,
 ) {
@@ -46,6 +47,8 @@ enum class SendStatus {
 
     /** Сервер подтвердил приём. */
     Success,
+
+    CommandRejected,
 
     /** Пользователь отменил отправку распознанного текста. */
     Cancelled,

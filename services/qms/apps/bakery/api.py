@@ -396,6 +396,17 @@ class ProcessMiningCallbackView(APIView):
         payload = json.loads(raw_body.decode("utf-8") or "{}")
         with transaction.atomic():
             voice, command = handle_process_mining_callback(payload)
+            user = voice.created_by
+            if not user and settings.PUSHTOTALK_DEFAULT_USERNAME:
+                user = get_user_model().objects.filter(username=settings.PUSHTOTALK_DEFAULT_USERNAME).first()
+            if command and user and command.status == VoiceCommand.Status.DETECTED:
+                try:
+                    command = confirm_voice_command(command, user)
+                except (ConflictError, PermissionDenied, ValidationError, Http404) as exc:
+                    command.status = VoiceCommand.Status.NEEDS_REVIEW
+                    command.error_message = str(exc)
+                    command.extracted_data["review_reason"] = str(exc)
+                    command.save(update_fields=["status", "error_message", "extracted_data", "updated_at"])
         return Response({"ok": True, "voice_message_id": voice.pk, "command_id": command.pk if command else None})
 
 
@@ -434,6 +445,18 @@ class VoiceCommandRejectView(APIView):
 class PushToTalkTextCommandView(APIView):
     permission_classes = [AllowAny]
 
+    @staticmethod
+    def _mark_needs_review(command, reason):
+        if not command:
+            return None
+        data = dict(command.extracted_data or {})
+        data["review_reason"] = reason
+        command.status = VoiceCommand.Status.NEEDS_REVIEW
+        command.error_message = reason
+        command.extracted_data = data
+        command.save(update_fields=["status", "error_message", "extracted_data", "updated_at"])
+        return command
+
     def post(self, request):
         expected_token = getattr(settings, "PUSHTOTALK_API_TOKEN", "")
         if not expected_token:
@@ -450,11 +473,17 @@ class PushToTalkTextCommandView(APIView):
             existing = VoiceMessage.objects.filter(client_request_id=client_request_id).first()
             if existing:
                 command = getattr(existing, "command", None)
+                reason = ""
+                if command and command.status != VoiceCommand.Status.EXECUTED:
+                    reason = command.error_message or (command.extracted_data or {}).get("review_reason", "")
                 return Response(
                     {
                         "status": "ok",
                         "voice_message_id": existing.pk,
                         "command_id": command.pk if command else None,
+                        "command_status": command.status if command else None,
+                        "executed": command.status == VoiceCommand.Status.EXECUTED if command else False,
+                        "reason": reason,
                         "duplicate": True,
                     }
                 )
@@ -486,13 +515,16 @@ class PushToTalkTextCommandView(APIView):
                 command = confirm_voice_command(command, user)
                 executed = command.status == VoiceCommand.Status.EXECUTED
             except ConflictError as exc:
-                return Response({"detail": str(exc), "voice_message_id": voice.pk, "command_id": command.pk}, status=409)
+                command = self._mark_needs_review(command, str(exc))
             except PermissionDenied as exc:
-                raise ApiPermissionDenied(str(exc))
+                command = self._mark_needs_review(command, str(exc))
             except ValidationError as exc:
-                raise ApiValidationError({"detail": exc.messages})
+                command = self._mark_needs_review(command, "; ".join(exc.messages))
             except Http404 as exc:
-                return Response({"detail": str(exc), "voice_message_id": voice.pk, "command_id": command.pk}, status=404)
+                command = self._mark_needs_review(command, str(exc))
+        reason = ""
+        if command and command.status != VoiceCommand.Status.EXECUTED:
+            reason = command.error_message or (command.extracted_data or {}).get("review_reason", "")
         return Response(
             {
                 "status": "ok",
@@ -500,6 +532,7 @@ class PushToTalkTextCommandView(APIView):
                 "command_id": command.pk if command else None,
                 "command_status": command.status if command else None,
                 "executed": executed,
+                "reason": reason,
             },
             status=201,
         )
