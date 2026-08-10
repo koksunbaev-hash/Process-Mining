@@ -522,6 +522,11 @@ class PushToTalkTextCommandView(APIView):
                 command = self._mark_needs_review(command, "; ".join(exc.messages))
             except Http404 as exc:
                 command = self._mark_needs_review(command, str(exc))
+        elif command and not user:
+            command = self._mark_needs_review(
+                command,
+                "PushToTalk принят, но в KMS не настроен активный пользователь для автоматического выполнения команды.",
+            )
         reason = ""
         if command and command.status != VoiceCommand.Status.EXECUTED:
             reason = command.error_message or (command.extracted_data or {}).get("review_reason", "")

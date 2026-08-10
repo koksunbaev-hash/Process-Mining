@@ -68,6 +68,23 @@ class PushToTalkCommandApiTests(TestCase):
         self.assertEqual(voice.command.status, VoiceCommand.Status.NEEDS_REVIEW)
         self.assertEqual(voice.command.error_message, response.data["reason"])
 
+    @override_settings(PUSHTOTALK_DEFAULT_USERNAME="missing-ptt-user")
+    def test_pushtotalk_text_returns_reason_when_actor_is_not_configured(self):
+        batch = create_batch_at_stage("mixing", self.user)
+
+        response = self.post_command(
+            {
+                "text": f"Партия {batch.batch_number} закончила замес, передать на формовку",
+                "client_request_id": "ptt-no-actor",
+            }
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.data["executed"])
+        self.assertEqual(response.data["command_status"], VoiceCommand.Status.NEEDS_REVIEW)
+        self.assertIn("не настроен", response.data["reason"])
+        batch.refresh_from_db()
+        self.assertEqual(batch.current_stage.code, "mixing")
     def test_pushtotalk_text_is_idempotent_by_client_request_id(self):
         batch = create_batch_at_stage("mixing", self.user)
         payload = {"text": f"Партия {batch.batch_number} закончила замес", "client_request_id": "ptt-same"}
