@@ -5,6 +5,11 @@ __pycache__/
 venv/
 .env
 .env.local
+# Any copy of it, however it was named. Five .env backups reached the
+# public repository on 10 August because only the exact name was listed
+# here and `git add -A` swept up the rest.
+.env.*
+!.env.example
 
 # runtime state, never source
 #
