@@ -396,6 +396,17 @@ class ProcessMiningCallbackView(APIView):
         payload = json.loads(raw_body.decode("utf-8") or "{}")
         with transaction.atomic():
             voice, command = handle_process_mining_callback(payload)
+            user = voice.created_by
+            if not user and settings.PUSHTOTALK_DEFAULT_USERNAME:
+                user = get_user_model().objects.filter(username=settings.PUSHTOTALK_DEFAULT_USERNAME).first()
+            if command and user and command.status == VoiceCommand.Status.DETECTED:
+                try:
+                    command = confirm_voice_command(command, user)
+                except (ConflictError, PermissionDenied, ValidationError, Http404) as exc:
+                    command.status = VoiceCommand.Status.NEEDS_REVIEW
+                    command.error_message = str(exc)
+                    command.extracted_data["review_reason"] = str(exc)
+                    command.save(update_fields=["status", "error_message", "extracted_data", "updated_at"])
         return Response({"ok": True, "voice_message_id": voice.pk, "command_id": command.pk if command else None})
 
 
