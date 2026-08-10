@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% comment %}
+Бумажный бланк, который в цеху заполняют от руки, — но со заполненными
+столбцами смен. Форма повторена намеренно: люди узнают её с первого взгляда и
+не переучиваются. Отличий от бумаги ровно три, и каждое даёт то, чего бумага
+не умеет:
+
+  · столбцы смен посчитаны из партий, прошедших по доске;
+  · недовыпуск подсвечен, а не ищется глазами по правому столбцу;
+  · дату можно листать, не поднимая пачку распечаток.
+
+Печать оставлена рабочей: @media print убирает навигацию и подсветку, и лист
+выходит таким же, как привычный.
+{% endcomment %}
+{% block title %}Заказ на производство{% endblock %}
+{% block page_title %}Заказ на производство{% endblock %}
+{% block page_subtitle %}План на дату и то, что по нему уже выпущено{% endblock %}
+{% block top_action %}
+  <button class="primary" onclick="window.print()">Печать</button>
+{% endblock %}
+
+{% block content %}
+<div class="sheet-page">
+
+  <nav class="sheet-dates no-print">
+    <a class="secondary" href="?date={{ previous_date }}" title="Предыдущий день">←</a>
+    <form class="sheet-dates__pick">
+      <input type="date" name="date" value="{{ order_date|date:'Y-m-d' }}" onchange="this.form.submit()">
+    </form>
+    <a class="secondary" href="?date={{ next_date }}" title="Следующий день">→</a>
+    <span class="sheet-dates__hint">
+      {% if totals.short %}
+        <strong class="is-short">{{ totals.short }}</strong> позиций не закрыто
+      {% else %}
+        план закрыт полностью
+      {% endif %}
+    </span>
+  </nav>
+
+  <header class="sheet-head">
+    <h3>Заказ на производство</h3>
+    <p class="sheet-head__meta">
+      на дату <strong>{{ order_date|date:"d.m.Y" }}</strong>
+      · сформирован {{ generated_at|date:"d.m.Y H:i" }}
+    </p>
+  </header>
+
+  <div class="sheet-scroll">
+    <table class="sheet">
+      <thead>
+        <tr>
+          <th class="sheet__name" rowspan="2">Наименование</th>
+          <th rowspan="2">Остаток</th>
+          <th colspan="{{ shifts|length }}">Смены</th>
+          <th rowspan="2">Итог</th>
+          <th rowspan="2">Количество</th>
+          <th rowspan="2">Остаток</th>
+        </tr>
+        <tr>
+          {% for shift in shifts %}
+            <th class="sheet__shift">{{ shift.label }}<small>{{ shift.day_label }}</small></th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr class="{% if row.is_short %}is-short{% elif row.is_done %}is-done{% endif %}">
+          <td class="sheet__name">{{ row.product_name }}</td>
+          <td class="num muted">{{ row.opening|floatformat:"-2" }}</td>
+          {% for value in row.by_shift %}
+            <td class="num">{{ value|floatformat:"-2" }}</td>
+          {% endfor %}
+          <td class="num sheet__total">{{ row.produced|floatformat:"-2" }}</td>
+          <td class="num sheet__plan">{{ row.planned|floatformat:"-2" }}</td>
+          <td class="num sheet__rest">{{ row.closing|floatformat:"-2" }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="{{ shifts|length|add:5 }}" class="muted sheet__empty">
+            На эту дату заказов нет.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% if rows %}
+      <tfoot>
+        <tr>
+          <td class="sheet__name">Итого</td>
+          <td class="num">{{ totals.opening|floatformat:"-2" }}</td>
+          {% for value in totals.by_shift %}
+            <td class="num">{{ value|floatformat:"-2" }}</td>
+          {% endfor %}
+          <td class="num sheet__total">{{ totals.produced|floatformat:"-2" }}</td>
+          <td class="num sheet__plan">{{ totals.planned|floatformat:"-2" }}</td>
+          <td class="num sheet__rest">{{ totals.closing|floatformat:"-2" }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+
+  <p class="sheet-note no-print">
+    Смены считаются по отметке перевода партии на этап «Готово» — той же, из
+    которой строится карта процесса. Смена, начавшаяся вечером накануне,
+    относится к заказу на эту дату: хлеб пекут с ночи.
+  </p>
+</div>
+{% endblock %}

@@ -260,3 +260,61 @@ audio { width: 240px; max-width: 100%; }
   text-decoration: none;
   white-space: nowrap;
 }
+
+/* ---- Заказ на производство -------------------------------------------------
+   Бумажный бланк, узнаваемый с первого взгляда: плотные строки, тонкие линии,
+   числа моноширинным шрифтом - иначе колонка цифр не читается вертикально.
+   Цветом отмечено только то, чего на бумаге нет: недовыпуск и закрытые
+   позиции. При печати цвет уходит, лист становится прежним. */
+.sheet-page { display: grid; gap: 14px; }
+.sheet-dates { display: flex; align-items: center; gap: 10px; }
+.sheet-dates .secondary { margin-top: 0; min-width: 44px; }
+.sheet-dates__pick input { padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
+.sheet-dates__hint { color: var(--muted); font-size: 13px; margin-left: auto; }
+.sheet-dates__hint .is-short { color: var(--danger); }
+
+.sheet-head { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; box-shadow: var(--shadow); }
+.sheet-head h3 { margin: 0; font-size: 17px; letter-spacing: .01em; }
+.sheet-head__meta { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+
+/* Наименований под сотню, поэтому таблица прокручивается внутри себя, а шапка
+   остаётся на месте: иначе к середине списка забываешь, какой столбец где. */
+.sheet-scroll { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); overflow: auto; max-height: 70vh; }
+.sheet { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sheet th, .sheet td { border: 1px solid var(--border); padding: 7px 10px; }
+.sheet thead th { position: sticky; top: 0; z-index: 1; background: #f8fafc; font-weight: 600; text-align: center; white-space: nowrap; }
+.sheet thead tr:nth-child(2) th { top: 33px; }
+.sheet__shift small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+.sheet__name { text-align: left; min-width: 260px; }
+.sheet .num { text-align: right; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; white-space: nowrap; }
+.sheet tbody tr:nth-child(even) { background: #fcfdff; }
+.sheet tbody tr:hover { background: var(--primary-soft); }
+.sheet__total { font-weight: 600; }
+.sheet__plan { background: #fbfcfe; }
+.sheet__rest { font-weight: 600; }
+.sheet__empty { text-align: center; padding: 28px; }
+
+.sheet tbody tr.is-short .sheet__rest { color: var(--danger); }
+.sheet tbody tr.is-short .sheet__name { box-shadow: inset 3px 0 0 var(--danger); }
+.sheet tbody tr.is-done .sheet__total { color: var(--success); }
+
+.sheet tfoot td { position: sticky; bottom: 0; background: #f8fafc; font-weight: 700; border-top: 2px solid var(--text); }
+.sheet-note { color: var(--muted); font-size: 12.5px; margin: 0; max-width: 70ch; }
+
+@media print {
+  .sidebar, .topbar, .no-print, .mobile-header, .sidebar-rail-toggle { display: none !important; }
+  .main { margin: 0; width: 100%; padding: 0; }
+  body { background: white; }
+  .sheet-scroll { max-height: none; overflow: visible; border: 0; box-shadow: none; }
+  .sheet-head { border: 0; box-shadow: none; padding: 0 0 10px; }
+  .sheet { font-size: 11px; }
+  .sheet th, .sheet td { padding: 3px 6px; border-color: #000; }
+  .sheet thead th { position: static; background: white; }
+  .sheet tfoot td { position: static; background: white; }
+  .sheet tbody tr:nth-child(even) { background: white; }
+  /* На бумаге цвета нет - и подсветка недовыпуска только мешала бы читать. */
+  .sheet tbody tr.is-short .sheet__rest,
+  .sheet tbody tr.is-done .sheet__total { color: inherit; }
+  .sheet tbody tr.is-short .sheet__name { box-shadow: none; }
+  .sheet thead { display: table-header-group; }
+}

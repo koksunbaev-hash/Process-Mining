@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import mimetypes
 import os
@@ -16,6 +17,7 @@ from apps.notifications.services import notify
 from apps.process_mining.services import safe_record_process_event
 
 from .kanban_demo import can_manage_kanban_demo
+from .production_sheet import build_rows, shifts_for, totals
 from .forms import (
     CustomerForm,
     IngredientForm,
@@ -553,3 +555,82 @@ def reports(request):
         "problems_by_stage": ProductionBatch.objects.filter(status="problem").values("current_stage__name").annotate(total=Count("id")),
         "stock": FinishedGoodsStock.objects.select_related("product", "batch")[:50],
     })
+
+
+@login_required
+def production_sheet(request):
+    """Заказ на производство: план на дату и что по нему уже выпущено.
+
+    Бумажная форма, которой пользуются в цеху, но со заполненными столбцами
+    смен - партии уже прошли по доске с отметками времени, и остаётся сложить.
+
+    Демо-партии исключены здесь так же, как на дашборде: лист должен показывать
+    цех, а не демонстрационный прогон.
+    """
+    raw_date = request.GET.get("date", "")
+    try:
+        order_date = datetime.strptime(raw_date, "%Y-%m-%d").date() if raw_date else timezone.localdate()
+    except ValueError:
+        order_date = timezone.localdate()
+
+    shifts = shifts_for(order_date, timezone.get_current_timezone())
+
+    planned = {}
+    items = (
+        ProductionOrderItem.objects.filter(
+            order__required_date__date=order_date,
+        )
+        .exclude(order__status=ProductionOrder.Status.CANCELLED)
+        .exclude(order__is_demo=True)
+        .select_related("product")
+    )
+    for item in items:
+        planned[item.product.name] = planned.get(item.product.name, Decimal(0)) + item.quantity
+
+    # Партия считается выпущенной в тот момент, когда её перевели на "Готово".
+    # Это та же отметка, из которой строится карта процесса, поэтому лист и
+    # аналитика всегда рассказывают одну историю.
+    produced = {}
+    history = (
+        BatchStageHistory.objects.filter(
+            to_stage__code="done",
+            created_at__gte=shifts[0].start,
+            created_at__lt=shifts[-1].end,
+        )
+        .exclude(batch__is_demo=True)
+        .select_related("batch", "batch__product")
+    )
+    for record in history:
+        name = record.batch.product.name
+        column = produced.setdefault(name, [Decimal(0)] * len(shifts))
+        quantity = record.batch.actual_quantity
+        if quantity is None:
+            quantity = record.batch.planned_quantity
+        for index, shift in enumerate(shifts):
+            if shift.contains(record.created_at):
+                column[index] += quantity
+                break
+
+    # Переходящий остаток: то, что лежало на складе до начала первой смены.
+    opening = {}
+    for record in (
+        FinishedGoodsStock.objects.filter(
+            status=FinishedGoodsStock.Status.AVAILABLE,
+            created_at__lt=shifts[0].start,
+        )
+        .exclude(batch__is_demo=True)
+        .select_related("product")
+    ):
+        opening[record.product.name] = opening.get(record.product.name, Decimal(0)) + record.quantity
+
+    rows = build_rows(planned, produced, opening, len(shifts))
+    context = {
+        "order_date": order_date,
+        "previous_date": (order_date - timedelta(days=1)).isoformat(),
+        "next_date": (order_date + timedelta(days=1)).isoformat(),
+        "shifts": shifts,
+        "rows": rows,
+        "totals": totals(rows, len(shifts)),
+        "generated_at": timezone.localtime(),
+    }
+    return render(request, "bakery/production_sheet.html", context)
