@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Push-to-Talk</string>
+    <string name="app_name">Push-to-Talk KMS</string>
 
     <string name="status_label">Status</string>
     <string name="status_idle">Idle</string>
