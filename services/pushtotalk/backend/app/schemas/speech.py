@@ -24,6 +24,12 @@ class SpeechResponse(BaseModel):
 
     status: str = "ok"
     id: int
+    forwarded: bool = False
+    executed: bool = False
+    command_status: str | None = None
+    command_id: int | None = None
+    voice_message_id: int | None = None
+    reason: str | None = None
 
 
 class TranscriptionResponse(BaseModel):

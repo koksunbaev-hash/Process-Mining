@@ -3,6 +3,7 @@ package com.example.push_to_talk.data.repository
 import com.example.push_to_talk.core.logger.Logger
 import com.example.push_to_talk.core.result.AppResult
 import com.example.push_to_talk.core.result.success
+import com.example.push_to_talk.domain.model.SendTextResult
 import com.example.push_to_talk.domain.repository.NetworkRepository
 import kotlinx.coroutines.delay
 import javax.inject.Inject
@@ -18,10 +19,10 @@ class FakeNetworkRepository @Inject constructor(
     private val logger: Logger,
 ) : NetworkRepository {
 
-    override suspend fun sendText(text: String): AppResult<Unit> {
+    override suspend fun sendText(text: String): AppResult<SendTextResult> {
         logger.i(TAG, "Отправка текста в заглушку API: \"$text\"")
         delay(FAKE_LATENCY_MILLIS)
-        return success()
+        return success(SendTextResult(accepted = true, forwarded = false, executed = false, commandStatus = null, reason = null))
     }
 
     private companion object {

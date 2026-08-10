@@ -1,4 +1,4 @@
-package com.example.push_to_talk.presentation.main
+﻿package com.example.push_to_talk.presentation.main
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -66,6 +66,7 @@ class MainViewModel @Inject constructor(
                 hasMicrophonePermission = local.hasMicrophonePermission,
                 audioLevel = normalizeRms(session.rmsDb),
                 sendStatus = local.sendStatus,
+                sendDetail = local.sendDetail,
                 pendingSendSeconds = local.pendingSendSeconds,
                 error = local.error ?: session.error,
             )
@@ -118,7 +119,7 @@ class MainViewModel @Inject constructor(
             // Подпись «❌ Ошибка отправки» уходит вместе с самой ошибкой,
             // иначе она осталась бы на экране без объяснения причины.
             val status = if (it.sendStatus == SendStatus.Error) SendStatus.Idle else it.sendStatus
-            it.copy(error = null, sendStatus = status)
+            it.copy(error = null, sendStatus = status, sendDetail = null)
         }
     }
 
@@ -126,7 +127,7 @@ class MainViewModel @Inject constructor(
         pendingDispatchJob?.cancel()
         pendingDispatchJob = null
         localState.update {
-            it.copy(sendStatus = SendStatus.Cancelled, pendingSendSeconds = 0, error = null)
+            it.copy(sendStatus = SendStatus.Cancelled, sendDetail = null, pendingSendSeconds = 0, error = null)
         }
     }
 
@@ -134,7 +135,7 @@ class MainViewModel @Inject constructor(
         // Новая сессия убирает результат предыдущей отправки с экрана.
         pendingDispatchJob?.cancel()
         pendingDispatchJob = null
-        localState.update { it.copy(error = null, sendStatus = SendStatus.Idle, pendingSendSeconds = 0) }
+        localState.update { it.copy(error = null, sendStatus = SendStatus.Idle, sendDetail = null, pendingSendSeconds = 0) }
         startRecognition(RecognitionConfig(languageTag = "ru-RU")).onFailure { error ->
             logger.w(TAG, "Не удалось начать распознавание: $error")
             localState.update { it.copy(error = error) }
@@ -150,7 +151,7 @@ class MainViewModel @Inject constructor(
         pendingDispatchJob = viewModelScope.launch {
             for (seconds in SEND_DELAY_SECONDS downTo 1) {
                 localState.update {
-                    it.copy(sendStatus = SendStatus.Pending, pendingSendSeconds = seconds, error = null)
+                    it.copy(sendStatus = SendStatus.Pending, sendDetail = null, pendingSendSeconds = seconds, error = null)
                 }
                 delay(1_000L)
             }
@@ -159,15 +160,22 @@ class MainViewModel @Inject constructor(
     }
 
     private suspend fun dispatchToApi(text: String) {
-        localState.update { it.copy(sendStatus = SendStatus.Sending, pendingSendSeconds = 0, error = null) }
+        localState.update { it.copy(sendStatus = SendStatus.Sending, sendDetail = null, pendingSendSeconds = 0, error = null) }
         sendText(text)
-            .onSuccess {
-                logger.i(TAG, "Текст отправлен во внешний сервис")
-                localState.update { it.copy(sendStatus = SendStatus.Success) }
+            .onSuccess { result ->
+                logger.i(TAG, "Text was sent to the external service")
+                val commandWasRejected = result.forwarded && !result.executed && !result.reason.isNullOrBlank()
+                localState.update {
+                    if (commandWasRejected) {
+                        it.copy(sendStatus = SendStatus.CommandRejected, sendDetail = result.reason)
+                    } else {
+                        it.copy(sendStatus = SendStatus.Success, sendDetail = null)
+                    }
+                }
             }
             .onFailure { error ->
-                logger.w(TAG, "Не удалось отправить текст: $error")
-                localState.update { it.copy(sendStatus = SendStatus.Error, pendingSendSeconds = 0, error = error) }
+                logger.w(TAG, "Failed to send text: $error")
+                localState.update { it.copy(sendStatus = SendStatus.Error, sendDetail = null, pendingSendSeconds = 0, error = error) }
             }
     }
 
@@ -185,6 +193,7 @@ class MainViewModel @Inject constructor(
     private data class LocalState(
         val error: AppError? = null,
         val sendStatus: SendStatus = SendStatus.Idle,
+        val sendDetail: String? = null,
         val pendingSendSeconds: Int = 0,
         val hasMicrophonePermission: Boolean = false,
     )
@@ -199,3 +208,4 @@ class MainViewModel @Inject constructor(
         const val MAX_RMS_DB = 10f
     }
 }
+

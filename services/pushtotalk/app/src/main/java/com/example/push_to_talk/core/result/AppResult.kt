@@ -34,4 +34,6 @@ inline fun <T> AppResult<T>.onFailure(action: (AppError) -> Unit): AppResult<T> 
 
 fun success(): AppResult<Unit> = AppResult.Success(Unit)
 
+fun <T> success(data: T): AppResult<T> = AppResult.Success(data)
+
 fun failure(error: AppError): AppResult<Nothing> = AppResult.Failure(error)

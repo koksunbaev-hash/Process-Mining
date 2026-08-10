@@ -9,6 +9,7 @@ import com.example.push_to_talk.data.network.ApiService
 import com.example.push_to_talk.data.network.NetworkErrorMapper
 import com.example.push_to_talk.data.network.dto.SendTextDto
 import com.example.push_to_talk.domain.model.AppError
+import com.example.push_to_talk.domain.model.SendTextResult
 import com.example.push_to_talk.domain.repository.NetworkRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
@@ -29,7 +30,7 @@ class RetrofitNetworkRepository @Inject constructor(
     private val logger: Logger,
 ) : NetworkRepository {
 
-    override suspend fun sendText(text: String): AppResult<Unit> {
+    override suspend fun sendText(text: String): AppResult<SendTextResult> {
         // Страховка на случай вызова в обход SendTextUseCase: пустой текст
         // не должен занимать сеть и создавать мусорные записи на сервере.
         val payload = text.trim()
@@ -46,7 +47,15 @@ class RetrofitNetworkRepository @Inject constructor(
                     logger.w(TAG, "Сервер ответил статусом \"${response.status}\"")
                 }
                 logger.i(TAG, "Текст принят сервером, id=${response.id}")
-                success()
+                success(
+                    SendTextResult(
+                        accepted = response.isAccepted,
+                        forwarded = response.forwarded,
+                        executed = response.executed,
+                        commandStatus = response.commandStatus,
+                        reason = response.reason ?: response.message,
+                    )
+                )
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (throwable: Throwable) {

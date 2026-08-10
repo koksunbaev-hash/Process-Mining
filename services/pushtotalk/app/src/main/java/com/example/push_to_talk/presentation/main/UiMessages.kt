@@ -27,6 +27,7 @@ internal fun SendStatus.messageRes(): Int? = when (this) {
     SendStatus.Pending -> R.string.send_status_pending
     SendStatus.Sending -> R.string.send_status_sending
     SendStatus.Success -> R.string.send_status_success
+    SendStatus.CommandRejected -> R.string.send_status_command_rejected
     SendStatus.Cancelled -> R.string.send_status_cancelled
     SendStatus.Error -> R.string.send_status_error
 }
