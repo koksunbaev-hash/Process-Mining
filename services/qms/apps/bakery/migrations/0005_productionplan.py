@@ -12,7 +12,10 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ("bakery", "0003_finishedgoodsstock_is_demo_productionbatch_is_demo_and_more"),
+        # Ветка вторая по счёту: 0004 занят миграцией точности в рецептурах,
+        # и две миграции с одним номером - это два листа графа, на которых
+        # Django останавливается.
+        ("bakery", "0004_recipeitem_quantity_precision"),
     ]
 
     operations = [
