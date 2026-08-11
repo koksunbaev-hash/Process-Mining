@@ -1,4 +1,4 @@
-package com.example.push_to_talk.presentation.navigation
+﻿package com.example.push_to_talk.presentation.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -7,11 +7,16 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.push_to_talk.AppLanguage
 import com.example.push_to_talk.presentation.main.MainRoute
 
-/** Граф навигации приложения. Новые экраны добавляются сюда без изменения MainActivity. */
+/** App navigation graph. New screens can be added here without changing MainActivity. */
 @Composable
 fun PushToTalkNavHost(
+    isDarkTheme: Boolean,
+    appLanguage: AppLanguage,
+    onDarkThemeChange: (Boolean) -> Unit,
+    onLanguageChange: (AppLanguage) -> Unit,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
 ) {
@@ -22,7 +27,12 @@ fun PushToTalkNavHost(
         modifier = modifier,
     ) {
         composable<MainDestination> {
-            MainRoute()
+            MainRoute(
+                isDarkTheme = isDarkTheme,
+                appLanguage = appLanguage,
+                onDarkThemeChange = onDarkThemeChange,
+                onLanguageChange = onLanguageChange,
+            )
         }
     }
 }

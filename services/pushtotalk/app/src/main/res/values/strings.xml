@@ -1,25 +1,30 @@
-<resources>
-    <string name="app_name">Push-to-Talk KMS</string>
+﻿<resources>
+    <string name="app_name">Push-to-Talk</string>
+
+    <string name="settings_theme">Темная тема</string>
+    <string name="settings_language">Язык приложения</string>
+    <string name="language_kz">KZ</string>
+    <string name="language_ru">RU</string>
 
     <string name="status_label">Статус</string>
-    <string name="status_idle">Idle</string>
-    <string name="status_preparing">Preparing</string>
-    <string name="status_listening">Listening</string>
-    <string name="status_speech_detected">Speech detected</string>
-    <string name="status_recognizing">Recognizing</string>
-    <string name="status_success">Finished</string>
-    <string name="status_error">Error</string>
+    <string name="status_idle">Ожидание</string>
+    <string name="status_preparing">Подготовка</string>
+    <string name="status_listening">Слушаю</string>
+    <string name="status_speech_detected">Речь обнаружена</string>
+    <string name="status_recognizing">Распознавание</string>
+    <string name="status_success">Готово</string>
+    <string name="status_error">Ошибка</string>
 
     <string name="recognized_text_label">Текст:</string>
-    <string name="recognized_text_placeholder">…</string>
+    <string name="recognized_text_placeholder">...</string>
 
     <string name="send_status_pending">Текст будет отправлен через %1$d с</string>
     <string name="send_status_cancel">Отмена</string>
-    <string name="send_status_sending">Отправляем текст…</string>
-    <string name="send_status_success">✅ Отправлено</string>
+    <string name="send_status_sending">Отправляем текст...</string>
+    <string name="send_status_success">Отправлено</string>
     <string name="send_status_command_rejected">Команда не выполнена</string>
     <string name="send_status_cancelled">Отправка отменена</string>
-    <string name="send_status_error">❌ Ошибка отправки</string>
+    <string name="send_status_error">Ошибка отправки</string>
 
     <string name="mic_button_start">Начать запись</string>
     <string name="mic_button_stop">Остановить запись</string>
@@ -35,8 +40,8 @@
     <string name="error_recognizer_unavailable">На устройстве нет сервиса распознавания речи</string>
     <string name="error_microphone_unavailable">Микрофон недоступен или занят другим приложением</string>
     <string name="error_permission_denied">Нет разрешения на запись аудио</string>
-    <string name="error_no_speech">Речь не распознана. Попробуйте ещё раз</string>
-    <string name="error_speech_timeout">Речь не началась — время ожидания истекло</string>
+    <string name="error_no_speech">Речь не распознана. Попробуйте еще раз</string>
+    <string name="error_speech_timeout">Речь не началась, время ожидания истекло</string>
     <string name="error_recognizer_busy">Распознаватель занят предыдущей сессией</string>
     <string name="error_cancelled">Сессия отменена</string>
     <string name="error_speech_client">Ошибка распознавателя на устройстве</string>
@@ -53,3 +58,5 @@
     <string name="error_network_unexpected">Не удалось отправить текст</string>
     <string name="error_empty_text">Пустой текст отправлять нечего</string>
 </resources>
+
+

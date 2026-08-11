@@ -1,4 +1,4 @@
-package com.example.push_to_talk.presentation.main.components
+﻿package com.example.push_to_talk.presentation.main.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -33,8 +33,8 @@ private val MaxRingSize = 232.dp
 private val MicIconSize = 64.sp
 
 /**
- * Круглая кнопка Push-to-Talk. Режим [PushToTalkMode] влияет только на способ ввода:
- * ViewModel получает те же самые события, поэтому бизнес-логика не меняется.
+ * РљСЂСѓРіР»Р°СЏ РєРЅРѕРїРєР° Push-to-Talk. Р РµР¶РёРј [PushToTalkMode] РІР»РёСЏРµС‚ С‚РѕР»СЊРєРѕ РЅР° СЃРїРѕСЃРѕР± РІРІРѕРґР°:
+ * ViewModel РїРѕР»СѓС‡Р°РµС‚ С‚Рµ Р¶Рµ СЃР°РјС‹Рµ СЃРѕР±С‹С‚РёСЏ, РїРѕСЌС‚РѕРјСѓ Р±РёР·РЅРµСЃ-Р»РѕРіРёРєР° РЅРµ РјРµРЅСЏРµС‚СЃСЏ.
  */
 @Composable
 fun MicButton(
@@ -110,7 +110,7 @@ fun MicButton(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "🎤",
+                text = "\uD83C\uDFA4",
                 fontSize = MicIconSize,
                 color = contentColor,
             )
@@ -149,3 +149,4 @@ private fun MicButtonListeningPreview() {
         )
     }
 }
+

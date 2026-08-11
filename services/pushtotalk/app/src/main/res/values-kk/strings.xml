@@ -1,0 +1,62 @@
+﻿<resources>
+    <string name="app_name">Push-to-Talk</string>
+
+    <string name="settings_theme">Қараңғы тақырып</string>
+    <string name="settings_language">Қолданба тілі</string>
+    <string name="language_kz">KZ</string>
+    <string name="language_ru">RU</string>
+
+    <string name="status_label">Күйі</string>
+    <string name="status_idle">Күту</string>
+    <string name="status_preparing">Дайындалу</string>
+    <string name="status_listening">Тыңдау</string>
+    <string name="status_speech_detected">Сөйлеу анықталды</string>
+    <string name="status_recognizing">Тану</string>
+    <string name="status_success">Аяқталды</string>
+    <string name="status_error">Қате</string>
+
+    <string name="recognized_text_label">Мәтін:</string>
+    <string name="recognized_text_placeholder">...</string>
+
+    <string name="send_status_pending">Мәтін %1$d с кейін жіберіледі</string>
+    <string name="send_status_cancel">Болдырмау</string>
+    <string name="send_status_sending">Мәтін жіберілуде...</string>
+    <string name="send_status_success">Жіберілді</string>
+    <string name="send_status_command_rejected">Команда орындалмады</string>
+    <string name="send_status_cancelled">Жіберу болдырылмады</string>
+    <string name="send_status_error">Жіберу қатесі</string>
+
+    <string name="mic_button_start">Жазуды бастау</string>
+    <string name="mic_button_stop">Жазуды тоқтату</string>
+    <string name="hint_tap">Сөйлеу үшін басыңыз. Сөйлеудің басы мен соңы автоматты түрде анықталады.</string>
+    <string name="hint_hold">Сөйлеп тұрған кезде батырманы басып ұстап тұрыңыз.</string>
+
+    <string name="permission_title">Микрофонға рұқсат жоқ</string>
+    <string name="permission_message">Сөйлеуді тану үшін қолданбаға аудио жазу рұқсаты қажет. Рұқсат беріңіз немесе қолданба баптауларын ашыңыз.</string>
+    <string name="permission_grant">Рұқсат беру</string>
+    <string name="permission_open_settings">Баптауларды ашу</string>
+
+    <string name="error_dismiss">Түсінікті</string>
+    <string name="error_recognizer_unavailable">Бұл құрылғыда сөйлеуді тану сервисі жоқ</string>
+    <string name="error_microphone_unavailable">Микрофон қолжетімсіз немесе басқа қолданба пайдаланып тұр</string>
+    <string name="error_permission_denied">Аудио жазуға рұқсат жоқ</string>
+    <string name="error_no_speech">Сөйлеу танылмады. Қайталап көріңіз</string>
+    <string name="error_speech_timeout">Сөйлеу басталмады, күту уақыты аяқталды</string>
+    <string name="error_recognizer_busy">Тану сервисі алдыңғы сессиямен бос емес</string>
+    <string name="error_cancelled">Сессия болдырылмады</string>
+    <string name="error_speech_client">Құрылғыдағы тану қатесі</string>
+    <string name="error_speech_server">Тану сервисі қате қайтарды</string>
+    <string name="error_language_unavailable">Тану тілі қолжетімсіз</string>
+    <string name="error_too_many_requests">Тану сервисіне тым көп сұрау жіберілді</string>
+    <string name="error_speech_unknown">Белгісіз тану қатесі</string>
+
+    <string name="error_network_connection">Сервермен байланыс жоқ</string>
+    <string name="error_network_timeout">Желі күту уақыты аяқталды</string>
+    <string name="error_network_http">Сервер сұрауды қабылдамады</string>
+    <string name="error_network_server">Сервер уақытша қолжетімсіз</string>
+    <string name="error_network_serialization">Сервер жауабы қате форматта</string>
+    <string name="error_network_unexpected">Мәтінді жіберу мүмкін болмады</string>
+    <string name="error_empty_text">Бос мәтінді жіберуге болмайды</string>
+</resources>
+
+
