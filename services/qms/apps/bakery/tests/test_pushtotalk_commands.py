@@ -1,3 +1,4 @@
+from django.contrib.sessions.backends.db import SessionStore
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
@@ -19,6 +20,14 @@ class PushToTalkCommandApiTests(TestCase):
     def setUp(self):
         self.user = create_user("ptt-dispatcher", UserProfile.Role.MANAGER)
         self.client = APIClient()
+
+    def session_key_for(self, user):
+        session = SessionStore()
+        session["_auth_user_id"] = str(user.pk)
+        session["_auth_user_backend"] = "django.contrib.auth.backends.ModelBackend"
+        session["_auth_user_hash"] = user.get_session_auth_hash()
+        session.save()
+        return session.session_key
 
     def post_command(self, payload, token="ptt-secret"):
         return self.client.post(
@@ -50,6 +59,38 @@ class PushToTalkCommandApiTests(TestCase):
         self.assertEqual(voice.command.status, VoiceCommand.Status.EXECUTED)
         batch.refresh_from_db()
         self.assertEqual(batch.current_stage.code, "forming")
+
+
+
+    def test_pushtotalk_text_uses_kms_session_as_actor(self):
+        mobile_user = create_user("mobile-operator", UserProfile.Role.MANAGER)
+        batch = create_batch_at_stage("mixing", mobile_user)
+
+        response = self.post_command(
+            {
+                "text": f"?????? {batch.batch_number} ????????? ?????, ???????? ?? ????????",
+                "client_request_id": "ptt-mobile-user",
+                "kms_session_id": self.session_key_for(mobile_user),
+            }
+        )
+
+        self.assertEqual(response.status_code, 201)
+        voice = VoiceMessage.objects.get(client_request_id="ptt-mobile-user")
+        self.assertEqual(voice.created_by, mobile_user)
+        self.assertEqual(response.data["sender_username"], "mobile-operator")
+
+    def test_pushtotalk_text_rejects_invalid_kms_session(self):
+        response = self.post_command(
+            {
+                "text": "?????? B-1 ????????? ?????",
+                "client_request_id": "ptt-invalid-session",
+                "kms_session_id": "not-a-real-session",
+            }
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(VoiceMessage.objects.filter(client_request_id="ptt-invalid-session").count(), 0)
+
 
     def test_pushtotalk_text_returns_review_reason_for_unclear_command(self):
         response = self.post_command(

@@ -1,6 +1,7 @@
 package com.example.push_to_talk.data.repository
 
 import com.example.push_to_talk.core.result.AppResult
+import com.example.push_to_talk.data.auth.KmsSessionProvider
 import com.example.push_to_talk.data.network.ApiService
 import com.example.push_to_talk.fake.FakeLogger
 import com.example.push_to_talk.fake.TestDispatcherProvider
@@ -59,6 +60,7 @@ class RealBackendIntegrationTest {
                 .create(ApiService::class.java),
             dispatchers = TestDispatcherProvider(Dispatchers.IO),
             logger = FakeLogger(),
+            kmsSessionProvider = KmsSessionProvider { null },
         )
 
         // Метка делает проверку устойчивой к чужим записям в общей базе.

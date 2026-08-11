@@ -37,7 +37,13 @@ router = APIRouter(prefix="/api", tags=["speech"])
 ALLOWED_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".mp4", ".mpeg", ".mpga", ".ogg", ".wav", ".webm"}
 
 
-def dispatch_text_command(text: str, *, client_request_id: str | None = None, source: str = "pushtotalk") -> dict:
+def dispatch_text_command(
+    text: str,
+    *,
+    client_request_id: str | None = None,
+    source: str = "pushtotalk",
+    kms_session_id: str | None = None,
+) -> dict:
     """Send recognized text to KMS and MQTT, returning the KMS command result when available."""
     mqtt_result: dict = {"status": "skipped", "reason": "not_configured"}
     try:
@@ -46,7 +52,10 @@ def dispatch_text_command(text: str, *, client_request_id: str | None = None, so
         logger.warning("MQTT publish failed; falling back to KMS: %s", error)
 
     try:
-        kms_result = forward_text_command(text, client_request_id=client_request_id, source=source)
+        kms_kwargs = {"client_request_id": client_request_id, "source": source}
+        if kms_session_id:
+            kms_kwargs["kms_session_id"] = kms_session_id
+        kms_result = forward_text_command(text, **kms_kwargs)
     except KmsForwardError as error:
         logger.error("KMS forwarding failed: %s", error)
         raise
@@ -87,7 +96,11 @@ def receive_speech(
 
     dispatch_result: dict = {}
     try:
-        dispatch_result = dispatch_text_command(message.text, client_request_id=f"speech-{message.id}")
+        dispatch_result = dispatch_text_command(
+            message.text,
+            client_request_id=f"speech-{message.id}",
+            kms_session_id=request.kms_session_id,
+        )
     except KmsForwardError:
         return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,

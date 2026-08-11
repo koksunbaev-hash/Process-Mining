@@ -1,5 +1,6 @@
 import json
 import hmac
+from importlib import import_module
 from decimal import Decimal
 
 from django.conf import settings
@@ -446,6 +447,20 @@ class PushToTalkTextCommandView(APIView):
     permission_classes = [AllowAny]
 
     @staticmethod
+    def _user_from_session_key(session_key):
+        if not session_key:
+            return None
+        try:
+            engine = import_module(settings.SESSION_ENGINE)
+            session = engine.SessionStore(session_key=session_key)
+            user_id = session.get("_auth_user_id")
+        except Exception:
+            return None
+        if not user_id:
+            return None
+        return get_user_model().objects.filter(pk=user_id, is_active=True).first()
+
+    @staticmethod
     def _mark_needs_review(command, reason):
         if not command:
             return None
@@ -484,13 +499,17 @@ class PushToTalkTextCommandView(APIView):
                         "command_status": command.status if command else None,
                         "executed": command.status == VoiceCommand.Status.EXECUTED if command else False,
                         "reason": reason,
+                        "sender_username": existing.created_by.username if existing.created_by else None,
                         "duplicate": True,
                     }
                 )
 
-        user = None
+        kms_session_id = str(request.data.get("kms_session_id", "")).strip()
+        user = self._user_from_session_key(kms_session_id)
+        if kms_session_id and not user:
+            return Response({"detail": "KMS session is invalid or expired."}, status=400)
         username = getattr(settings, "PUSHTOTALK_DEFAULT_USERNAME", "")
-        if username:
+        if not user and username:
             user = get_user_model().objects.filter(username=username).first()
 
         confidence = Decimal(str(request.data.get("confidence") or getattr(settings, "PUSHTOTALK_COMMAND_CONFIDENCE", 0.90)))
@@ -538,6 +557,7 @@ class PushToTalkTextCommandView(APIView):
                 "command_status": command.status if command else None,
                 "executed": executed,
                 "reason": reason,
+                "sender_username": user.username if user else None,
             },
             status=201,
         )

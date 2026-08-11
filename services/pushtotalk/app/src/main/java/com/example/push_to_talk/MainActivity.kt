@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import com.example.push_to_talk.data.auth.AuthSessionKeys
 import com.example.push_to_talk.data.auth.KmsAuthClient
 import com.example.push_to_talk.presentation.auth.LoginScreen
 import com.example.push_to_talk.presentation.navigation.PushToTalkNavHost
@@ -27,20 +28,20 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val authPreferences = getSharedPreferences(AUTH_PREFS, Context.MODE_PRIVATE)
+        val authPreferences = getSharedPreferences(AuthSessionKeys.PREFS, Context.MODE_PRIVATE)
 
         setContent {
             var isDarkTheme by rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
             var appLanguage by rememberSaveable { androidx.compose.runtime.mutableStateOf(AppLanguage.Ru) }
             var username by rememberSaveable {
-                androidx.compose.runtime.mutableStateOf(authPreferences.getString(KEY_USERNAME, "").orEmpty())
+                androidx.compose.runtime.mutableStateOf(authPreferences.getString(AuthSessionKeys.USERNAME, "").orEmpty())
             }
             var kmsCookies by rememberSaveable {
-                androidx.compose.runtime.mutableStateOf(authPreferences.getString(KEY_KMS_COOKIES, "").orEmpty())
+                androidx.compose.runtime.mutableStateOf(authPreferences.getString(AuthSessionKeys.KMS_COOKIES, "").orEmpty())
             }
             var isAuthenticated by rememberSaveable {
                 androidx.compose.runtime.mutableStateOf(
-                    authPreferences.getBoolean(KEY_AUTHENTICATED, false) && kmsCookies.isNotBlank(),
+                    authPreferences.getBoolean(AuthSessionKeys.AUTHENTICATED, false) && kmsCookies.isNotBlank(),
                 )
             }
             val authClient = remember { KmsAuthClient(BuildConfig.KMS_BASE_URL) }
@@ -72,9 +73,9 @@ class MainActivity : ComponentActivity() {
                             if (result.success) {
                                 val cookieText = result.cookies.joinToString("\n")
                                 authPreferences.edit()
-                                    .putBoolean(KEY_AUTHENTICATED, true)
-                                    .putString(KEY_USERNAME, loginUsername)
-                                    .putString(KEY_KMS_COOKIES, cookieText)
+                                    .putBoolean(AuthSessionKeys.AUTHENTICATED, true)
+                                    .putString(AuthSessionKeys.USERNAME, loginUsername)
+                                    .putString(AuthSessionKeys.KMS_COOKIES, cookieText)
                                     .apply()
                                 username = loginUsername
                                 kmsCookies = cookieText
@@ -86,12 +87,5 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    private companion object {
-        const val AUTH_PREFS = "kms_auth"
-        const val KEY_AUTHENTICATED = "authenticated"
-        const val KEY_USERNAME = "username"
-        const val KEY_KMS_COOKIES = "kms_cookies"
     }
 }

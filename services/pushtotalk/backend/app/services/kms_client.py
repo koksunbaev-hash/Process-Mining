@@ -26,6 +26,7 @@ def forward_text_command(
     *,
     client_request_id: str | None = None,
     source: str = "pushtotalk",
+    kms_session_id: str | None = None,
     config: Settings = settings,
 ) -> dict:
     """Send a recognized phrase to KMS without exposing the KMS token to Android."""
@@ -38,6 +39,8 @@ def forward_text_command(
         "client_request_id": client_request_id or f"ptt-{uuid.uuid4()}",
         "source": source,
     }
+    if kms_session_id:
+        payload["kms_session_id"] = kms_session_id
     request = urllib.request.Request(
         config.kms_command_url,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
