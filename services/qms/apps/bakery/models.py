@@ -120,7 +120,9 @@ class Recipe(TimestampedModel):
 class RecipeItem(models.Model):
     recipe = models.ForeignKey(Recipe, verbose_name="рецептура", on_delete=models.CASCADE, related_name="items")
     ingredient = models.ForeignKey(Ingredient, verbose_name="ингредиент", on_delete=models.PROTECT, related_name="recipe_items")
-    quantity_for_batch = models.DecimalField("на партию", max_digits=12, decimal_places=3)
+    # Технологические карты содержат микродобавки до миллионных долей кг.
+    # Три знака после запятой превращали такие количества в ноль.
+    quantity_for_batch = models.DecimalField("на партию", max_digits=15, decimal_places=6)
     quantity_per_item = models.DecimalField("на 1 шт.", max_digits=12, decimal_places=6, default=0)
     sequence = models.PositiveIntegerField("порядок", default=1)
     notes = models.TextField("примечание", blank=True)
