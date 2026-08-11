@@ -36,13 +36,19 @@
   </header>
   <div class="sidebar-backdrop" data-close-menu></div>
   <aside class="sidebar" id="sidebar">
-    <button class="sidebar-collapse-toggle" type="button" aria-label="Свернуть меню" title="Свернуть меню">‹</button>
+    {% comment %}
+    Кнопка сворачивания стоит в строке шапки, а не поверх неё. Абсолютным
+    позиционированием она ложилась ровно на заголовок: 44 на 40 пикселей
+    перекрытия, из-за чего «Bakery QMS v2» разъезжался на три строки, обтекая
+    невидимое препятствие, а логотип сжимался с 44 до 34.
+    {% endcomment %}
     <div class="brand">
       <div class="logo">Q</div>
-      <div>
+      <div class="brand-text">
         <h1>Bakery QMS v2</h1>
         <p>Хлебозавод</p>
       </div>
+      <button class="sidebar-collapse-toggle" type="button" aria-label="Свернуть меню" title="Свернуть меню">‹</button>
     </div>
     {% comment %}
     Меню собирается контекстным процессором apps.accounts.context_processors -
