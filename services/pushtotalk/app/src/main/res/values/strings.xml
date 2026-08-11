@@ -8,6 +8,7 @@
 
     <string name="nav_home">Главная</string>
     <string name="nav_profile">Профиль</string>
+    <string name="nav_kanban">Канбан</string>
     <string name="profile_title">Профиль</string>
     <string name="profile_username_label">Пользователь</string>
     <string name="profile_username_unknown">Неизвестный пользователь</string>

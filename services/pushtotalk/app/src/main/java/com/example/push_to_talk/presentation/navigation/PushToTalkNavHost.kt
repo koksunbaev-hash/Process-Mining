@@ -1,7 +1,8 @@
-﻿package com.example.push_to_talk.presentation.navigation
+package com.example.push_to_talk.presentation.navigation
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -11,7 +12,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.material3.Icon
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -19,12 +19,15 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.push_to_talk.AppLanguage
 import com.example.push_to_talk.R
+import com.example.push_to_talk.presentation.kanban.KanbanScreen
 import com.example.push_to_talk.presentation.main.MainRoute
 import com.example.push_to_talk.presentation.profile.ProfileScreen
 
 @Composable
 fun PushToTalkNavHost(
     username: String,
+    kmsBaseUrl: String,
+    kmsCookies: String,
     isDarkTheme: Boolean,
     appLanguage: AppLanguage,
     onDarkThemeChange: (Boolean) -> Unit,
@@ -43,24 +46,35 @@ fun PushToTalkNavHost(
                 NavigationBarItem(
                     selected = currentRoute == HOME_ROUTE,
                     onClick = { navController.openSingleTop(HOME_ROUTE) },
-                    label = { Text(text = stringResource(R.string.nav_home)) },
                     icon = {
                         Icon(
                             painter = painterResource(R.drawable.ic_nav_home),
                             contentDescription = null,
                         )
                     },
+                    label = { Text(text = stringResource(R.string.nav_home)) },
+                )
+                NavigationBarItem(
+                    selected = currentRoute == KANBAN_ROUTE,
+                    onClick = { navController.openSingleTop(KANBAN_ROUTE) },
+                    icon = {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_nav_kanban),
+                            contentDescription = null,
+                        )
+                    },
+                    label = { Text(text = stringResource(R.string.nav_kanban)) },
                 )
                 NavigationBarItem(
                     selected = currentRoute == PROFILE_ROUTE,
                     onClick = { navController.openSingleTop(PROFILE_ROUTE) },
-                    label = { Text(text = stringResource(R.string.nav_profile)) },
                     icon = {
                         Icon(
                             painter = painterResource(R.drawable.ic_nav_profile),
                             contentDescription = null,
                         )
                     },
+                    label = { Text(text = stringResource(R.string.nav_profile)) },
                 )
             }
         },
@@ -72,6 +86,12 @@ fun PushToTalkNavHost(
         ) {
             composable(HOME_ROUTE) {
                 MainRoute(appLanguage = appLanguage)
+            }
+            composable(KANBAN_ROUTE) {
+                KanbanScreen(
+                    kmsBaseUrl = kmsBaseUrl,
+                    kmsCookies = kmsCookies,
+                )
             }
             composable(PROFILE_ROUTE) {
                 ProfileScreen(
@@ -98,4 +118,5 @@ private fun NavHostController.openSingleTop(route: String) {
 }
 
 private const val HOME_ROUTE = "home"
+private const val KANBAN_ROUTE = "kanban"
 private const val PROFILE_ROUTE = "profile"
