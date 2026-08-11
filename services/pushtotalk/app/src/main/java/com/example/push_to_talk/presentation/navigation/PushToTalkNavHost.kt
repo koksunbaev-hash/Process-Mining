@@ -9,7 +9,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.material3.Icon
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -42,13 +44,23 @@ fun PushToTalkNavHost(
                     selected = currentRoute == HOME_ROUTE,
                     onClick = { navController.openSingleTop(HOME_ROUTE) },
                     label = { Text(text = stringResource(R.string.nav_home)) },
-                    icon = { Text(text = "PTT") },
+                    icon = {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_nav_home),
+                            contentDescription = null,
+                        )
+                    },
                 )
                 NavigationBarItem(
                     selected = currentRoute == PROFILE_ROUTE,
                     onClick = { navController.openSingleTop(PROFILE_ROUTE) },
                     label = { Text(text = stringResource(R.string.nav_profile)) },
-                    icon = { Text(text = "ID") },
+                    icon = {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_nav_profile),
+                            contentDescription = null,
+                        )
+                    },
                 )
             }
         },
