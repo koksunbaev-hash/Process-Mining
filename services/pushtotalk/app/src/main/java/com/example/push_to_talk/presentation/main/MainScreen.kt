@@ -10,24 +10,20 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -68,10 +64,7 @@ private const val SEND_DELAY_SECONDS = 3
 /** РўРѕС‡РєР° РІС…РѕРґР° СЌРєСЂР°РЅР°: СЃРІСЏР·С‹РІР°РµС‚ ViewModel, СЂР°Р·СЂРµС€РµРЅРёСЏ Рё stateless-UI. */
 @Composable
 fun MainRoute(
-    isDarkTheme: Boolean,
     appLanguage: AppLanguage,
-    onDarkThemeChange: (Boolean) -> Unit,
-    onLanguageChange: (AppLanguage) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: MainViewModel = hiltViewModel(),
 ) {
@@ -105,10 +98,6 @@ fun MainRoute(
                 onMicPressEnd = viewModel::onMicPressEnd,
                 onErrorDismissed = viewModel::onErrorDismissed,
                 onPendingSendCancelled = viewModel::onPendingSendCancelled,
-                isDarkTheme = isDarkTheme,
-                appLanguage = appLanguage,
-                onDarkThemeChange = onDarkThemeChange,
-                onLanguageChange = onLanguageChange,
                 modifier = modifier,
             )
         } else {
@@ -159,10 +148,6 @@ fun MainScreen(
     onMicPressEnd: () -> Unit,
     onErrorDismissed: () -> Unit,
     onPendingSendCancelled: () -> Unit,
-    isDarkTheme: Boolean = false,
-    appLanguage: AppLanguage = AppLanguage.Ru,
-    onDarkThemeChange: (Boolean) -> Unit = {},
-    onLanguageChange: (AppLanguage) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
@@ -175,11 +160,9 @@ fun MainScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top,
         ) {
-            HeaderSection(
-                isDarkTheme = isDarkTheme,
-                appLanguage = appLanguage,
-                onDarkThemeChange = onDarkThemeChange,
-                onLanguageChange = onLanguageChange,
+            Text(
+                text = stringResource(R.string.app_name),
+                style = MaterialTheme.typography.headlineSmall,
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -227,51 +210,6 @@ fun MainScreen(
     }
 }
 
-@Composable
-private fun HeaderSection(
-    isDarkTheme: Boolean,
-    appLanguage: AppLanguage,
-    onDarkThemeChange: (Boolean) -> Unit,
-    onLanguageChange: (AppLanguage) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = stringResource(R.string.app_name),
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.weight(1f),
-        )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AppLanguage.values().forEach { language ->
-                FilterChip(
-                    selected = appLanguage == language,
-                    onClick = { onLanguageChange(language) },
-                    label = {
-                        Text(
-                            text = stringResource(
-                                when (language) {
-                                    AppLanguage.Kk -> R.string.language_kz
-                                    AppLanguage.Ru -> R.string.language_ru
-                                },
-                            ),
-                        )
-                    },
-                )
-            }
-            Spacer(modifier = Modifier.width(2.dp))
-            Switch(
-                checked = isDarkTheme,
-                onCheckedChange = onDarkThemeChange,
-            )
-        }
-    }
-}
 @Composable
 private fun StatusSection(status: RecognitionStatus, modifier: Modifier = Modifier) {
     Column(

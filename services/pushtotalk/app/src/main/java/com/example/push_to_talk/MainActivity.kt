@@ -36,29 +36,36 @@ class MainActivity : ComponentActivity() {
                     authPreferences.getBoolean(KEY_AUTHENTICATED, false),
                 )
             }
+            var username by rememberSaveable {
+                androidx.compose.runtime.mutableStateOf(authPreferences.getString(KEY_USERNAME, "").orEmpty())
+            }
             val authClient = remember { KmsAuthClient(BuildConfig.KMS_BASE_URL) }
 
             PushtotalkTheme(darkTheme = isDarkTheme) {
                 if (isAuthenticated) {
                     PushToTalkNavHost(
+                        username = username,
                         isDarkTheme = isDarkTheme,
                         appLanguage = appLanguage,
                         onDarkThemeChange = { isDarkTheme = it },
                         onLanguageChange = { appLanguage = it },
+                        onLogout = {
+                            authPreferences.edit().clear().apply()
+                            username = ""
+                            isAuthenticated = false
+                        },
                     )
                 } else {
                     LoginScreen(
-                        isDarkTheme = isDarkTheme,
                         appLanguage = appLanguage,
-                        onDarkThemeChange = { isDarkTheme = it },
-                        onLanguageChange = { appLanguage = it },
-                        onLogin = { username, password ->
-                            val success = authClient.login(username, password)
+                        onLogin = { loginUsername, password ->
+                            val success = authClient.login(loginUsername, password)
                             if (success) {
                                 authPreferences.edit()
                                     .putBoolean(KEY_AUTHENTICATED, true)
-                                    .putString(KEY_USERNAME, username)
+                                    .putString(KEY_USERNAME, loginUsername)
                                     .apply()
+                                username = loginUsername
                                 isAuthenticated = true
                             }
                             success

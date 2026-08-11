@@ -1,7 +1,9 @@
-package com.example.push_to_talk.presentation.navigation
+﻿package com.example.push_to_talk.presentation.navigation
 
 import kotlinx.serialization.Serializable
 
-/** Типобезопасные маршруты Navigation Compose. Пока экран один. */
 @Serializable
-data object MainDestination
+data object HomeDestination
+
+@Serializable
+data object ProfileDestination

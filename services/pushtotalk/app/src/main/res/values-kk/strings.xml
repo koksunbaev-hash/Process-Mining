@@ -1,10 +1,17 @@
-﻿<resources>
+<resources>
     <string name="app_name">Push-to-Talk</string>
 
     <string name="settings_theme">Қараңғы тақырып</string>
     <string name="settings_language">Қолданба тілі</string>
     <string name="language_kz">KZ</string>
     <string name="language_ru">RU</string>
+
+    <string name="nav_home">Басты</string>
+    <string name="nav_profile">Профиль</string>
+    <string name="profile_title">Профиль</string>
+    <string name="profile_username_label">Пайдаланушы</string>
+    <string name="profile_username_unknown">Белгісіз пайдаланушы</string>
+    <string name="profile_logout">Шығу</string>
 
     <string name="login_title">Жүйеге кіру</string>
     <string name="login_subtitle">KMS жүйесіндегі логин мен құпиясөзді енгізіңіз.</string>
