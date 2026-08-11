@@ -171,6 +171,11 @@ host without internet, `docker save | gzip` gives you ~400 MB to copy.
 
 ## Picking this up
 
+Picking up where the last long session left off - what changed, what was
+learned the hard way, and what is still open in priority order:
+[docs/SESSION-2026-08-10.md](docs/SESSION-2026-08-10.md). Read its first
+section before anything else.
+
 [docs/HANDOFF.md](docs/HANDOFF.md) carries the context a newcomer would
 otherwise spend a day re-deriving: why the two services stay separate, which
 traps have already been stepped on, what the 1C data can and cannot support,
