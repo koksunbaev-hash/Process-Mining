@@ -171,10 +171,12 @@ host without internet, `docker save | gzip` gives you ~400 MB to copy.
 
 ## Picking this up
 
-Picking up where the last long session left off - what changed, what was
-learned the hard way, and what is still open in priority order:
-[docs/SESSION-2026-08-10.md](docs/SESSION-2026-08-10.md). Read its first
-section before anything else.
+Picking up where the last session left off - what changed, what was learned
+the hard way, and what is still open in priority order:
+[docs/SESSION-2026-08-11.md](docs/SESSION-2026-08-11.md). Read its first
+section before anything else. The session before it, covering speech
+recognition and the production order sheet, is
+[docs/SESSION-2026-08-10.md](docs/SESSION-2026-08-10.md).
 
 [docs/HANDOFF.md](docs/HANDOFF.md) carries the context a newcomer would
 otherwise spend a day re-deriving: why the two services stay separate, which
