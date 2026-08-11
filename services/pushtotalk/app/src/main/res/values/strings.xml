@@ -6,6 +6,13 @@
     <string name="language_kz">KZ</string>
     <string name="language_ru">RU</string>
 
+    <string name="login_title">Вход в систему</string>
+    <string name="login_subtitle">Введите логин и пароль от KMS.</string>
+    <string name="login_username">Логин</string>
+    <string name="login_password">Пароль</string>
+    <string name="login_button">Войти</string>
+    <string name="login_error">Проверьте логин, пароль и подключение к KMS.</string>
+
     <string name="status_label">Статус</string>
     <string name="status_idle">Ожидание</string>
     <string name="status_preparing">Подготовка</string>

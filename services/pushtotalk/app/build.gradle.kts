@@ -20,6 +20,14 @@ val releaseApiBaseUrl: String = (project.findProperty("releaseApiBaseUrl") as St
     ?.takeIf { it.isNotBlank() }
     ?: apiBaseUrl
 
+val kmsBaseUrl: String = (project.findProperty("kmsBaseUrl") as String?)
+    ?.takeIf { it.isNotBlank() }
+    ?: "https://qms.kzt.asia/"
+
+val releaseKmsBaseUrl: String = (project.findProperty("releaseKmsBaseUrl") as String?)
+    ?.takeIf { it.isNotBlank() }
+    ?: kmsBaseUrl
+
 android {
     namespace = "com.example.push_to_talk"
     compileSdk {
@@ -41,6 +49,7 @@ android {
     buildTypes {
         debug {
             buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+            buildConfigField("String", "KMS_BASE_URL", "\"$kmsBaseUrl\"")
             buildConfigField("boolean", "NETWORK_LOGGING", "true")
         }
         release {
@@ -48,6 +57,7 @@ android {
                 enable = false
             }
             buildConfigField("String", "API_BASE_URL", "\"$releaseApiBaseUrl\"")
+            buildConfigField("String", "KMS_BASE_URL", "\"$releaseKmsBaseUrl\"")
             buildConfigField("boolean", "NETWORK_LOGGING", "false")
         }
     }

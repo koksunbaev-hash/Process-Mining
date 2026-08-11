@@ -6,6 +6,13 @@
     <string name="language_kz">KZ</string>
     <string name="language_ru">RU</string>
 
+    <string name="login_title">Жүйеге кіру</string>
+    <string name="login_subtitle">KMS жүйесіндегі логин мен құпиясөзді енгізіңіз.</string>
+    <string name="login_username">Логин</string>
+    <string name="login_password">Құпиясөз</string>
+    <string name="login_button">Кіру</string>
+    <string name="login_error">Логинді, құпиясөзді және KMS қосылымын тексеріңіз.</string>
+
     <string name="status_label">Күйі</string>
     <string name="status_idle">Күту</string>
     <string name="status_preparing">Дайындалу</string>
