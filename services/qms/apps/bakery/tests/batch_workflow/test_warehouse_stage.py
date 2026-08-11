@@ -73,15 +73,20 @@ class WarehouseStageTests(TestCase):
         self.assertEqual(batch.current_stage.code, "oven")
 
     def test_warehouse_worker_can_finish(self):
-        worker = create_user("warehouse-worker", UserProfile.Role.WAREHOUSE_WORKER)
+        worker = create_user("warehouse-worker", UserProfile.Role.USER)
         batch = create_batch_at_stage("warehouse", self.user)
         move_batch(batch, "done", worker, "ready")
         batch.refresh_from_db()
         self.assertEqual(batch.current_stage.code, "done")
 
-    def test_mixing_operator_cannot_finish_from_warehouse(self):
-        worker = create_user("mixing-worker", UserProfile.Role.MIXING_OPERATOR)
-        assert_move_rejected(self, create_batch_at_stage("warehouse", self.user), "done", worker)
+    def test_employee_closes_a_batch_from_the_warehouse(self):
+        # Раньше склад закрывал только кладовщик. Отдельной роли кладовщика
+        # больше нет - закрывает тот, кто принял продукцию.
+        worker = create_user("stock-worker", UserProfile.Role.USER)
+        batch = create_batch_at_stage("warehouse", self.user)
+        move_batch(batch, "done", worker, "принято")
+        batch.refresh_from_db()
+        self.assertEqual(batch.current_stage.code, "done")
 
     def test_stock_status_is_available(self):
         batch = create_batch_at_stage("oven", self.user)

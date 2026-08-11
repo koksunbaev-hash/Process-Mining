@@ -82,12 +82,15 @@ class BatchViewEndpointTests(TestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.current_stage.code, "mixing")
 
-    def test_auditor_move_view_does_not_move(self):
-        auditor = create_user("view-auditor", UserProfile.Role.AUDITOR)
-        self.client.force_login(auditor)
+    def test_employee_moves_a_batch_from_the_board(self):
+        # Было наоборот: аудитор нажимал и партия оставалась на месте. Роли
+        # аудитора нет, а доска - главный экран сотрудника, поэтому проверяем,
+        # что перенос с неё проходит.
+        worker = create_user("view-worker", UserProfile.Role.USER)
+        self.client.force_login(worker)
         self.client.post(reverse("bakery:move_batch", args=[self.batch.pk]), {"stage": stage("forming").pk})
         self.batch.refresh_from_db()
-        self.assertEqual(self.batch.current_stage.code, "mixing")
+        self.assertEqual(self.batch.current_stage.code, "forming")
 
     def test_a_refused_move_reads_as_a_sentence(self):
         # ValidationError.__str__ is repr(list(self)), so the board would have

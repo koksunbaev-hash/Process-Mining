@@ -83,8 +83,9 @@ def complete_corrective_action(action, user, result=""):
 def close_nonconformity(nonconformity, user):
     if nonconformity.criticality == "critical":
         role = getattr(getattr(user, "profile", None), "role", "")
-        if role not in {"admin", "quality_manager"} and not user.is_superuser:
-            raise ValidationError("Критическое несоответствие закрывает только руководитель качества или администратор.")
+        # Роли руководителя качества больше нет; ближайший уровень - менеджер.
+        if role not in {"admin", "manager"} and not user.is_superuser:
+            raise ValidationError("Критическое несоответствие закрывает только менеджер или администратор.")
         nonconformity.approved_by_quality_manager = user
     old = nonconformity.status
     nonconformity.status = Nonconformity.Status.CLOSED

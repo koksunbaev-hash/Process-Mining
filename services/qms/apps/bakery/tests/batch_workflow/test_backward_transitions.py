@@ -51,9 +51,20 @@ class BackwardTransitionTests(TestCase):
         batch.save(update_fields=["status", "updated_at"])
         assert_move_rejected(self, batch, "mixing", self.user, ValidationError, "return")
 
-    def test_user_without_permission_cannot_return(self):
-        user = create_user("auditor-back", UserProfile.Role.AUDITOR)
-        assert_move_rejected(self, create_batch_at_stage("forming", self.user), "mixing", user, PermissionDenied, "return")
+    def test_employee_returns_a_batch_only_with_a_reason(self):
+        """Возврат остался за объяснением, а не за ролью.
+
+        Раньше здесь проверялось, что аудитор не вернёт партию назад. Роли
+        аудитора нет, вернуть может любой - но по-прежнему только с
+        комментарием: без него в истории останется движение без причины.
+        """
+        worker = create_user("worker-back", UserProfile.Role.USER)
+        assert_move_rejected(self, create_batch_at_stage("forming", self.user), "mixing", worker, ValidationError)
+
+        batch = create_batch_at_stage("forming", self.user)
+        move_batch(batch, "mixing", worker, "тесто не подошло")
+        batch.refresh_from_db()
+        self.assertEqual(batch.current_stage.code, "mixing")
 
     def test_after_return_can_move_forward_again(self):
         batch = create_batch_at_stage("forming", self.user)

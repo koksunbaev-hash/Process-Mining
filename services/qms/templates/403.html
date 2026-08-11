@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Раздел недоступен — QMS{% endblock %}
+{% block page_title %}Раздел недоступен{% endblock %}
+{% block page_subtitle %}{{ user.profile.get_role_display|default:"Ваша роль" }} этот раздел не открывает{% endblock %}
+
+{% comment %}
+Обычный отказ посредник превращает в перенаправление на свой раздел - сюда
+попадают только те случаи, когда уводить некуда: например, роль без единого
+доступного раздела. Пустая страница ошибки Django в этом месте выглядела бы
+поломкой сайта, а дело в правах.
+{% endcomment %}
+
+{% block content %}
+<section class="panel narrow">
+  <p>{% if exception %}{{ exception }}{% else %}Доступ к этому разделу закрыт для вашей роли.{% endif %}</p>
+  <p class="muted">Если он нужен для работы — права меняет администратор.</p>
+</section>
+{% endblock %}

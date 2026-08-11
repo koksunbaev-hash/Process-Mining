@@ -66,6 +66,9 @@ MIDDLEWARE = [
     "apps.audit.middleware.CurrentRequestMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # После auth и messages: посреднику нужен request.user, а отказ он
+    # объясняет сообщением.
+    "apps.accounts.middleware.SectionAccessMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -82,6 +85,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "apps.notifications.context_processors.unread_notifications",
+                "apps.accounts.context_processors.navigation",
             ],
         },
     },

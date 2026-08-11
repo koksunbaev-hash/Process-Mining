@@ -44,26 +44,31 @@
         <p>Хлебозавод</p>
       </div>
     </div>
-    <nav>
-      <a class="nav-item" href="{% url 'dashboard:index' %}">Панель</a>
-      <a class="nav-item" href="{% url 'bakery:kanban' %}">Производственная доска</a>
-      <a class="nav-item" href="{% url 'bakery:production_sheet' %}">Заказ на производство</a>
-      <a class="nav-item" href="{% url 'bakery:forecast' %}">Прогноз на неделю</a>
-      <a class="nav-item" href="{% url 'bakery:orders' %}">Заказы</a>
-      <a class="nav-item" href="{% url 'bakery:batches' %}">Производственные партии</a>
-      <a class="nav-item" href="{% url 'bakery:products' %}">Продукты</a>
-      <a class="nav-item" href="{% url 'bakery:recipes' %}">Рецептуры</a>
-      <a class="nav-item" href="{% url 'bakery:ingredients' %}">Ингредиенты</a>
-      <a class="nav-item" href="{% url 'nonconformities:list' %}">Проблемы</a>
-      <a class="nav-item" href="{% url 'bakery:voice' %}">Голосовые сообщения</a>
-      <a class="nav-item" href="{% url 'bakery:stock' %}">Склад</a>
-      <a class="nav-item" href="{% url 'bakery:reports' %}">Отчёты</a>
-      <a class="nav-item" href="{% url 'notifications:list' %}">Уведомления{% if unread_notifications_count %} <b>{{ unread_notifications_count }}</b>{% endif %}</a>
-      {% if user.is_superuser or user.profile.role == "admin" or user.profile.role == "manager" or user.profile.role == "director" or user.profile.role == "production_dispatcher" %}
-      <a class="nav-item" href="{% url 'process_mining:dashboard' %}">Process Mining</a>
+    {% comment %}
+    Меню собирается контекстным процессором apps.accounts.context_processors -
+    там же, где решается, кому что видно, и где это проверяется посредником.
+    Условия по ролям в разметке были ровно одним пунктом из шестнадцати и
+    разошлись бы с настоящими правами при первой правке.
+    {% endcomment %}
+    <nav class="{% if nav_grouped %}nav-grouped{% endif %}">
+      {% if nav_grouped %}
+        {% for group in nav_groups %}
+        <div class="nav-group">
+          <p class="nav-group__title">{{ group.title }}</p>
+          {% for item in group.items %}
+          <a class="nav-item{% if item.key == active_section %} is-active{% endif %}" href="{% url item.url_name %}">{{ item.label }}{% if item.key == "notifications" and unread_notifications_count %} <b>{{ unread_notifications_count }}</b>{% endif %}</a>
+          {% endfor %}
+          {% if group.title == "Система" and user.is_staff %}
+          <a class="nav-item" href="/admin/auth/user/">Пользователи</a>
+          <a class="nav-item" href="/admin/">Администрирование</a>
+          {% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+        {% for item in nav_flat %}
+        <a class="nav-item{% if item.key == active_section %} is-active{% endif %}" href="{{ item.url }}">{{ item.label }}{% if item.key == "notifications" and unread_notifications_count %} <b>{{ unread_notifications_count }}</b>{% endif %}</a>
+        {% endfor %}
       {% endif %}
-      <a class="nav-item" href="{% url 'audit:logs' %}">Журнал действий</a>
-      {% if user.is_staff %}<a class="nav-item" href="/admin/auth/user/">Пользователи</a><a class="nav-item" href="/admin/">Настройки</a>{% endif %}
     </nav>
     <div class="user-card">
       <strong>{{ user.get_full_name|default:user.username }}</strong>

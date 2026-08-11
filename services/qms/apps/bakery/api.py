@@ -328,7 +328,7 @@ class VoiceMessageViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return qs.none()
         role = getattr(getattr(user, "profile", None), "role", None)
-        if user.is_superuser or role in {"admin", "production_dispatcher", "manager", "director", "quality_manager", "auditor", "technologist"}:
+        if user.is_superuser or role in {"admin", "manager"}:
             return qs
         return qs.filter(created_by=user)
 

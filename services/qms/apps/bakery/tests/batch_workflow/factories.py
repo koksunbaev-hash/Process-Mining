@@ -33,7 +33,7 @@ STAGES = [
 ]
 
 
-def create_user(username="dispatcher", role=UserProfile.Role.PRODUCTION_DISPATCHER, password="x", **kwargs):
+def create_user(username="dispatcher", role=UserProfile.Role.MANAGER, password="x", **kwargs):
     user, _ = get_user_model().objects.get_or_create(username=username, defaults=kwargs)
     user.set_password(password)
     user.save()

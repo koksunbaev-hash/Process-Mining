@@ -18,6 +18,7 @@ from apps.bakery.kanban_demo import create_demo_run, reset_demo, start_demo, tic
 from apps.bakery.models import KanbanDemoRun
 
 from .models import ProcessEvent, ProcessEventExport
+from .views import can_view_integration
 from .services import (
     CSV_COLUMNS,
     apply_response,
@@ -374,16 +375,24 @@ class ProcessMiningExportTests(TestCase):
 class ProcessMiningDashboardTests(TestCase):
     def setUp(self):
         self.admin = create_user(username="pm-ui-admin", role=UserProfile.Role.ADMIN, password="pass")
-        self.operator = create_user(username="pm-ui-operator", role=UserProfile.Role.MIXING_OPERATOR, password="pass")
+        self.operator = create_user(username="pm-ui-operator", role=UserProfile.Role.USER, password="pass")
 
     def test_anonymous_user_is_redirected_from_dashboard(self):
         response = self.client.get(reverse("process_mining:dashboard"))
         self.assertEqual(response.status_code, 302)
 
     def test_operator_cannot_open_dashboard(self):
+        # Отказ теперь приходит от SectionAccessMiddleware, и это перенаправление
+        # на свой раздел с объяснением, а не голый 403: оператор попадает сюда
+        # по чужой ссылке, а не в обход запрета. Проверка в самом виде осталась
+        # второй линией - её отдельно держит тест ниже.
         self.client.login(username="pm-ui-operator", password="pass")
         response = self.client.get(reverse("process_mining:dashboard"))
-        self.assertEqual(response.status_code, 403)
+        self.assertRedirects(response, reverse("bakery:kanban"))
+
+    def test_view_keeps_its_own_guard(self):
+        self.assertFalse(can_view_integration(self.operator))
+        self.assertTrue(can_view_integration(self.admin))
 
     def test_admin_can_open_dashboard(self):
         self.client.login(username="pm-ui-admin", password="pass")

@@ -44,7 +44,7 @@ DEMO_QUANTITIES = [Decimal("100"), Decimal("200"), Decimal("300"), Decimal("500"
 
 
 def can_manage_kanban_demo(user):
-    return bool(user and user.is_authenticated and role(user) in {"admin", "manager", "director", "production_dispatcher"})
+    return bool(user and user.is_authenticated and role(user) in {"admin", "manager"})
 
 
 def require_demo_permission(user):
@@ -353,4 +353,4 @@ def demo_user(username=None):
     user = User.objects.filter(is_superuser=True).first()
     if user:
         return user
-    return User.objects.filter(profile__role__in=["admin", "production_dispatcher", "manager", "director"]).first()
+    return User.objects.filter(profile__role__in=["admin", "manager"]).first()

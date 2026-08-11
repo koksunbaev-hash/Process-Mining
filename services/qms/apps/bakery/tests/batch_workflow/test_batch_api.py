@@ -26,11 +26,19 @@ class BatchApiTests(TestCase):
         self.client.force_authenticate(user=None)
         self.assertIn(self.client.post(f"/api/batches/{batch.pk}/next_stage/").status_code, [401, 403])
 
-    def test_auditor_post_forbidden(self):
+    def test_employee_moves_a_batch_but_cannot_edit_the_catalogue(self):
+        """Что осталось от прав в API после сведения ролей.
+
+        Раньше здесь отказывали аудитору - роли, которой писать не полагалось.
+        Её нет, и партию через API двигает любой сотрудник. Справочники -
+        по-прежнему нет: `BakeryPermission` держит их за менеджером.
+        """
         batch = create_batch_at_stage("queue", self.user)
-        auditor = create_user("api-auditor", UserProfile.Role.AUDITOR)
-        self.client.force_authenticate(auditor)
-        self.assertEqual(self.client.post(f"/api/batches/{batch.pk}/next_stage/").status_code, 403)
+        worker = create_user("api-worker", UserProfile.Role.USER)
+        self.client.force_authenticate(worker)
+        self.assertEqual(self.client.post(f"/api/batches/{batch.pk}/next_stage/").status_code, 200)
+        response = self.client.post("/api/products/", {"code": "X", "name": "X", "unit": "шт", "shelf_life_hours": 12})
+        self.assertEqual(response.status_code, 403)
 
     def test_invalid_transition_returns_400(self):
         batch = create_batch_at_stage("queue", self.user)

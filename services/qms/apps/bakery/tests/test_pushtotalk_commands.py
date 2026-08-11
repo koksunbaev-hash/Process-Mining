@@ -17,7 +17,7 @@ from apps.bakery.tests.batch_workflow.helpers import create_batch_at_stage
 )
 class PushToTalkCommandApiTests(TestCase):
     def setUp(self):
-        self.user = create_user("ptt-dispatcher", UserProfile.Role.PRODUCTION_DISPATCHER)
+        self.user = create_user("ptt-dispatcher", UserProfile.Role.MANAGER)
         self.client = APIClient()
 
     def post_command(self, payload, token="ptt-secret"):

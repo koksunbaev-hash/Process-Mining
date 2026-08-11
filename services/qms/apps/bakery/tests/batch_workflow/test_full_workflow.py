@@ -73,12 +73,12 @@ class FullWorkflowTests(TestCase):
     def test_full_path_with_different_operators(self):
         dispatcher = self.user
         users = {
-            "mixing": create_user("e2e-mix", UserProfile.Role.MIXING_OPERATOR),
-            "forming": create_user("e2e-form", UserProfile.Role.FORMING_OPERATOR),
-            "proofing": create_user("e2e-proof", UserProfile.Role.PROOFING_OPERATOR),
-            "oven": create_user("e2e-oven", UserProfile.Role.OVEN_OPERATOR),
-            "warehouse": create_user("e2e-stock", UserProfile.Role.WAREHOUSE_WORKER),
-            "done": create_user("e2e-done", UserProfile.Role.WAREHOUSE_WORKER),
+            "mixing": create_user("e2e-mix", UserProfile.Role.USER),
+            "forming": create_user("e2e-form", UserProfile.Role.USER),
+            "proofing": create_user("e2e-proof", UserProfile.Role.USER),
+            "oven": create_user("e2e-oven", UserProfile.Role.USER),
+            "warehouse": create_user("e2e-stock", UserProfile.Role.USER),
+            "done": create_user("e2e-done", UserProfile.Role.USER),
         }
         batch = create_batch_at_stage("queue", dispatcher)
         for code in WORKFLOW[1:]:

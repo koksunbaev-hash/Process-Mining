@@ -147,13 +147,13 @@ class KanbanDemoTests(TestCase):
         self.assertEqual(result["progress_percent"], 100)
 
     def test_user_without_permission_gets_403(self):
-        auditor = create_user("demo-auditor", UserProfile.Role.AUDITOR)
+        auditor = create_user("demo-auditor", UserProfile.Role.USER)
         self.client.force_authenticate(auditor)
         response = self.client.post("/api/kanban-demo/create/", {"count": 1}, format="json")
         self.assertEqual(response.status_code, 403)
 
     def test_service_rejects_user_without_permission(self):
-        auditor = create_user("demo-auditor-service", UserProfile.Role.AUDITOR)
+        auditor = create_user("demo-auditor-service", UserProfile.Role.USER)
         with self.assertRaises(PermissionDenied):
             create_demo_run(user=auditor, count=1)
 
@@ -176,7 +176,7 @@ class KanbanDemoTests(TestCase):
         self.assertContains(response, "Демо процесса")
 
     def test_kanban_page_hides_demo_controls_for_auditor(self):
-        auditor = create_user("demo-auditor-ui", UserProfile.Role.AUDITOR)
+        auditor = create_user("demo-auditor-ui", UserProfile.Role.USER)
         web = Client()
         web.force_login(auditor)
         response = web.get("/bakery/board/")

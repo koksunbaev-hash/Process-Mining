@@ -33,10 +33,10 @@ class ReportTests(TestCase):
         User = get_user_model()
         self.admin = User.objects.create_user("admin", password="x", is_staff=True, is_superuser=True)
         self.manager = User.objects.create_user("manager", password="x")
-        self.manager.profile.role = UserProfile.Role.QUALITY_MANAGER
+        self.manager.profile.role = UserProfile.Role.MANAGER
         self.manager.profile.save()
         self.inspector = User.objects.create_user("inspector", password="x")
-        self.inspector.profile.role = UserProfile.Role.INSPECTOR
+        self.inspector.profile.role = UserProfile.Role.USER
         self.inspector.profile.save()
         self.master = User.objects.create_user("master", password="x")
         self.executor = User.objects.create_user("executor", password="x")
@@ -181,7 +181,7 @@ class ReportTests(TestCase):
 
     def test_department_restriction_for_master(self):
         self.master.profile.department = self.other_department
-        self.master.profile.role = UserProfile.Role.MASTER
+        self.master.profile.role = UserProfile.Role.USER
         self.master.profile.save()
         self.login(self.master)
         response = self.client.get(reverse("reports:detail", args=["inspection-journal"]))
