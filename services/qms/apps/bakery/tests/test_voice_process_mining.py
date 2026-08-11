@@ -38,7 +38,7 @@ def signed_callback(payload, secret="callback-secret"):
 )
 class VoiceProcessMiningTests(TestCase):
     def setUp(self):
-        self.user = create_user("voice-dispatcher", UserProfile.Role.PRODUCTION_DISPATCHER)
+        self.user = create_user("voice-dispatcher", UserProfile.Role.MANAGER)
         self.client = APIClient()
         self.client.force_authenticate(self.user)
 
@@ -281,11 +281,16 @@ class VoiceProcessMiningTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_insufficient_permissions_return_403(self):
+        # Голосовая команда двигает партию, поэтому подтверждать её может тот,
+        # кому перенос разрешён. После сведения ролей это все три - и отказ
+        # остаётся только для профиля без роли.
         batch = create_batch_at_stage("mixing", self.user)
-        auditor = create_user("voice-auditor", UserProfile.Role.AUDITOR)
-        voice = VoiceMessage.objects.create(audio_file=audio_file(), original_filename="voice.webm", mime_type="audio/webm", file_size=10, created_by=auditor)
+        stranger = create_user("voice-stranger", UserProfile.Role.USER)
+        stranger.profile.role = ""
+        stranger.profile.save(update_fields=["role"])
+        voice = VoiceMessage.objects.create(audio_file=audio_file(), original_filename="voice.webm", mime_type="audio/webm", file_size=10, created_by=stranger)
         command = VoiceCommand.objects.create(voice_message=voice, intent="move_batch", extracted_data={"batch_number": batch.batch_number, "from_stage": "mixing", "to_stage": "forming"}, confidence=Decimal("0.96"))
-        self.client.force_authenticate(auditor)
+        self.client.force_authenticate(stranger)
         self.assertEqual(self.client.post(f"/api/voice-commands/{command.pk}/confirm/").status_code, 403)
 
     def test_changed_stage_returns_409(self):
@@ -317,9 +322,9 @@ class VoiceProcessMiningTests(TestCase):
         self.assertIn("Не удалось", voice.processing_error)
 
     def test_user_cannot_see_other_voice_status(self):
-        other = create_user("other-voice", UserProfile.Role.MIXING_OPERATOR)
+        other = create_user("other-voice", UserProfile.Role.USER)
         voice = VoiceMessage.objects.create(audio_file=audio_file(), original_filename="voice.webm", mime_type="audio/webm", file_size=10, created_by=other)
-        current = create_user("current-voice", UserProfile.Role.MIXING_OPERATOR)
+        current = create_user("current-voice", UserProfile.Role.USER)
         self.client.force_authenticate(current)
         self.assertEqual(self.client.get(f"/api/voice-messages/{voice.pk}/status/").status_code, 404)
 
@@ -370,7 +375,7 @@ class AutoConfirmRuleTests(TestCase):
     one: a plain step onto the next stage."""
 
     def setUp(self):
-        self.user = create_user("auto-dispatcher", UserProfile.Role.PRODUCTION_DISPATCHER)
+        self.user = create_user("auto-dispatcher", UserProfile.Role.MANAGER)
 
     def command_for(self, batch, to_stage, status=VoiceCommand.Status.DETECTED, intent="move_batch"):
         voice = VoiceMessage.objects.create(audio_file=audio_file(), original_filename="v.webm", mime_type="audio/webm", file_size=10, created_by=self.user)

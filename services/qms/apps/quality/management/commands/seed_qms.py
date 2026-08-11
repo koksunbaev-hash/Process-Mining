@@ -31,37 +31,39 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         User = get_user_model()
-        roles = {
-            "Администратор QMS": UserProfile.Role.ADMIN,
-            "Руководитель службы качества": UserProfile.Role.QUALITY_MANAGER,
-            "Инженер по качеству": UserProfile.Role.QUALITY_ENGINEER,
-            "Контролёр ОТК": UserProfile.Role.INSPECTOR,
-            "Производственный мастер": UserProfile.Role.MASTER,
-            "Ответственный исполнитель": UserProfile.Role.EXECUTOR,
-            "Руководитель предприятия": UserProfile.Role.DIRECTOR,
-            "Аудитор": UserProfile.Role.AUDITOR,
-        }
-        for name in roles:
+        # Группы Django остались названы должностями: они описывают, чем человек
+        # занят, и по ним удобно рассылать. Права из них не берутся - их
+        # определяет роль профиля, а ролей теперь три.
+        for name in [
+            "Администратор QMS",
+            "Руководитель службы качества",
+            "Инженер по качеству",
+            "Контролёр ОТК",
+            "Производственный мастер",
+            "Ответственный исполнитель",
+            "Руководитель предприятия",
+            "Аудитор",
+        ]:
             Group.objects.get_or_create(name=name)
 
         dept_quality, _ = Department.objects.get_or_create(code="QCD", defaults={"name": "Служба качества"})
         dept_prod, _ = Department.objects.get_or_create(code="PRD", defaults={"name": "Производство"})
 
         users = [
-            ("admin", "Admin123!", UserProfile.Role.ADMIN, True, True),
-            ("quality_manager", "Quality123!", UserProfile.Role.QUALITY_MANAGER, False, True),
-            ("inspector", "Inspector123!", UserProfile.Role.INSPECTOR, False, False),
-            ("master", "Master123!", UserProfile.Role.MASTER, False, False),
-            ("auditor", "Auditor123!", UserProfile.Role.AUDITOR, False, False),
+            ("admin", "Admin123!", UserProfile.Role.ADMIN, True, True, dept_quality),
+            ("quality_manager", "Quality123!", UserProfile.Role.MANAGER, False, False, dept_quality),
+            ("inspector", "Inspector123!", UserProfile.Role.USER, False, False, dept_quality),
+            ("master", "Master123!", UserProfile.Role.USER, False, False, dept_prod),
+            ("auditor", "Auditor123!", UserProfile.Role.USER, False, False, dept_quality),
         ]
         created_users = {}
-        for username, password, role, is_superuser, is_staff in users:
+        for username, password, role, is_superuser, is_staff, department in users:
             user, created = User.objects.get_or_create(username=username, defaults={"is_staff": is_staff, "is_superuser": is_superuser})
             if created:
                 user.set_password(password)
                 user.save()
             user.profile.role = role
-            user.profile.department = dept_quality if role != UserProfile.Role.MASTER else dept_prod
+            user.profile.department = department
             user.profile.save()
             created_users[username] = user
 

@@ -33,7 +33,7 @@ class QmsBusinessTests(TestCase):
         self.admin = User.objects.create_user("admin", password="x", is_staff=True, is_superuser=True)
         self.inspector = User.objects.create_user("inspector", password="x")
         self.auditor = User.objects.create_user("auditor", password="x")
-        self.auditor.profile.role = UserProfile.Role.AUDITOR
+        self.auditor.profile.role = UserProfile.Role.USER
         self.auditor.profile.save()
         self.department = Department.objects.create(name="ОТК", code="QCD")
         self.control_type = ControlType.objects.create(name="измерительный", code="measure")
@@ -141,11 +141,18 @@ class QmsBusinessTests(TestCase):
         response = client.get("/api/tasks/")
         self.assertEqual(response.status_code, 200)
 
-    def test_auditor_is_read_only(self):
+    def test_employee_may_write_after_roles_were_collapsed(self):
+        """Роли «только чтение» больше нет, и это осознанная потеря.
+
+        Аудитор и директор были единственными, кому запрещалась запись. Из трёх
+        оставшихся ролей ни одна не означает «смотреть, но не трогать», поэтому
+        `is_read_only_role` всегда отвечает «нет». Тест закрепляет новое
+        поведение, чтобы возврат запрета был заметной правкой, а не сюрпризом.
+        """
         client = APIClient()
         client.force_authenticate(self.auditor)
         response = client.post("/api/control-parameters/", {"code": "X", "name": "X", "value_type": "text"})
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 201)
 
     def test_closed_nonconformity_delete_forbidden(self):
         obj, card = self.make_object_and_card()

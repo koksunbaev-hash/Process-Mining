@@ -19,7 +19,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         user = demo_user(options["user"] or None)
         if not user:
-            raise CommandError("Не найден администратор или диспетчер для создания demo.")
+            raise CommandError("Не найден администратор или менеджер для создания demo.")
         if options["reset"]:
             for run in list(KanbanDemoRun.objects.all()):
                 reset_demo(run, user)

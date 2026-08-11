@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Настройки — QMS{% endblock %}
+{% block page_title %}Настройки{% endblock %}
+{% block page_subtitle %}{{ user.get_full_name|default:user.username }} — {{ user.profile.get_role_display }}{% endblock %}
+
+{% comment %}
+Страница собрана из карточек в одну колонку, слева - оглавление, прилипающее к
+верху. Так она не превращается в анкету: разделов у менеджера четыре, у
+сотрудника два, и вкладки ради двух вкладок были бы лишним щелчком.
+{% endcomment %}
+
+{% block content %}
+<div class="settings">
+  <nav class="settings-nav" aria-label="Разделы настроек">
+    <a href="#profile">Личные данные</a>
+    <a href="#password">Пароль</a>
+    {% if may_configure %}
+    <a href="#catalog">Справочники</a>
+    <a href="#stages">Этапы производства</a>
+    {% endif %}
+  </nav>
+
+  <div class="settings-body">
+    <section class="panel settings-card" id="profile">
+      <div class="settings-card__head">
+        <h3>Личные данные</h3>
+        <p class="muted">Как вас видят в заказах, партиях и голосовых командах.</p>
+      </div>
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="profile">
+        {% if profile_form.non_field_errors %}<div class="message error">{{ profile_form.non_field_errors }}</div>{% endif %}
+        <div class="settings-fields">
+          {% for field in profile_form %}
+          <label class="field">
+            <span>{{ field.label }}</span>
+            {{ field }}
+            {% for error in field.errors %}<em class="field__error">{{ error }}</em>{% endfor %}
+          </label>
+          {% endfor %}
+          <div class="field">
+            <span>Роль</span>
+            <p class="field__static">{{ user.profile.get_role_display }}</p>
+            <em class="field__hint">Роль назначает администратор — от неё зависит, какие разделы видны в меню.</em>
+          </div>
+          <div class="field">
+            <span>Логин</span>
+            <p class="field__static">{{ user.username }}</p>
+            <em class="field__hint">Не меняется: под ним записаны все ваши действия в журнале.</em>
+          </div>
+        </div>
+        <div class="settings-actions">
+          <button class="primary" type="submit">Сохранить</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel settings-card" id="password">
+      <div class="settings-card__head">
+        <h3>Пароль</h3>
+        <p class="muted">Смена не разлогинивает — можно продолжать работу в этой же вкладке.</p>
+      </div>
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="password">
+        {% if password_form.non_field_errors %}<div class="message error">{{ password_form.non_field_errors }}</div>{% endif %}
+        <div class="settings-fields settings-fields--narrow">
+          {% for field in password_form %}
+          <label class="field">
+            <span>{{ field.label }}</span>
+            {{ field }}
+            {% if field.help_text %}<em class="field__hint">{{ field.help_text|safe }}</em>{% endif %}
+            {% for error in field.errors %}<em class="field__error">{{ error }}</em>{% endfor %}
+          </label>
+          {% endfor %}
+        </div>
+        <div class="settings-actions">
+          <button class="primary" type="submit">Изменить пароль</button>
+        </div>
+      </form>
+    </section>
+
+    {% if may_configure %}
+    <section class="panel settings-card" id="catalog">
+      <div class="settings-card__head">
+        <h3>Справочники</h3>
+        <p class="muted">Ассортимент, закладка и сырьё — то, чем распоряжается менеджер.</p>
+      </div>
+      <div class="settings-tiles">
+        {% for item in catalog %}
+        <a class="settings-tile" href="{% url item.url_name %}">
+          <strong>{{ item.total }}</strong>
+          <span>{{ item.label }}</span>
+          <small>{{ item.active }} действующих</small>
+          <p>{{ item.hint }}</p>
+        </a>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel settings-card" id="stages">
+      <div class="settings-card__head">
+        <h3>Этапы производства</h3>
+        <p class="muted">
+          Порядок этапов — это порядок колонок на доске и то, куда партия едет
+          «дальше». Менять его во время смены не стоит.
+        </p>
+      </div>
+      <form method="post">
+        {% csrf_token %}
+        <div class="table-wrap">
+          <table class="stages">
+            <thead>
+              <tr>
+                <th class="stages__order">Порядок</th>
+                <th>Название</th>
+                <th class="stages__code">Код</th>
+                <th class="stages__held">Партий сейчас</th>
+                <th class="stages__on">Включён</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for stage in stages %}
+              <tr{% if not stage.is_active %} class="is-off"{% endif %}>
+                <td class="stages__order">
+                  <div class="stages__move">
+                    <button type="submit" name="move" value="up:{{ stage.pk }}" title="Выше"
+                            aria-label="Поднять этап {{ stage.name }}"{% if forloop.first %} disabled{% endif %}>↑</button>
+                    <button type="submit" name="move" value="down:{{ stage.pk }}" title="Ниже"
+                            aria-label="Опустить этап {{ stage.name }}"{% if forloop.last %} disabled{% endif %}>↓</button>
+                  </div>
+                </td>
+                <td>
+                  <input class="stages__name" type="text" name="stage_name_{{ stage.pk }}"
+                         value="{{ stage.name }}" maxlength="80" aria-label="Название этапа">
+                </td>
+                <td class="stages__code"><code>{{ stage.code }}</code></td>
+                <td class="stages__held">{{ stage.held }}</td>
+                <td class="stages__on">
+                  <input type="checkbox" name="stage_active_{{ stage.pk }}"
+                         {% if stage.is_active %}checked{% endif %}
+                         aria-label="Этап {{ stage.name }} включён">
+                </td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="5" class="muted">Этапы ещё не заведены.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="settings-actions">
+          <button class="primary" type="submit" name="action" value="stages">Сохранить этапы</button>
+          <p class="muted">
+            Код не меняется — по нему этап находят выгрузка событий и разбор
+            голосовых команд. Этап с партиями выключить нельзя.
+          </p>
+        </div>
+      </form>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -13,10 +13,7 @@ from apps.quality.models import Department, QualityObject
 
 FULL_REPORT_ROLES = {
     UserProfile.Role.ADMIN,
-    UserProfile.Role.QUALITY_MANAGER,
-    UserProfile.Role.QUALITY_ENGINEER,
-    UserProfile.Role.DIRECTOR,
-    UserProfile.Role.AUDITOR,
+    UserProfile.Role.MANAGER,
 }
 
 
@@ -27,43 +24,32 @@ def user_role(user):
 
 
 def can_view_reports(user):
-    return user.is_authenticated and user_role(user) in {
-        *FULL_REPORT_ROLES,
-        UserProfile.Role.INSPECTOR,
-        UserProfile.Role.MASTER,
-        UserProfile.Role.EXECUTOR,
-    }
+    return user.is_authenticated and user_role(user) in {*FULL_REPORT_ROLES, UserProfile.Role.USER}
 
 
 def restrict_queryset(queryset, user, base):
+    """Менеджер видит всё, сотрудник - только своё.
+
+    Раньше сужение было разным у контролёра ОТК (свои карточки), мастера (своё
+    подразделение) и исполнителя (свои действия). Этих ролей не осталось, и
+    сужение свелось к одному правилу - «то, что назначено мне или заведено
+    мной». Подразделение из профиля больше не участвует: мастер, для которого
+    это писалось, теперь неотличим от оператора, и фильтр по цеху показывал бы
+    оператору чужие карточки вместо своих.
+    """
     role = user_role(user)
     if role in FULL_REPORT_ROLES:
         return queryset
-    department = getattr(getattr(user, "profile", None), "department", None)
-    if role == UserProfile.Role.INSPECTOR:
-        if base in {"cards"}:
-            return queryset.filter(Q(inspector=user) | Q(task__assigned_to=user))
-        if base in {"tasks"}:
-            return queryset.filter(assigned_to=user)
-        if base in {"nonconformities"}:
-            return queryset.filter(Q(detected_by=user) | Q(inspection_card__inspector=user))
-        if base in {"actions"}:
-            return queryset.filter(assigned_to=user)
-    if role == UserProfile.Role.MASTER and department:
-        if base in {"cards", "tasks"}:
-            return queryset.filter(quality_object__department=department)
-        if base in {"nonconformities"}:
-            return queryset.filter(responsible_department=department)
-        if base in {"actions"}:
-            return queryset.filter(nonconformity__responsible_department=department)
-        if base in {"equipment"}:
-            return queryset.filter(department=department)
-        if base in {"objects"}:
-            return queryset.filter(department=department)
-    if role == UserProfile.Role.EXECUTOR:
-        if base == "actions":
-            return queryset.filter(assigned_to=user)
-        return queryset.none()
+    if base == "cards":
+        return queryset.filter(Q(inspector=user) | Q(task__assigned_to=user))
+    if base == "tasks":
+        return queryset.filter(assigned_to=user)
+    if base == "nonconformities":
+        return queryset.filter(Q(detected_by=user) | Q(inspection_card__inspector=user))
+    if base == "actions":
+        return queryset.filter(assigned_to=user)
+    # Оборудование и объекты качества сужать не по чему: они ни на кого не
+    # назначены. Сотруднику отчёт по ним не показывается вовсе.
     return queryset.none()
 
 
@@ -186,13 +172,10 @@ def inspector_performance_rows(filters, user):
         users = users.filter(pk=filters["inspector"].pk)
     if filters.get("department"):
         users = users.filter(profile__department=filters["department"])
-    role = user_role(user)
-    if role == UserProfile.Role.INSPECTOR:
+    # Отчёт о работе контролёров: менеджер смотрит на всех, сотрудник - только
+    # на себя. Сравнивать себя с соседями по цеху ему не полагалось и раньше.
+    if user_role(user) not in FULL_REPORT_ROLES:
         users = users.filter(pk=user.pk)
-    elif role == UserProfile.Role.MASTER and getattr(user.profile, "department_id", None):
-        users = users.filter(profile__department=user.profile.department)
-    elif role == UserProfile.Role.EXECUTOR:
-        users = users.none()
     rows = []
     for inspector in users:
         cards = InspectionCard.objects.filter(inspector=inspector, status="completed")

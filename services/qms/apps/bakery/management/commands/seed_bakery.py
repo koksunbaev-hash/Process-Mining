@@ -44,6 +44,10 @@ class Command(BaseCommand):
         self.create_demo_problem(users)
         self.create_demo_stock(users["warehouse"])
         self.stdout.write(self.style.SUCCESS("Данные хлебозавода созданы."))
+        if self.flag_changes:
+            self.stdout.write(self.style.WARNING("Изменены права доступа:"))
+            for line in self.flag_changes:
+                self.stdout.write(f"  {line}")
         self.stdout.write("Логины:")
         for username, password in self.login_pairs:
             self.stdout.write(f"  {username} / {password}")
@@ -66,25 +70,42 @@ class Command(BaseCommand):
     def create_users(self, reset_passwords=False):
         User = get_user_model()
         dept, _ = Department.objects.get_or_create(code="BAKERY", defaults={"name": "Хлебозавод"})
+        # Логины остались прежними - они напечатаны в README и в руках у тех,
+        # кто смотрит стенд, - а ролей теперь три. Имя пользователя говорит, чем
+        # человек занят; роль - что ему позволено.
+        #
+        # is_staff только у администратора: админка Django обходит любое
+        # разграничение выше, и менеджеру там делать нечего.
         specs = [
             ("admin", "Admin123!", UserProfile.Role.ADMIN, True, True),
-            ("dispatcher", "Dispatch123!", UserProfile.Role.PRODUCTION_DISPATCHER, False, True),
-            ("technologist", "Tech123!", UserProfile.Role.TECHNOLOGIST, False, True),
-            ("mixing", "Mix123!", UserProfile.Role.MIXING_OPERATOR, False, False),
-            ("forming", "Form123!", UserProfile.Role.FORMING_OPERATOR, False, False),
-            ("proofing", "Proof123!", UserProfile.Role.PROOFING_OPERATOR, False, False),
-            ("oven", "Oven123!", UserProfile.Role.OVEN_OPERATOR, False, False),
-            ("warehouse", "Stock123!", UserProfile.Role.WAREHOUSE_WORKER, False, False),
-            ("manager", "Manager123!", UserProfile.Role.MANAGER, False, True),
-            ("auditor", "Auditor123!", UserProfile.Role.AUDITOR, False, False),
+            ("dispatcher", "Dispatch123!", UserProfile.Role.MANAGER, False, False),
+            ("technologist", "Tech123!", UserProfile.Role.MANAGER, False, False),
+            ("manager", "Manager123!", UserProfile.Role.MANAGER, False, False),
+            ("mixing", "Mix123!", UserProfile.Role.USER, False, False),
+            ("forming", "Form123!", UserProfile.Role.USER, False, False),
+            ("proofing", "Proof123!", UserProfile.Role.USER, False, False),
+            ("oven", "Oven123!", UserProfile.Role.USER, False, False),
+            ("warehouse", "Stock123!", UserProfile.Role.USER, False, False),
+            ("auditor", "Auditor123!", UserProfile.Role.USER, False, False),
         ]
         users = {}
+        self.flag_changes = []
         for username, password, role, is_superuser, is_staff in specs:
             group, _ = Group.objects.get_or_create(name=dict(UserProfile.Role.choices).get(role, role))
             user, created = User.objects.get_or_create(username=username, defaults={"is_superuser": is_superuser, "is_staff": is_staff})
             if created or reset_passwords:
                 user.set_password(password)
                 user.save()
+            # Флаги приводятся к списку выше и у тех, кто заведён прошлым
+            # запуском: `defaults` действует только при создании, поэтому правка
+            # спецификации сама по себе ничего не меняет на стенде. Снятое
+            # вручную право так же вернётся - что изменилось, команда печатает.
+            if (user.is_staff, user.is_superuser) != (is_staff, is_superuser):
+                self.flag_changes.append(
+                    f"{username}: is_staff {user.is_staff} → {is_staff}, is_superuser {user.is_superuser} → {is_superuser}"
+                )
+                user.is_staff, user.is_superuser = is_staff, is_superuser
+                user.save(update_fields=["is_staff", "is_superuser"])
             user.groups.add(group)
             user.profile.role = role
             user.profile.department = dept

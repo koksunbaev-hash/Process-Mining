@@ -35,13 +35,13 @@ class BakeryFixtureMixin:
     def setUp(self):
         User = get_user_model()
         self.dispatcher = User.objects.create_user("dispatcher", password="x")
-        self.dispatcher.profile.role = UserProfile.Role.PRODUCTION_DISPATCHER
+        self.dispatcher.profile.role = UserProfile.Role.MANAGER
         self.dispatcher.profile.save()
         self.auditor = User.objects.create_user("auditor", password="x")
-        self.auditor.profile.role = UserProfile.Role.AUDITOR
+        self.auditor.profile.role = UserProfile.Role.USER
         self.auditor.profile.save()
         self.operator = User.objects.create_user("mixing", password="x")
-        self.operator.profile.role = UserProfile.Role.MIXING_OPERATOR
+        self.operator.profile.role = UserProfile.Role.USER
         self.operator.profile.save()
         for seq, (code, name) in enumerate([
             ("queue", "Очередь"), ("mixing", "Замес"), ("forming", "Формовка"),
@@ -84,6 +84,11 @@ class BakeryModelTests(BakeryFixtureMixin, TestCase):
         self.assertEqual(BatchStageHistory.objects.filter(batch=batch).count(), 2)
 
     def test_move_without_permission_forbidden(self):
+        # Роли без права двигать партии не осталось - все три могут. Отказ
+        # приходит тому, у кого роли нет вовсе: такой профиль заведён в обход
+        # приложения, и прав ему не полагается.
+        self.auditor.profile.role = ""
+        self.auditor.profile.save(update_fields=["role"])
         batch = confirm_order(self.order, user=self.dispatcher)[0]
         with self.assertRaises(PermissionDenied):
             move_batch(batch, ProductionStage.objects.get(code="mixing"), self.auditor)
@@ -169,7 +174,7 @@ class VoiceMessageTests(BakeryFixtureMixin, TestCase):
 
     def test_voice_file_access_forbidden_for_unrelated_user(self):
         other = get_user_model().objects.create_user("other", password="x")
-        other.profile.role = UserProfile.Role.MIXING_OPERATOR
+        other.profile.role = UserProfile.Role.USER
         other.profile.save()
         file = SimpleUploadedFile("note.webm", b"audio", content_type="audio/webm")
         msg = VoiceMessage.objects.create(audio_file=file, original_filename="note.webm", mime_type="audio/webm", file_size=5, created_by=self.dispatcher)
@@ -217,6 +222,26 @@ class SeedBakeryCommandTests(TestCase):
         self.assertGreaterEqual(Ingredient.objects.count(), 12)
         self.assertEqual(ProductionStage.objects.count(), 7)
         self.assertTrue(ProductionBatch.objects.filter(current_stage__code="queue").exists())
+
+    def test_only_the_admin_gets_the_django_admin(self):
+        """Менеджер правит справочники и этапы через /settings/, а не через админку.
+
+        С is_staff ему открывались бы заодно пользователи и всё остальное -
+        мимо разграничения по ролям.
+        """
+        self.call_seed()
+        User = get_user_model()
+        staff = set(User.objects.filter(is_staff=True).values_list("username", flat=True))
+        self.assertEqual(staff, {"admin"})
+
+    def test_seed_takes_the_staff_flag_back(self):
+        # Ради этого правка и делалась: на стенде пользователи заведены прошлым
+        # запуском, а `defaults` в get_or_create до существующих не доходит.
+        self.call_seed()
+        User = get_user_model()
+        User.objects.filter(username="technologist").update(is_staff=True)
+        self.call_seed()
+        self.assertFalse(User.objects.get(username="technologist").is_staff)
 
     def test_seed_bakery_second_run_success_and_no_duplicates(self):
         self.call_seed()

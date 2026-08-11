@@ -73,6 +73,7 @@ urlpatterns = [
     path("login/", auth_views.LoginView.as_view(template_name="registration/login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("", include("apps.dashboard.urls")),
+    path("settings/", include("apps.accounts.urls")),
     path("bakery/", include("apps.bakery.urls")),
     path("objects/", include("apps.quality.urls")),
     path("tasks/", include("apps.inspections.urls")),

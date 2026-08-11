@@ -1,20 +1,22 @@
+"""Права пекарни на трёх ролях.
+
+Раньше каждый этап держал свой список должностей: замес двигал оператор замеса,
+печь - оператор печи. Ролей больше нет, и вместе с ними ушло разделение по
+этапам - партию двигает любой вошедший. Смена всё равно записана: `move_batch`
+пишет в `BatchStageHistory`, кто и когда перевёл, и эта запись - источник карты
+процесса.
+"""
+
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 
 ADMIN_ROLES = {"admin"}
-DISPATCHER_ROLES = {"admin", "production_dispatcher"}
-TECH_ROLES = {"admin", "technologist"}
-MANAGER_ROLES = {"admin", "production_dispatcher", "manager", "director", "quality_manager"}
-READ_ALL_ROLES = MANAGER_ROLES | {"auditor", "technologist"}
-STAGE_ROLES = {
-    "mixing": {"admin", "production_dispatcher", "mixing_operator"},
-    "forming": {"admin", "production_dispatcher", "forming_operator"},
-    "proofing": {"admin", "production_dispatcher", "proofing_operator"},
-    "oven": {"admin", "production_dispatcher", "oven_operator"},
-    "warehouse": {"admin", "production_dispatcher", "warehouse_worker"},
-    "queue": {"admin", "production_dispatcher"},
-    "done": {"admin", "production_dispatcher", "warehouse_worker"},
-}
+#: Распоряжаются: заказы, справочники, этапы, демо, чужие голосовые сообщения.
+MANAGER_ROLES = {"admin", "manager"}
+DISPATCHER_ROLES = MANAGER_ROLES
+TECH_ROLES = MANAGER_ROLES
+READ_ALL_ROLES = MANAGER_ROLES
+ALL_ROLES = {"admin", "manager", "user"}
 
 
 def role(user):
@@ -34,12 +36,13 @@ def can_manage_orders(user):
 
 
 def can_move_batch(user, stage_code=None):
-    user_role = role(user)
-    if user_role in MANAGER_ROLES:
-        return True
-    if stage_code:
-        return user_role in STAGE_ROLES.get(stage_code, set())
-    return user_role in set().union(*STAGE_ROLES.values())
+    """Двигать партии может любая из трёх ролей.
+
+    `stage_code` остался в сигнатуре: его передают виды и API, и по нему
+    когда-то выбирался список должностей этапа. Сейчас он ни на что не влияет -
+    но убрать параметр значит переписать шесть мест вызова ради нуля.
+    """
+    return role(user) in ALL_ROLES
 
 
 def can_view_voice(user, voice):
@@ -58,4 +61,6 @@ class BakeryPermission(BasePermission):
             return True
         if view.basename in {"product", "ingredient", "recipe"}:
             return can_manage_catalog(request.user)
-        return role(request.user) not in {"auditor"}
+        # Раньше здесь отсекался аудитор - единственная роль, которой писать не
+        # полагалось. Роли аудитора больше нет, и запрет вместе с ней ушёл.
+        return role(request.user) in ALL_ROLES

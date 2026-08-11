@@ -13,7 +13,7 @@ from .services import export_pending_events_to_process_mining, retry_failed_even
 
 
 def can_view_integration(user):
-    return bool(user and user.is_authenticated and user_role(user) in {"admin", "manager", "director", "production_dispatcher"})
+    return bool(user and user.is_authenticated and user_role(user) in {"admin", "manager"})
 
 
 @login_required

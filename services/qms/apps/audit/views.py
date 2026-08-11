@@ -10,7 +10,7 @@ from .models import AuditLog
 
 @login_required
 def audit_log_list(request):
-    if user_role(request.user) not in {"admin", "manager", "director", "auditor", "production_dispatcher"}:
+    if user_role(request.user) not in {"admin", "manager"}:
         raise PermissionDenied("Нет доступа к журналу действий.")
     logs = AuditLog.objects.select_related("user")
     if request.GET.get("user"):

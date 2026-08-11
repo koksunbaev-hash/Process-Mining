@@ -120,7 +120,9 @@ class Recipe(TimestampedModel):
 class RecipeItem(models.Model):
     recipe = models.ForeignKey(Recipe, verbose_name="рецептура", on_delete=models.CASCADE, related_name="items")
     ingredient = models.ForeignKey(Ingredient, verbose_name="ингредиент", on_delete=models.PROTECT, related_name="recipe_items")
-    quantity_for_batch = models.DecimalField("на партию", max_digits=12, decimal_places=3)
+    # Технологические карты содержат микродобавки до миллионных долей кг.
+    # Три знака после запятой превращали такие количества в ноль.
+    quantity_for_batch = models.DecimalField("на партию", max_digits=15, decimal_places=6)
     quantity_per_item = models.DecimalField("на 1 шт.", max_digits=12, decimal_places=6, default=0)
     sequence = models.PositiveIntegerField("порядок", default=1)
     notes = models.TextField("примечание", blank=True)
@@ -261,6 +263,43 @@ class ProductionOrderItem(models.Model):
     def requirements(self):
         recipe = self.recipe or self.product.recipes.filter(is_active=True).first()
         return recipe.calculate_requirements(self.quantity) if recipe else []
+
+
+class ProductionPlan(TimestampedModel):
+    """Сколько цех собирается испечь этого продукта в этот день.
+
+    Отдельно от заказов покупателей, и это не педантизм. Заказ - то, что
+    попросили; план - то, что решили печь. Они расходятся постоянно: пекут с
+    запасом, округляют до противня, добавляют под витрину. Правка плана не
+    должна менять чужой заказ, а правка заказа не должна молча переписывать то,
+    что уже отдали в цех.
+
+    Пусто - значит плана нет, и лист покажет сумму заказов как есть.
+    """
+
+    date = models.DateField("дата", db_index=True)
+    product = models.ForeignKey(Product, verbose_name="продукт", on_delete=models.CASCADE, related_name="plans")
+    quantity = models.DecimalField("количество", max_digits=12, decimal_places=3, default=0)
+    note = models.CharField("примечание", max_length=200, blank=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="изменил", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="production_plans",
+    )
+    # created_at и updated_at приходят из TimestampedModel - объявить их здесь
+    # ещё раз означало бы конфликт полей с базовым классом.
+
+    class Meta:
+        ordering = ["date", "product__name"]
+        # Одна строка на продукт в дне: иначе "количество" перестаёт быть числом
+        # и становится вопросом, какую из строк считать правдой.
+        constraints = [
+            models.UniqueConstraint(fields=["date", "product"], name="unique_plan_per_product_per_day"),
+        ]
+        verbose_name = "план производства"
+        verbose_name_plural = "планы производства"
+
+    def __str__(self):
+        return f"{self.date} {self.product.name}: {self.quantity}"
 
 
 class ProductionStage(models.Model):

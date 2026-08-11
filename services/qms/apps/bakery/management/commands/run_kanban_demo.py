@@ -16,7 +16,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         user = demo_user(options["user"] or None)
         if not user:
-            raise CommandError("Не найден администратор или диспетчер для запуска demo.")
+            raise CommandError("Не найден администратор или менеджер для запуска demo.")
         run = KanbanDemoRun.objects.get(pk=options["demo_run_id"])
         result = run_demo_until_done(run, user, sleep=not options["no_sleep"], max_ticks=options["max_ticks"])
         self.stdout.write(f"DemoRun ID: {run.pk}")

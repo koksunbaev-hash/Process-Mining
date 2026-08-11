@@ -14,7 +14,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         user = demo_user(options["user"] or None)
         if not user:
-            raise CommandError("Не найден администратор или диспетчер для сброса demo.")
+            raise CommandError("Не найден администратор или менеджер для сброса demo.")
         run = KanbanDemoRun.objects.get(pk=options["demo_run_id"])
         result = reset_demo(run, user)
         self.stdout.write(self.style.SUCCESS(f"DemoRun {options['demo_run_id']} сброшен."))
