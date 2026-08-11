@@ -16,6 +16,7 @@
 {% block page_title %}Заказ на производство{% endblock %}
 {% block page_subtitle %}План на дату и то, что по нему уже выпущено{% endblock %}
 {% block top_action %}
+  <a class="secondary" href="{% url 'bakery:forecast' %}">Прогноз на неделю</a>
   <button class="primary" onclick="window.print()">Печать</button>
 {% endblock %}
 
@@ -45,6 +46,9 @@
     </p>
   </header>
 
+  <form method="post" class="sheet-form">
+    {% csrf_token %}
+    <input type="hidden" name="date" value="{{ order_date|date:'Y-m-d' }}">
   <div class="sheet-scroll">
     <table class="sheet">
       <thead>
@@ -71,7 +75,12 @@
             <td class="num">{{ value|floatformat:"-2" }}</td>
           {% endfor %}
           <td class="num sheet__total">{{ row.produced|floatformat:"-2" }}</td>
-          <td class="num sheet__plan">{{ row.planned|floatformat:"-2" }}</td>
+          <td class="sheet__plan">
+            <input class="sheet__input" type="number" min="0" step="1"
+                   name="plan_{{ row.product_id }}"
+                   value="{{ row.planned|floatformat:"-2" }}"
+                   aria-label="План: {{ row.product_name }}">
+          </td>
           <td class="num sheet__rest">{{ row.closing|floatformat:"-2" }}</td>
         </tr>
         {% empty %}
@@ -98,6 +107,12 @@
       {% endif %}
     </table>
   </div>
+
+  <div class="sheet-actions no-print">
+    <button class="primary" type="submit">Сохранить количество</button>
+    <span class="muted">Пустое поле возвращает строку к сумме заказов на эту дату.</span>
+  </div>
+  </form>
 
   <p class="sheet-note no-print">
     Смены считаются по отметке перевода партии на этап «Готово» — той же, из

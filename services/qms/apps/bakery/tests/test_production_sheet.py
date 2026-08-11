@@ -63,67 +63,77 @@ class ShiftBoundaryTests(unittest.TestCase):
 
 class RowTests(unittest.TestCase):
     def test_the_total_is_the_sum_of_the_shifts(self):
-        row = Row("Хлеб", by_shift=[Decimal(100), Decimal(250), Decimal(50)])
+        row = Row(1, "Хлеб", by_shift=[Decimal(100), Decimal(250), Decimal(50)])
         self.assertEqual(row.produced, Decimal(400))
 
     def test_the_closing_balance_is_what_is_left_after_the_order(self):
-        row = Row("Хлеб", opening=Decimal(20), by_shift=[Decimal(300)], planned=Decimal(310))
+        row = Row(1, "Хлеб", opening=Decimal(20), by_shift=[Decimal(300)], planned=Decimal(310))
         self.assertEqual(row.closing, Decimal(10))
 
     def test_a_shortfall_is_negative_and_flagged(self):
-        row = Row("Хлеб", opening=Decimal(0), by_shift=[Decimal(90)], planned=Decimal(100))
+        row = Row(1, "Хлеб", opening=Decimal(0), by_shift=[Decimal(90)], planned=Decimal(100))
         self.assertEqual(row.closing, Decimal(-10))
         self.assertTrue(row.is_short)
         self.assertFalse(row.is_done)
 
     def test_meeting_the_plan_exactly_counts_as_done(self):
-        row = Row("Хлеб", by_shift=[Decimal(100)], planned=Decimal(100))
+        row = Row(1, "Хлеб", by_shift=[Decimal(100)], planned=Decimal(100))
         self.assertTrue(row.is_done)
         self.assertFalse(row.is_short)
 
     def test_a_product_with_no_plan_is_not_done_merely_by_existing(self):
         """Иначе строка склада без заказа зеленела бы просто так."""
-        row = Row("Хлеб", by_shift=[Decimal(0)], planned=Decimal(0))
+        row = Row(1, "Хлеб", by_shift=[Decimal(0)], planned=Decimal(0))
         self.assertFalse(row.is_done)
 
 
 class BuildRowsTests(unittest.TestCase):
-    def test_a_product_present_only_in_the_plan_still_gets_a_row(self):
-        """Именно эти строки и важны: заказали, но не сделали ни штуки."""
-        rows = build_rows({"Багет": Decimal(50)}, {}, {}, 3)
-        self.assertEqual(len(rows), 1)
+    def test_every_product_gets_a_row_even_with_nothing_on_it(self):
+        """Лист - это весь ассортимент. Пустая строка тоже сведение, и место,
+        куда вписать план, если решат печь."""
+        rows = build_rows([(1, "Багет"), (2, "Батон")], {}, {}, {}, 3)
+        self.assertEqual([r.product_name for r in rows], ["Багет", "Батон"])
         self.assertEqual(rows[0].by_shift, [Decimal(0)] * 3)
+
+    def test_a_product_planned_but_not_baked_shows_as_short(self):
+        rows = build_rows([(1, "Багет")], {1: Decimal(50)}, {}, {}, 3)
         self.assertTrue(rows[0].is_short)
+        self.assertEqual(rows[0].closing, Decimal(-50))
 
-    def test_a_product_produced_without_a_plan_also_appears(self):
-        rows = build_rows({}, {"Батон": [Decimal(10), Decimal(0), Decimal(0)]}, {}, 3)
-        self.assertEqual(rows[0].product_name, "Батон")
-        self.assertEqual(rows[0].closing, Decimal(10))
-
-    def test_rows_are_sorted_by_name_ignoring_case(self):
-        rows = build_rows({"Ржаной": Decimal(1), "багет": Decimal(1), "Батон": Decimal(1)}, {}, {}, 1)
-        self.assertEqual([r.product_name for r in rows], ["багет", "Батон", "Ржаной"])
+    def test_the_order_of_products_is_the_order_given(self):
+        """Сортировку выбирает вызывающий - в базе она уже по названию."""
+        rows = build_rows([(9, "Ржаной"), (3, "Батон")], {}, {}, {}, 1)
+        self.assertEqual([r.product_name for r in rows], ["Ржаной", "Батон"])
 
     def test_the_three_sources_meet_on_one_row(self):
         rows = build_rows(
-            {"Хлеб": Decimal(500)},
-            {"Хлеб": [Decimal(200), Decimal(250), Decimal(0)]},
-            {"Хлеб": Decimal(30)},
+            [(7, "Хлеб")],
+            {7: Decimal(500)},
+            {7: [Decimal(200), Decimal(250), Decimal(0)]},
+            {7: Decimal(30)},
             3,
         )
         row = rows[0]
+        self.assertEqual(row.product_id, 7)
         self.assertEqual(row.opening, Decimal(30))
         self.assertEqual(row.produced, Decimal(450))
         self.assertEqual(row.planned, Decimal(500))
         self.assertEqual(row.closing, Decimal(-20))
 
+    def test_rows_do_not_share_one_list_of_shifts(self):
+        """Иначе правка одной строки меняла бы все - список был бы один на всех."""
+        rows = build_rows([(1, "А"), (2, "Б")], {}, {}, {}, 2)
+        rows[0].by_shift[0] = Decimal(99)
+        self.assertEqual(rows[1].by_shift[0], Decimal(0))
+
 
 class TotalsTests(unittest.TestCase):
     def test_the_bottom_line_adds_up_every_column(self):
         rows = build_rows(
-            {"Хлеб": Decimal(100), "Батон": Decimal(200)},
-            {"Хлеб": [Decimal(60), Decimal(40)], "Батон": [Decimal(100), Decimal(50)]},
-            {"Хлеб": Decimal(5)},
+            [(1, "Хлеб"), (2, "Батон")],
+            {1: Decimal(100), 2: Decimal(200)},
+            {1: [Decimal(60), Decimal(40)], 2: [Decimal(100), Decimal(50)]},
+            {1: Decimal(5)},
             2,
         )
         result = totals(rows, 2)
@@ -135,8 +145,9 @@ class TotalsTests(unittest.TestCase):
 
     def test_it_counts_how_many_positions_are_short(self):
         rows = build_rows(
-            {"Хлеб": Decimal(100), "Батон": Decimal(10), "Багет": Decimal(5)},
-            {"Хлеб": [Decimal(20)], "Батон": [Decimal(10)]},
+            [(1, "Хлеб"), (2, "Батон"), (3, "Багет")],
+            {1: Decimal(100), 2: Decimal(10), 3: Decimal(5)},
+            {1: [Decimal(20)], 2: [Decimal(10)]},
             {},
             1,
         )

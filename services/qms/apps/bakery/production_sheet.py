@@ -82,6 +82,7 @@ def shifts_for(
 class Row:
     """Строка листа: один продукт."""
 
+    product_id: int
     product_name: str
     opening: Decimal = Decimal(0)
     by_shift: list[Decimal] = field(default_factory=list)
@@ -110,23 +111,27 @@ class Row:
         return self.planned > 0 and self.produced >= self.planned
 
 
-def build_rows(planned_by_product, produced_by_product_and_shift, opening_by_product, shift_count):
-    """Складывает три источника в строки листа.
+def build_rows(products, planned_by_id, produced_by_id, opening_by_id, shift_count):
+    """Складывает строки листа по всему ассортименту.
 
-    Аргументы — обычные словари, а не запросы: так эту функцию можно проверить
-    на выдуманных числах, и так же видно, что она ничего не знает про базу.
+    Продукты передаются списком ``(id, название)``, а не берутся из ключей
+    словарей: лист должен показывать всю номенклатуру, включая ту, что сегодня
+    не заказывали. Пустая строка - это тоже сведение, и место, куда вписать
+    план, если решат печь.
 
-    ``produced_by_product_and_shift`` — словарь ``{продукт: [смена1, смена2, ...]}``.
+    Остальные аргументы - обычные словари по id продукта, поэтому функцию можно
+    проверить на выдуманных числах, и видно, что она ничего не знает про базу.
     """
-    names = set(planned_by_product) | set(produced_by_product_and_shift) | set(opening_by_product)
+    zeros = [Decimal(0)] * shift_count
     rows = []
-    for name in sorted(names, key=lambda value: value.lower()):
+    for product_id, name in products:
         rows.append(
             Row(
+                product_id=product_id,
                 product_name=name,
-                opening=opening_by_product.get(name, Decimal(0)),
-                by_shift=produced_by_product_and_shift.get(name, [Decimal(0)] * shift_count),
-                planned=planned_by_product.get(name, Decimal(0)),
+                opening=opening_by_id.get(product_id, Decimal(0)),
+                by_shift=list(produced_by_id.get(product_id, zeros)),
+                planned=planned_by_id.get(product_id, Decimal(0)),
             )
         )
     return rows

@@ -431,3 +431,19 @@ tbody tr { transition: background-color .15s var(--ease); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* Поле плана в листе: выглядит как ячейка, пока в него не целятся. Рамка у
+   каждой из шестидесяти строк превратила бы таблицу в анкету. */
+.sheet__input { width: 100%; min-width: 72px; padding: 4px 6px; border: 1px solid transparent;
+  background: transparent; border-radius: 6px; text-align: right;
+  font: inherit; font-variant-numeric: tabular-nums; }
+.sheet__input:hover { border-color: var(--border); background: #fff; }
+.sheet__input:focus { border-color: var(--primary); background: #fff; }
+.sheet-form { display: contents; }
+.sheet-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sheet-actions .muted { font-size: 12.5px; }
+
+/* Прогноз: чем меньше наблюдений за цифрой, тем она бледнее. Это единственная
+   честная передача уверенности - процент пришлось бы выдумать. */
+.sheet td.is-low { color: var(--muted); }
+.sheet td.is-none { color: #b9b9be; }

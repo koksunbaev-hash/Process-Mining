@@ -263,6 +263,43 @@ class ProductionOrderItem(models.Model):
         return recipe.calculate_requirements(self.quantity) if recipe else []
 
 
+class ProductionPlan(TimestampedModel):
+    """Сколько цех собирается испечь этого продукта в этот день.
+
+    Отдельно от заказов покупателей, и это не педантизм. Заказ - то, что
+    попросили; план - то, что решили печь. Они расходятся постоянно: пекут с
+    запасом, округляют до противня, добавляют под витрину. Правка плана не
+    должна менять чужой заказ, а правка заказа не должна молча переписывать то,
+    что уже отдали в цех.
+
+    Пусто - значит плана нет, и лист покажет сумму заказов как есть.
+    """
+
+    date = models.DateField("дата", db_index=True)
+    product = models.ForeignKey(Product, verbose_name="продукт", on_delete=models.CASCADE, related_name="plans")
+    quantity = models.DecimalField("количество", max_digits=12, decimal_places=3, default=0)
+    note = models.CharField("примечание", max_length=200, blank=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="изменил", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="production_plans",
+    )
+    # created_at и updated_at приходят из TimestampedModel - объявить их здесь
+    # ещё раз означало бы конфликт полей с базовым классом.
+
+    class Meta:
+        ordering = ["date", "product__name"]
+        # Одна строка на продукт в дне: иначе "количество" перестаёт быть числом
+        # и становится вопросом, какую из строк считать правдой.
+        constraints = [
+            models.UniqueConstraint(fields=["date", "product"], name="unique_plan_per_product_per_day"),
+        ]
+        verbose_name = "план производства"
+        verbose_name_plural = "планы производства"
+
+    def __str__(self):
+        return f"{self.date} {self.product.name}: {self.quantity}"
+
+
 class ProductionStage(models.Model):
     code = models.CharField("код", max_length=40, unique=True)
     name = models.CharField("название", max_length=80)

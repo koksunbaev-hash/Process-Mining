@@ -17,6 +17,7 @@ from apps.notifications.services import notify
 from apps.process_mining.services import safe_record_process_event
 
 from .kanban_demo import can_manage_kanban_demo
+from .forecast import WEEKS_BACK, daily_totals, predict_week
 from .production_sheet import build_rows, shifts_for, totals
 from .forms import (
     CustomerForm,
@@ -34,6 +35,7 @@ from .models import (
     Ingredient,
     ProductionBatch,
     ProductionOrder,
+    ProductionPlan,
     ProductionOrderItem,
     ProductionStage,
     Product,
@@ -559,50 +561,57 @@ def reports(request):
 
 @login_required
 def production_sheet(request):
-    """Заказ на производство: план на дату и что по нему уже выпущено.
+    """Заказ на производство: план на дату и то, что по нему выпущено.
 
-    Бумажная форма, которой пользуются в цеху, но со заполненными столбцами
-    смен - партии уже прошли по доске с отметками времени, и остаётся сложить.
+    Бумажная форма из цеха, но со заполненными столбцами смен - партии уже
+    прошли по доске с отметками времени, и остаётся сложить.
 
-    Демо-партии исключены здесь так же, как на дашборде: лист должен показывать
-    цех, а не демонстрационный прогон.
+    Количество редактируется. Оно хранится отдельно от заказов покупателей
+    (ProductionPlan), потому что заказ - это то, что попросили, а план - то,
+    что решили печь; правка одного не должна молча менять другое. Пока плана
+    нет, показывается сумма заказов на эту дату - лист остаётся осмысленным с
+    первого открытия.
     """
-    raw_date = request.GET.get("date", "")
+    raw_date = request.GET.get("date", "") or request.POST.get("date", "")
     try:
         order_date = datetime.strptime(raw_date, "%Y-%m-%d").date() if raw_date else timezone.localdate()
     except ValueError:
         order_date = timezone.localdate()
 
-    shifts = shifts_for(order_date, timezone.get_current_timezone())
+    if request.method == "POST":
+        saved = _save_production_plan(request, order_date)
+        messages.success(request, f"Сохранено позиций: {saved}.")
+        return redirect(f"{reverse('bakery:production_sheet')}?date={order_date.isoformat()}")
 
-    planned = {}
-    items = (
-        ProductionOrderItem.objects.filter(
-            order__required_date__date=order_date,
-        )
+    shifts = shifts_for(order_date, timezone.get_current_timezone())
+    products = list(Product.objects.filter(is_active=True).order_by("name").values_list("id", "name"))
+
+    ordered = {}
+    for item in (
+        ProductionOrderItem.objects.filter(order__required_date__date=order_date)
         .exclude(order__status=ProductionOrder.Status.CANCELLED)
         .exclude(order__is_demo=True)
-        .select_related("product")
-    )
-    for item in items:
-        planned[item.product.name] = planned.get(item.product.name, Decimal(0)) + item.quantity
+    ):
+        ordered[item.product_id] = ordered.get(item.product_id, Decimal(0)) + item.quantity
 
-    # Партия считается выпущенной в тот момент, когда её перевели на "Готово".
-    # Это та же отметка, из которой строится карта процесса, поэтому лист и
-    # аналитика всегда рассказывают одну историю.
+    planned = dict(ordered)
+    for plan in ProductionPlan.objects.filter(date=order_date):
+        planned[plan.product_id] = plan.quantity
+
+    # Партия считается выпущенной в момент перевода на "Готово" - та же отметка,
+    # из которой строится карта процесса, так что лист и аналитика рассказывают
+    # одну историю.
     produced = {}
-    history = (
+    for record in (
         BatchStageHistory.objects.filter(
             to_stage__code="done",
             created_at__gte=shifts[0].start,
             created_at__lt=shifts[-1].end,
         )
         .exclude(batch__is_demo=True)
-        .select_related("batch", "batch__product")
-    )
-    for record in history:
-        name = record.batch.product.name
-        column = produced.setdefault(name, [Decimal(0)] * len(shifts))
+        .select_related("batch")
+    ):
+        column = produced.setdefault(record.batch.product_id, [Decimal(0)] * len(shifts))
         quantity = record.batch.actual_quantity
         if quantity is None:
             quantity = record.batch.planned_quantity
@@ -611,19 +620,14 @@ def production_sheet(request):
                 column[index] += quantity
                 break
 
-    # Переходящий остаток: то, что лежало на складе до начала первой смены.
     opening = {}
-    for record in (
-        FinishedGoodsStock.objects.filter(
-            status=FinishedGoodsStock.Status.AVAILABLE,
-            created_at__lt=shifts[0].start,
-        )
-        .exclude(batch__is_demo=True)
-        .select_related("product")
-    ):
-        opening[record.product.name] = opening.get(record.product.name, Decimal(0)) + record.quantity
+    for record in FinishedGoodsStock.objects.filter(
+        status=FinishedGoodsStock.Status.AVAILABLE,
+        created_at__lt=shifts[0].start,
+    ).exclude(batch__is_demo=True):
+        opening[record.product_id] = opening.get(record.product_id, Decimal(0)) + record.quantity
 
-    rows = build_rows(planned, produced, opening, len(shifts))
+    rows = build_rows(products, planned, produced, opening, len(shifts))
     context = {
         "order_date": order_date,
         "previous_date": (order_date - timedelta(days=1)).isoformat(),
@@ -632,5 +636,103 @@ def production_sheet(request):
         "rows": rows,
         "totals": totals(rows, len(shifts)),
         "generated_at": timezone.localtime(),
+        "ordered_totals": ordered,
     }
     return render(request, "bakery/production_sheet.html", context)
+
+
+def _save_production_plan(request, order_date):
+    """Записывает изменённые количества. Пустое поле стирает план, а не обнуляет.
+
+    Разница существенная: ноль - это решение не печь, пустота - это отсутствие
+    решения, и тогда лист возвращается к сумме заказов.
+    """
+    saved = 0
+    for key, raw in request.POST.items():
+        if not key.startswith("plan_"):
+            continue
+        try:
+            product_id = int(key[len("plan_"):])
+        except ValueError:
+            continue
+        raw = raw.strip().replace(",", ".")
+        if raw == "":
+            ProductionPlan.objects.filter(date=order_date, product_id=product_id).delete()
+            continue
+        try:
+            quantity = Decimal(raw)
+        except InvalidOperation:
+            continue
+        if quantity < 0:
+            continue
+        ProductionPlan.objects.update_or_create(
+            date=order_date,
+            product_id=product_id,
+            defaults={"quantity": quantity, "updated_by": request.user},
+        )
+        saved += 1
+    return saved
+
+
+@login_required
+def forecast(request):
+    """Сколько печь на следующей неделе, по каждому дню.
+
+    Считается по тому же дню недели за последние недели: суббота предсказывается
+    по субботам. Для хлебозавода это не упрощение, а суть - спрос живёт неделей,
+    и общая средняя размазала бы выходные по будням.
+
+    За историю берётся факт выпуска - партии, доведённые до "Готово". Не заказы:
+    заказать могли и то, что не испекли, а печь по прогнозу придётся столько,
+    сколько цех реально способен и обычно делает.
+    """
+    start = timezone.localdate() + timedelta(days=1)
+    raw_start = request.GET.get("from", "")
+    if raw_start:
+        try:
+            start = datetime.strptime(raw_start, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+
+    weeks = WEEKS_BACK
+    try:
+        weeks = max(1, min(12, int(request.GET.get("weeks", WEEKS_BACK))))
+    except (TypeError, ValueError):
+        pass
+
+    since = start - timedelta(weeks=weeks + 1)
+    history = {}
+    for record in (
+        BatchStageHistory.objects.filter(to_stage__code="done", created_at__date__gte=since)
+        .exclude(batch__is_demo=True)
+        .select_related("batch", "batch__product")
+    ):
+        quantity = record.batch.actual_quantity
+        if quantity is None:
+            quantity = record.batch.planned_quantity
+        day = timezone.localtime(record.created_at).date()
+        per_product = history.setdefault(record.batch.product.name, {})
+        per_product[day] = per_product.get(day, Decimal(0)) + quantity
+
+    days = [start + timedelta(days=step) for step in range(7)]
+    prediction = predict_week(history, start, len(days), weeks)
+    rows = [
+        {"product": product, "points": points, "total": sum((p.quantity for p in points), Decimal(0))}
+        for product, points in prediction.items()
+    ]
+    # Продукты, по которым за все недели ничего не выпускали, засоряли бы лист
+    # нулями - показываем только те, где прогноз есть о чём делать.
+    rows = [row for row in rows if row["total"] > 0]
+
+    context = {
+        "days": days,
+        "rows": rows,
+        "daily": daily_totals({row["product"]: row["points"] for row in rows}, len(days)),
+        "grand_total": sum((row["total"] for row in rows), Decimal(0)),
+        "weeks": weeks,
+        "start": start,
+        "previous_week": (start - timedelta(days=7)).isoformat(),
+        "next_week": (start + timedelta(days=7)).isoformat(),
+        "history_days": len(history),
+    }
+    return render(request, "bakery/forecast.html", context)

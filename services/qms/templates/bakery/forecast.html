@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% comment %}
+Неделя вперёд, по дням. Та же таблица, что и лист заказа, только колонки —
+дни, а числа не факт, а ожидание.
+
+Показано, на скольких днях стоит каждая цифра: точка на одном наблюдении и
+точка на четырёх выглядят по-разному, и решение принимается с этим знанием, а
+не вопреки ему. Процентов уверенности здесь нет намеренно — их пришлось бы
+придумать.
+{% endcomment %}
+{% block title %}Прогноз на неделю{% endblock %}
+{% block page_title %}Прогноз на неделю{% endblock %}
+{% block page_subtitle %}Сколько печь по дням — по тем же дням недели за прошлые недели{% endblock %}
+{% block top_action %}
+  <a class="secondary" href="{% url 'bakery:production_sheet' %}">Заказ на производство</a>
+  <button class="primary" onclick="window.print()">Печать</button>
+{% endblock %}
+
+{% block content %}
+<div class="sheet-page">
+
+  <nav class="sheet-dates no-print">
+    <a class="secondary" href="?from={{ previous_week }}&weeks={{ weeks }}" title="Неделя назад">←</a>
+    <form class="sheet-dates__pick">
+      <input type="date" name="from" value="{{ start|date:'Y-m-d' }}" onchange="this.form.submit()">
+      <select name="weeks" onchange="this.form.submit()" aria-label="Сколько недель истории">
+        {% for option in "2348"|make_list %}
+          <option value="{{ option }}" {% if weeks|stringformat:"s" == option %}selected{% endif %}>
+            по {{ option }} неделям
+          </option>
+        {% endfor %}
+      </select>
+    </form>
+    <a class="secondary" href="?from={{ next_week }}&weeks={{ weeks }}" title="Неделя вперёд">→</a>
+    <span class="sheet-dates__hint">всего за неделю <strong>{{ grand_total|floatformat:"-2" }}</strong></span>
+  </nav>
+
+  <header class="sheet-head">
+    <h3>Прогноз выпуска</h3>
+    <p class="sheet-head__meta">
+      с <strong>{{ start|date:"d.m.Y" }}</strong> на 7 дней
+      · по факту выпуска за {{ weeks }} нед.
+      · позиций в истории: {{ history_days }}
+    </p>
+  </header>
+
+  <div class="sheet-scroll">
+    <table class="sheet">
+      <thead>
+        <tr>
+          <th class="sheet__name">Наименование</th>
+          {% for day in days %}
+            <th class="sheet__shift">{{ day|date:"D" }}<small>{{ day|date:"d.m" }}</small></th>
+          {% endfor %}
+          <th>За неделю</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="sheet__name">{{ row.product }}</td>
+          {% for point in row.points %}
+            <td class="num is-{{ point.confidence }}" title="по {{ point.samples }} наблюдениям">
+              {{ point.quantity|floatformat:"-2" }}
+            </td>
+          {% endfor %}
+          <td class="num sheet__total">{{ row.total|floatformat:"-2" }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="{{ days|length|add:2 }}" class="muted sheet__empty">
+            Истории выпуска пока нет — прогнозировать не по чему.
+            Он появится, когда партии начнут доходить до этапа «Готово».
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% if rows %}
+      <tfoot>
+        <tr>
+          <td class="sheet__name">Итого в день</td>
+          {% for value in daily %}
+            <td class="num">{{ value|floatformat:"-2" }}</td>
+          {% endfor %}
+          <td class="num sheet__total">{{ grand_total|floatformat:"-2" }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+
+  <p class="sheet-note no-print">
+    Цифра дня — среднее по тому же дню недели за прошлые недели. Бледные значения
+    построены на одном-двух наблюдениях, обычные — на трёх и более. Прогноз
+    считается по факту выпуска, а не по заказам: заказать могли и то, что не
+    испекли.
+  </p>
+</div>
+{% endblock %}
