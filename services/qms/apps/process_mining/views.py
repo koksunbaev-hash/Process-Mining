@@ -5,11 +5,12 @@ from django.core.exceptions import PermissionDenied
 from django.db.models import Count
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
+from django.utils import timezone
 
 from apps.accounts.permissions import user_role
 
 from .models import ProcessEvent, ProcessEventExport
-from .services import export_pending_events_to_process_mining, retry_failed_events
+from .services import build_events_csv, export_pending_events_to_process_mining, retry_failed_events
 
 
 def can_view_integration(user):
@@ -52,9 +53,13 @@ def dashboard(request):
 def download_last_csv(request):
     if not can_view_integration(request.user):
         raise PermissionDenied
-    export = ProcessEventExport.objects.exclude(csv_content="").order_by("-created_at").first()
-    if not export:
-        return HttpResponse("CSV пока нет.", status=404)
-    response = HttpResponse(export.csv_content, content_type="text/csv; charset=utf-8")
-    response["Content-Disposition"] = f'attachment; filename="{export.file_name or "process_events.csv"}"'
+    events = ProcessEvent.objects.select_related("user", "product", "batch", "order").order_by("occurred_at", "id")
+    if not events.exists():
+        return HttpResponse("Событий для CSV пока нет.", status=404)
+
+    csv_content = build_events_csv(events.iterator())
+    file_name = f"kms_process_events_{timezone.now():%Y%m%d_%H%M%S}.csv"
+    # BOM lets Excel detect UTF-8 correctly when the CSV contains Cyrillic.
+    response = HttpResponse("\ufeff" + csv_content, content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{file_name}"'
     return response
