@@ -8,19 +8,28 @@
     <h3>Аналитика процессов</h3>
     <p class="muted">Карта процесса, узкие места, варианты маршрутов и KPI по событиям, которые отправляет эта система.</p>
   </div>
-  <a class="primary pm-console__link" id="pmConsoleLink" href="#" target="_blank" rel="noopener">
+  <a class="primary pm-console__link" id="pmConsoleLink"
+     href="{{ console_url|default:'#' }}" target="_blank" rel="noopener">
     Открыть консоль →
   </a>
 </section>
+{% if not console_url %}
+{% comment %}
+Запасной путь для локальной сети, где консоль слушает свой порт: 8443 под TLS,
+8001 без него. Снаружи так нельзя - там всё приходит на 443, а по именам
+разводит Caddy, и собранный из имени адрес вида qms.kzt.asia:8443 никуда не
+ведёт. Публичный адрес задаётся настройкой PROCESS_MINING_CONSOLE_URL, и тогда
+этот скрипт не выводится вовсе.
+{% endcomment %}
 <script>
   (function () {
-    // The console listens on its own port: 8443 behind TLS, 8001 without.
     var link = document.getElementById("pmConsoleLink");
     var secure = window.location.protocol === "https:";
     var port = secure ? "8443" : "8001";
     link.href = (secure ? "https://" : "http://") + window.location.hostname + ":" + port + "/";
   })();
 </script>
+{% endif %}
 
 <section class="panel">
   <div class="stats">

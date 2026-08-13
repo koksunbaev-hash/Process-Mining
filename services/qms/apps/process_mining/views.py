@@ -39,6 +39,7 @@ def dashboard(request):
         "process_mining/dashboard.html",
         {
             "url": settings.PROCESS_MINING_EVENT_LOG_URL,
+            "console_url": settings.PROCESS_MINING_CONSOLE_URL,
             "source": settings.PROCESS_MINING_SOURCE,
             "counts": counts,
             "last_success": last_success,

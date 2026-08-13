@@ -394,6 +394,24 @@ class ProcessMiningDashboardTests(TestCase):
         self.assertFalse(can_view_integration(self.operator))
         self.assertTrue(can_view_integration(self.admin))
 
+    @override_settings(PROCESS_MINING_CONSOLE_URL="https://pm.example.kz")
+    def test_console_link_uses_the_configured_address(self):
+        """Настроенный адрес ведёт прямо в консоль, без сборки из порта."""
+        self.client.login(username="pm-ui-admin", password="pass")
+        html = self.client.get(reverse("process_mining:dashboard")).content.decode()
+        self.assertIn('href="https://pm.example.kz"', html)
+        # Скрипт-запасной путь не должен даже выводиться: иначе он перепишет
+        # href на qms.kzt.asia:8443, куда снаружи не попасть.
+        self.assertNotIn("pmConsoleLink\")", html)
+
+    @override_settings(PROCESS_MINING_CONSOLE_URL="")
+    def test_console_link_falls_back_to_host_and_port(self):
+        """Без настройки остаётся прежнее поведение - для локальной сети."""
+        self.client.login(username="pm-ui-admin", password="pass")
+        html = self.client.get(reverse("process_mining:dashboard")).content.decode()
+        self.assertIn("pmConsoleLink", html)
+        self.assertIn("8443", html)
+
     def test_admin_can_open_dashboard(self):
         self.client.login(username="pm-ui-admin", password="pass")
         response = self.client.get(reverse("process_mining:dashboard"))

@@ -196,6 +196,12 @@ PROCESS_MINING_CALLBACK_URL = env("PROCESS_MINING_CALLBACK_URL", default="")
 PROCESS_MINING_CALLBACK_SECRET = env("PROCESS_MINING_CALLBACK_SECRET", default="")
 PROCESS_MINING_TIMEOUT_SECONDS = env("PROCESS_MINING_TIMEOUT_SECONDS")
 PROCESS_MINING_EVENT_LOG_URL = env("PROCESS_MINING_EVENT_LOG_URL", default="")
+# Адрес консоли аналитики для человека, а не для сервера. Пустое значение
+# означает «собери из текущего имени и порта» - так работает доступ по
+# локальной сети (https://192.168.0.137:8443). Наружу консоль живёт на своём
+# домене, где никакого 8443 нет: снаружи всё приходит на 443, а Caddy
+# разводит по именам. Отсюда отдельная настройка, а не вычисление в скрипте.
+PROCESS_MINING_CONSOLE_URL = env("PROCESS_MINING_CONSOLE_URL", default="")
 PROCESS_MINING_SOURCE = env("PROCESS_MINING_SOURCE", default="kms_bakery")
 PROCESS_MINING_SCHEMA_VERSION = env("PROCESS_MINING_SCHEMA_VERSION", default="1.0")
 PROCESS_MINING_BATCH_SIZE = env("PROCESS_MINING_BATCH_SIZE")
