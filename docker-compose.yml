@@ -43,13 +43,13 @@ services:
       PORT: 8000
       # Wired to the sibling service by container name - no IPs, no ports on
       # the host, and it keeps working if you move the stack to another machine.
-      PROCESS_MINING_EVENT_LOG_URL: http://process-mining:8000/api/event-logs/import/
-      PROCESS_MINING_API_URL: http://process-mining:8000/api/transcriptions/
+      PROCESS_MINING_EVENT_LOG_URL: ${PROCESS_MINING_EVENT_LOG_URL:-http://process-mining:8000/api/event-logs/import/}
+      PROCESS_MINING_API_URL: ${PROCESS_MINING_API_URL:-http://process-mining:8000/api/transcriptions/}
       PROCESS_MINING_API_TOKEN: ${PM_API_KEYS:?set PM_API_KEYS in .env}
       PROCESS_MINING_SOURCE: ${PROCESS_MINING_SOURCE:-kms_bakery}
       # Must be absolute: the analytics service POSTs the transcript here, and
       # it has no way to resolve a path relative to the QMS.
-      PROCESS_MINING_CALLBACK_URL: http://qms:8000/api/process-mining/callback/
+      PROCESS_MINING_CALLBACK_URL: ${PROCESS_MINING_CALLBACK_URL:-http://qms:8000/api/process-mining/callback/}
       PROCESS_MINING_CALLBACK_SECRET: ${PM_CALLBACK_SECRET:?set PM_CALLBACK_SECRET in .env}
     # Bound to the loopback by default. The app speaks plain http here, and the
     # only thing that should reach it is the TLS proxy in front - or the
@@ -116,8 +116,8 @@ services:
     restart: unless-stopped
     environment:
       PTT_RUNTIME_DIR: /srv/ptt
-      PTT_TRANSCRIBE_URL: http://process-mining:8000/api/transcriptions/sync
-      PTT_TRANSCRIBE_TOKEN: ${PM_API_KEYS:?set PM_API_KEYS in .env}
+      PTT_TRANSCRIBE_URL: ${PTT_TRANSCRIBE_URL:-http://process-mining:8000/api/transcriptions/sync}
+      PTT_TRANSCRIBE_TOKEN: ${PTT_TRANSCRIBE_TOKEN:-${PM_API_KEYS:?set PM_API_KEYS in .env}}
       # Absolute, by container name: this is a server-to-server call and the
       # phone never learns the QMS token.
       PTT_KMS_COMMAND_URL: http://qms:8000/api/pushtotalk/commands/
