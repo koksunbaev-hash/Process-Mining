@@ -17,6 +17,7 @@ class SpeechRequest(BaseModel):
     """Тело POST /api/speech."""
 
     text: str = Field(..., description="Распознанный текст реплики")
+    kms_session_id: str | None = Field(default=None, description="KMS session id of the mobile sender")
 
 
 class SpeechResponse(BaseModel):

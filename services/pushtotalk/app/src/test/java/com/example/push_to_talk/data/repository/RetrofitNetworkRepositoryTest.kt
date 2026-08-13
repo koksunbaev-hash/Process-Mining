@@ -1,6 +1,7 @@
 package com.example.push_to_talk.data.repository
 
 import com.example.push_to_talk.core.result.AppResult
+import com.example.push_to_talk.data.auth.KmsSessionProvider
 import com.example.push_to_talk.data.network.ApiService
 import com.example.push_to_talk.domain.model.AppError
 import com.example.push_to_talk.fake.FakeLogger
@@ -85,6 +86,7 @@ class RetrofitNetworkRepositoryTest {
             // реальный диспетчер, а не тестовый с виртуальным временем.
             dispatchers = TestDispatcherProvider(Dispatchers.IO),
             logger = FakeLogger(),
+            kmsSessionProvider = KmsSessionProvider { "test-session-id" },
         )
     }
 
@@ -106,7 +108,9 @@ class RetrofitNetworkRepositoryTest {
         val recorded = server.takeRequest()
         assertEquals("POST", recorded.method)
         assertEquals("/api/speech", recorded.path)
-        assertEquals("""{"text":"Привет сервер"}""", recorded.body.readUtf8())
+        val body = recorded.body.readUtf8()
+        assertTrue(body.startsWith("{\"text\":\""))
+        assertTrue(body.contains("\"kms_session_id\":\"test-session-id\""))
     }
 
     @Test
@@ -115,7 +119,10 @@ class RetrofitNetworkRepositoryTest {
 
         repository.sendText("  привет  ")
 
-        assertEquals("""{"text":"привет"}""", server.takeRequest().body.readUtf8())
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.startsWith("{\"text\":\""))
+        assertTrue(body.contains("\"kms_session_id\":\"test-session-id\""))
+        assertTrue(!body.contains("  "))
     }
 
     @Test

@@ -430,12 +430,31 @@ class ProcessMiningDashboardTests(TestCase):
         response = self.client.get(reverse("process_mining:download_last_csv"))
         self.assertEqual(response.status_code, 404)
 
-    def test_download_last_csv_returns_file(self):
-        ProcessEventExport.objects.create(file_name="last.csv", csv_content="event_id,case_id\n1,B-1\n")
+    def test_download_last_csv_returns_all_current_events(self):
+        ProcessEventExport.objects.create(file_name="last.csv", csv_content="event_id,case_id\n1,STALE\n")
+        now = timezone.now()
+        ProcessEvent.objects.bulk_create(
+            [
+                ProcessEvent(
+                    case_id=f"B-{index:03d}",
+                    case_type=ProcessEvent.CaseType.BATCH,
+                    activity=f"Событие {index}",
+                    occurred_at=now,
+                )
+                for index in range(105)
+            ]
+        )
         self.client.login(username="pm-ui-admin", password="pass")
         response = self.client.get(reverse("process_mining:download_last_csv"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
+        self.assertIn("kms_process_events_", response["Content-Disposition"])
+
+        content = response.content.decode("utf-8-sig")
+        rows = list(csv.DictReader(StringIO(content)))
+        self.assertEqual(len(rows), 105)
+        self.assertEqual(rows[-1]["case_id"], "B-104")
+        self.assertNotIn("STALE", content)
 
 
 class ProcessMiningFullScenarioTests(TestCase):

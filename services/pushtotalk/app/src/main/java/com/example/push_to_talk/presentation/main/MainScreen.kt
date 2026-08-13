@@ -1,6 +1,7 @@
-package com.example.push_to_talk.presentation.main
+﻿package com.example.push_to_talk.presentation.main
 
 import android.Manifest
+import android.content.res.Configuration
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -26,13 +27,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -42,22 +46,25 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.push_to_talk.AppLanguage
 import com.example.push_to_talk.R
 import com.example.push_to_talk.domain.model.AppError
 import com.example.push_to_talk.domain.model.RecognitionStatus
 import com.example.push_to_talk.presentation.main.components.MicButton
 import com.example.push_to_talk.ui.theme.PushtotalkTheme
+import java.util.Locale
 
 /**
- * Режим кнопки. Чтобы получить «удерживай для разговора», достаточно поменять значение:
- * ViewModel и весь слой ниже остаются без изменений.
+ * Р РµР¶РёРј РєРЅРѕРїРєРё. Р§С‚РѕР±С‹ РїРѕР»СѓС‡РёС‚СЊ В«СѓРґРµСЂР¶РёРІР°Р№ РґР»СЏ СЂР°Р·РіРѕРІРѕСЂР°В», РґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїРѕРјРµРЅСЏС‚СЊ Р·РЅР°С‡РµРЅРёРµ:
+ * ViewModel Рё РІРµСЃСЊ СЃР»РѕР№ РЅРёР¶Рµ РѕСЃС‚Р°СЋС‚СЃСЏ Р±РµР· РёР·РјРµРЅРµРЅРёР№.
  */
 private val PushToTalkButtonMode = PushToTalkMode.Tap
 private const val SEND_DELAY_SECONDS = 3
 
-/** Точка входа экрана: связывает ViewModel, разрешения и stateless-UI. */
+/** РўРѕС‡РєР° РІС…РѕРґР° СЌРєСЂР°РЅР°: СЃРІСЏР·С‹РІР°РµС‚ ViewModel, СЂР°Р·СЂРµС€РµРЅРёСЏ Рё stateless-UI. */
 @Composable
 fun MainRoute(
+    appLanguage: AppLanguage,
     modifier: Modifier = Modifier,
     viewModel: MainViewModel = hiltViewModel(),
 ) {
@@ -81,32 +88,57 @@ fun MainRoute(
         }
     }
 
-    if (uiState.hasMicrophonePermission) {
-        MainScreen(
-            uiState = uiState,
-            mode = PushToTalkButtonMode,
-            onMicTap = viewModel::onMicTap,
-            onMicPressStart = viewModel::onMicPressStart,
-            onMicPressEnd = viewModel::onMicPressEnd,
-            onErrorDismissed = viewModel::onErrorDismissed,
-            onPendingSendCancelled = viewModel::onPendingSendCancelled,
-            modifier = modifier,
-        )
-    } else {
-        MicrophonePermissionScreen(
-            onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-            onOpenSettings = {
-                val intent = Intent(
-                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.fromParts("package", context.packageName, null),
-                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
-            },
-            modifier = modifier,
-        )
+    LocalizedContent(appLanguage = appLanguage) {
+        if (uiState.hasMicrophonePermission) {
+            MainScreen(
+                uiState = uiState,
+                mode = PushToTalkButtonMode,
+                onMicTap = viewModel::onMicTap,
+                onMicPressStart = viewModel::onMicPressStart,
+                onMicPressEnd = viewModel::onMicPressEnd,
+                onErrorDismissed = viewModel::onErrorDismissed,
+                onPendingSendCancelled = viewModel::onPendingSendCancelled,
+                modifier = modifier,
+            )
+        } else {
+            MicrophonePermissionScreen(
+                onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                onOpenSettings = {
+                    val intent = Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.fromParts("package", context.packageName, null),
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                },
+                modifier = modifier,
+            )
+        }
+    }}
+
+@Composable
+private fun LocalizedContent(
+    appLanguage: AppLanguage,
+    content: @Composable () -> Unit,
+) {
+    val baseContext = LocalContext.current
+    val localizedConfiguration = remember(baseContext, appLanguage) {
+        val locale = Locale.forLanguageTag(appLanguage.tag)
+        Locale.setDefault(locale)
+        Configuration(baseContext.resources.configuration).apply {
+            setLocale(locale)
+        }
+    }
+    val localizedContext = remember(baseContext, localizedConfiguration) {
+        baseContext.createConfigurationContext(localizedConfiguration)
+    }
+
+    CompositionLocalProvider(
+        LocalContext provides localizedContext,
+        LocalConfiguration provides localizedConfiguration,
+    ) {
+        content()
     }
 }
-
 @Composable
 fun MainScreen(
     uiState: MainUiState,
@@ -133,7 +165,7 @@ fun MainScreen(
                 style = MaterialTheme.typography.headlineSmall,
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             MicButton(
                 isListening = uiState.isListening,
@@ -197,8 +229,8 @@ private fun StatusSection(status: RecognitionStatus, modifier: Modifier = Modifi
 }
 
 /**
- * Итог отправки текста на сервер: «✅ Отправлено» либо «❌ Ошибка отправки».
- * Пока запрос в пути показывается прогресс-индикатор.
+ * РС‚РѕРі РѕС‚РїСЂР°РІРєРё С‚РµРєСЃС‚Р° РЅР° СЃРµСЂРІРµСЂ: В«вњ… РћС‚РїСЂР°РІР»РµРЅРѕВ» Р»РёР±Рѕ В«вќЊ РћС€РёР±РєР° РѕС‚РїСЂР°РІРєРёВ».
+ * РџРѕРєР° Р·Р°РїСЂРѕСЃ РІ РїСѓС‚Рё РїРѕРєР°Р·С‹РІР°РµС‚СЃСЏ РїСЂРѕРіСЂРµСЃСЃ-РёРЅРґРёРєР°С‚РѕСЂ.
  */
 @Composable
 private fun SendStatusSection(
@@ -350,7 +382,7 @@ private fun MainScreenListeningPreview() {
         MainScreen(
             uiState = MainUiState(
                 status = RecognitionStatus.SpeechDetected,
-                recognizedText = "Привет, это тестовая реплика",
+                recognizedText = "РџСЂРёРІРµС‚, СЌС‚Рѕ С‚РµСЃС‚РѕРІР°СЏ СЂРµРїР»РёРєР°",
                 isListening = true,
                 isSessionActive = true,
                 hasMicrophonePermission = true,
@@ -373,7 +405,7 @@ private fun MainScreenSentPreview() {
         MainScreen(
             uiState = MainUiState(
                 status = RecognitionStatus.Success,
-                recognizedText = "Привет, сервер",
+                recognizedText = "РџСЂРёРІРµС‚, СЃРµСЂРІРµСЂ",
                 hasMicrophonePermission = true,
                 sendStatus = SendStatus.Success,
             ),
@@ -394,7 +426,7 @@ private fun MainScreenSendErrorPreview() {
         MainScreen(
             uiState = MainUiState(
                 status = RecognitionStatus.Success,
-                recognizedText = "Привет, сервер",
+                recognizedText = "РџСЂРёРІРµС‚, СЃРµСЂРІРµСЂ",
                 hasMicrophonePermission = true,
                 sendStatus = SendStatus.Error,
                 error = AppError.Network.NoConnection,
@@ -428,3 +460,12 @@ private fun MainScreenErrorPreview() {
         )
     }
 }
+
+
+
+
+
+
+
+
+

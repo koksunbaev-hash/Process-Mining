@@ -11,6 +11,7 @@ import com.example.push_to_talk.domain.model.RecognitionConfig
 import com.example.push_to_talk.domain.model.RecognitionSession
 import com.example.push_to_talk.domain.model.RecognitionStatus
 import com.example.push_to_talk.domain.model.SpeechEvent
+import com.example.push_to_talk.domain.model.SendTextResult
 import com.example.push_to_talk.domain.repository.NetworkRepository
 import com.example.push_to_talk.domain.repository.SpeechRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -131,12 +132,12 @@ class FakeSpeechEngine : SpeechEngine {
 class FakeNetworkGateway : NetworkRepository {
 
     val sentTexts = mutableListOf<String>()
-    var result: AppResult<Unit> = success()
+    var result: AppResult<SendTextResult> = success(SendTextResult(accepted = true, forwarded = false, executed = false, commandStatus = null, reason = null))
 
     /** Сколько раз репозиторий действительно дёрнули. */
     val callCount: Int get() = sentTexts.size
 
-    override suspend fun sendText(text: String): AppResult<Unit> {
+    override suspend fun sendText(text: String): AppResult<SendTextResult> {
         sentTexts += text
         return result
     }
