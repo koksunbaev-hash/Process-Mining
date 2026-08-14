@@ -10,22 +10,32 @@
  * порядок внутри слоя подбирается барицентром по соседям. Точного минимума
  * пересечений это не даёт, но для графов процесса в два-три десятка узлов
  * разница незаметна, а считается мгновенно и без зависимостей.
+ *
+ * Состав узла - как принято в процессной аналитике: доля кейсов кружком слева,
+ * название, под ним главная величина. Начало и конец процесса - отдельные узлы
+ * со счётчиком кейсов, а не просто первая и последняя активность: иначе не
+ * видно, сколько кейсов здесь стартовало и сколько дошло до конца.
  */
 window.ProcMap = (function () {
   "use strict";
 
-  var NODE_W = 172;
-  var NODE_H = 48;
-  var GAP_X = 30;
+  var NODE_W = 208;
+  var NODE_H = 58;
+  var TERM_W = 152;
+  var TERM_H = 42;
+  var GAP_X = 34;
   var GAP_Y = 62;
-  var PAD = 44;
+  var PAD = 52;
 
   var SVG_NS = "http://www.w3.org/2000/svg";
 
-  /* Разделитель ключа "откуда-куда". Escape-последовательностью, а не сырым
-   * байтом в исходнике: сырой ноль делает файл для git бинарным, и diff по
+  /* Разделитель ключа "откуда-куда". Собирается из кода символа, а не пишется
+   * в исходник как есть: сырой ноль делает файл для git бинарным, и diff по
    * нему перестаёт показываться. В названиях активностей такого символа нет. */
   var SEP = String.fromCharCode(0);
+
+  var START_ID = SEP + "start";
+  var FINISH_ID = SEP + "finish";
 
   function el(name, attrs, text) {
     var node = document.createElementNS(SVG_NS, name);
@@ -34,6 +44,23 @@ window.ProcMap = (function () {
     }
     if (text !== undefined) node.textContent = text;
     return node;
+  }
+
+  function shortDuration(seconds) {
+    if (seconds === null || seconds === undefined || isNaN(seconds)) return "";
+    var s = Math.max(0, Number(seconds));
+    var round = function (value, digits) {
+      return value.toLocaleString("ru-RU", { maximumFractionDigits: digits });
+    };
+    if (s < 60) return round(s, 0) + " с";
+    if (s < 3600) return round(s / 60, 0) + " мин";
+    if (s < 86400) return round(s / 3600, 1) + " ч";
+    if (s < 86400 * 30) return round(s / 86400, 1) + " дн.";
+    return round(s / (86400 * 30), 1) + " мес.";
+  }
+
+  function shortCount(value) {
+    return Number(value || 0).toLocaleString("ru-RU");
   }
 
   /* ------------------------------------------------------------ раскладка */
@@ -58,7 +85,8 @@ window.ProcMap = (function () {
     return back;
   }
 
-  function layout(graph) {
+  function layout(graph, options) {
+    options = options || {};
     var nodes = (graph && graph.nodes) || [];
     var edges = (graph && graph.edges) || [];
     if (!nodes.length) return null;
@@ -71,27 +99,62 @@ window.ProcMap = (function () {
       byId[n.id] = {
         id: n.id,
         label: n.label || (n.type === "place" ? "" : n.id),
-        type: n.type || "activity",
-        silent: silent,
+        kind: n.type === "place" ? "place" : (silent ? "silent" : "activity"),
         freq: n.frequency || 0,
         cases: (n.metrics && n.metrics.cases) || 0,
       };
       ids.push(n.id);
     });
 
+    /* Начало и конец процесса. Только для графа переходов: у сети Петри и
+     * дерева процесса концы графа - это позиции, они уже нарисованы, и вторая
+     * пара терминалов рядом означала бы одно и то же дважды. */
+    var starts = graph.start_activities || {};
+    var ends = graph.end_activities || {};
+    var terminals = options.terminals !== false &&
+      Object.keys(starts).some(function (name) { return byId[name] && byId[name].kind === "activity"; });
+
+    var extra = [];
+    if (terminals) {
+      var started = 0, finished = 0;
+      Object.keys(starts).forEach(function (name) {
+        if (!byId[name]) return;
+        started += starts[name];
+        extra.push({ source: START_ID, target: name, freq: starts[name], terminal: true });
+      });
+      Object.keys(ends).forEach(function (name) {
+        if (!byId[name]) return;
+        finished += ends[name];
+        extra.push({ source: name, target: FINISH_ID, freq: ends[name], terminal: true });
+      });
+      byId[START_ID] = { id: START_ID, label: "Начало процесса", kind: "start", freq: started, cases: started };
+      byId[FINISH_ID] = { id: FINISH_ID, label: "Конец процесса", kind: "finish", freq: finished, cases: finished };
+      ids.unshift(START_ID);
+      ids.push(FINISH_ID);
+    }
+
     var out = {}, inn = {};
     var clean = [];
     edges.forEach(function (e) {
-      if (!byId[e.source] || !byId[e.target] || e.source === e.target) {
-        if (byId[e.source] && e.source === e.target) {
-          byId[e.source].selfLoop = e.frequency || 0;
+      if (e.source === e.target) {
+        // Петля: рисуется дугой у самого узла, в раскладку слоёв не идёт.
+        if (byId[e.source]) {
+          byId[e.source].loop = {
+            freq: e.frequency || 0, mean: e.mean_duration_seconds, median: e.median_duration_seconds,
+          };
         }
         return;
       }
-      var edge = { source: e.source, target: e.target, freq: e.frequency || 0, mean: e.mean_duration_seconds };
-      clean.push(edge);
-      (out[e.source] = out[e.source] || []).push(edge);
-      (inn[e.target] = inn[e.target] || []).push(edge);
+      if (!byId[e.source] || !byId[e.target]) return;
+      clean.push({
+        source: e.source, target: e.target, freq: e.frequency || 0,
+        mean: e.mean_duration_seconds, median: e.median_duration_seconds,
+      });
+    });
+    extra.forEach(function (e) { clean.push(e); });
+    clean.forEach(function (e) {
+      (out[e.source] = out[e.source] || []).push(e);
+      (inn[e.target] = inn[e.target] || []).push(e);
     });
 
     var back = findBackEdges(ids, out);
@@ -100,12 +163,12 @@ window.ProcMap = (function () {
     // Слой = длина самого длинного пути от узла без входящих рёбер.
     var layer = {};
     ids.forEach(function (id) { layer[id] = 0; });
-    var starts = ids.filter(function (id) {
+    var roots = ids.filter(function (id) {
       return !(inn[id] || []).some(function (e) { return !e.back; });
     });
-    if (!starts.length) starts = [ids[0]];
+    if (!roots.length) roots = [ids[0]];
 
-    var queue = starts.slice();
+    var queue = roots.slice();
     var guard = ids.length * ids.length + 64;
     while (queue.length && guard-- > 0) {
       var id = queue.shift();
@@ -116,6 +179,12 @@ window.ProcMap = (function () {
           queue.push(e.target);
         }
       });
+    }
+    // Конец процесса всегда внизу, даже если часть кейсов обрывается раньше.
+    if (terminals) {
+      var deepest = 0;
+      ids.forEach(function (id) { if (id !== FINISH_ID && layer[id] > deepest) deepest = layer[id]; });
+      layer[FINISH_ID] = deepest + 1;
     }
 
     var rows = [];
@@ -150,14 +219,11 @@ window.ProcMap = (function () {
       });
     }
 
-    /* Размер зависит от вида узла: у сети Петри позиция - это кружок, а
-     * невидимый переход - узкая планка без подписи. Гнать их через ширину
-     * прямоугольника с названием значило бы рисовать пустые коробки - именно
-     * так сеть Петри и выглядела до этого. */
     ids.forEach(function (id) {
       var node = byId[id];
-      if (node.type === "place") { node.w = 30; node.h = 30; }
-      else if (node.silent) { node.w = 46; node.h = 30; }
+      if (node.kind === "place") { node.w = 30; node.h = 30; }
+      else if (node.kind === "silent") { node.w = 46; node.h = 30; }
+      else if (node.kind === "start" || node.kind === "finish") { node.w = TERM_W; node.h = TERM_H; }
       else { node.w = NODE_W; node.h = NODE_H; }
     });
 
@@ -169,9 +235,8 @@ window.ProcMap = (function () {
     });
 
     var top = PAD;
-    var heights = [];
     rows.forEach(function (row, lv) {
-      if (!row) { heights[lv] = 0; return; }
+      if (!row) return;
       var rowHeight = row.reduce(function (max, id) { return Math.max(max, byId[id].h); }, 0);
       var rowWidth = row.reduce(function (sum, id) { return sum + byId[id].w; }, 0) + (row.length - 1) * GAP_X;
       var left = PAD + (width - rowWidth) / 2;
@@ -182,7 +247,6 @@ window.ProcMap = (function () {
         node.layer = lv;
         left += node.w + GAP_X;
       });
-      heights[lv] = rowHeight;
       top += rowHeight + GAP_Y;
     });
 
@@ -190,7 +254,8 @@ window.ProcMap = (function () {
       nodes: ids.map(function (id) { return byId[id]; }),
       edges: clean,
       byId: byId,
-      width: width + PAD * 2,
+      // Запас справа под дуги возвратов и петель.
+      width: width + PAD * 2 + 56,
       height: top - GAP_Y + PAD,
     };
   }
@@ -201,36 +266,55 @@ window.ProcMap = (function () {
     return text.length > max ? text.slice(0, max - 1) + "…" : text;
   }
 
-  function edgePath(a, b) {
-    var x1 = a.x + a.w / 2, y1 = a.y + a.h;
-    var x2 = b.x + b.w / 2, y2 = b.y - 7;
+  function edgeGeometry(a, b) {
     if (b.layer <= a.layer) {
       // Возврат: ведём сбоку, чтобы дуга не легла поверх прямых стрелок.
-      var side = Math.max(a.x + a.w, b.x + b.w) + 34;
-      return "M" + (a.x + a.w) + " " + (a.y + a.h / 2) +
-        " C" + side + " " + (a.y + a.h / 2) + " " + side + " " + (b.y + b.h / 2) +
-        " " + (b.x + b.w + 7) + " " + (b.y + b.h / 2);
+      var side = Math.max(a.x + a.w, b.x + b.w) + 36;
+      return {
+        d: "M" + (a.x + a.w) + " " + (a.y + a.h / 2) +
+          " C" + side + " " + (a.y + a.h / 2) + " " + side + " " + (b.y + b.h / 2) +
+          " " + (b.x + b.w + 8) + " " + (b.y + b.h / 2),
+        label: [side - 2, (a.y + a.h / 2 + b.y + b.h / 2) / 2],
+        anchor: "start",
+      };
     }
+    var x1 = a.x + a.w / 2, y1 = a.y + a.h;
+    var x2 = b.x + b.w / 2, y2 = b.y - 8;
     var mid = (y1 + y2) / 2;
-    return "M" + x1 + " " + y1 + " C" + x1 + " " + mid + " " + x2 + " " + mid + " " + x2 + " " + y2;
+    return {
+      d: "M" + x1 + " " + y1 + " C" + x1 + " " + mid + " " + x2 + " " + mid + " " + x2 + " " + y2,
+      // У кубической кривой с такими опорами середина приходится ровно на
+      // середину отрезка; подпись сдвигаем вбок, чтобы не легла на линию.
+      label: [(x1 + x2) / 2 + 8, (y1 + y2) / 2],
+      anchor: "start",
+    };
   }
 
-  /* mode: "frequency" - толщина по числу переходов, "performance" - по времени. */
+  function loopPath(n) {
+    var right = n.x + n.w, middle = n.y + n.h / 2;
+    return "M" + (right - 16) + " " + (n.y + 3) +
+      " C" + (right + 50) + " " + (n.y - 16) +
+      " " + (right + 50) + " " + (middle + 16) +
+      " " + (right + 3) + " " + (middle + 4);
+  }
+
+  /* mode: "frequency" - вес рёбер по числу переходов, "performance" - по времени. */
   function render(target, graph, options) {
     options = options || {};
-    var model = layout(graph);
+    var model = layout(graph, options);
     target.textContent = "";
     if (!model) return null;
 
     var totalCases = options.cases || 0;
-    var starts = graph.start_activities || {};
-    var ends = graph.end_activities || {};
     var hot = options.hot || {};
+    var durations = options.durations || {};
+    var byTime = options.mode === "performance";
 
-    var maxEdge = 1, maxMean = 1;
+    var maxWeight = 1;
     model.edges.forEach(function (e) {
-      if (e.freq > maxEdge) maxEdge = e.freq;
-      if (e.mean && e.mean > maxMean) maxMean = e.mean;
+      if (e.terminal) return;
+      var value = byTime ? (e.median || e.mean || 0) : e.freq;
+      if (value > maxWeight) maxWeight = value;
     });
 
     var svg = el("svg", {
@@ -240,68 +324,133 @@ window.ProcMap = (function () {
     });
 
     var defs = el("defs");
-    ["arrow", "arrowLoop"].forEach(function (id) {
+    [["arrow", "#5b8cff"], ["arrowHot", "#f43f5e"], ["arrowSoft", "#6a6a86"]].forEach(function (pair) {
       var marker = el("marker", {
-        id: "pm-" + id, viewBox: "0 0 10 10", refX: 8, refY: 5,
+        id: "pm-" + pair[0], viewBox: "0 0 10 10", refX: 8, refY: 5,
         markerWidth: 5, markerHeight: 5, orient: "auto-start-reverse",
       });
-      marker.appendChild(el("path", {
-        d: "M0 1L9 5L0 9z",
-        fill: id === "arrow" ? "var(--blue)" : "var(--faint)",
-        stroke: "none",
-      }));
+      marker.appendChild(el("path", { d: "M0 1L9 5L0 9z", fill: pair[1], stroke: "none" }));
       defs.appendChild(marker);
     });
     svg.appendChild(defs);
 
     var edgeLayer = el("g", { class: "map-edges" });
-    var mode = options.mode === "performance" ? "performance" : "frequency";
     model.edges.forEach(function (e) {
       var a = model.byId[e.source], b = model.byId[e.target];
       if (!a || !b) return;
-      var weight = mode === "performance"
-        ? (e.mean || 0) / maxMean
-        : e.freq / maxEdge;
+      var geometry = edgeGeometry(a, b);
+      var weight = e.terminal ? 0 : (byTime ? (e.median || e.mean || 0) : e.freq) / maxWeight;
+
+      var cls = "map-edge";
+      if (e.terminal) cls += " terminal";
+      else if (e.back) cls += " loop";
+      else if (weight > 0.66) cls += " is-heavy";
+
       var path = el("path", {
-        class: "map-edge" + (e.back ? " loop" : ""),
-        d: edgePath(a, b),
-        "stroke-width": (1 + weight * 2.6).toFixed(2),
-        "marker-end": e.back ? "url(#pm-arrowLoop)" : "url(#pm-arrow)",
+        class: cls,
+        d: geometry.d,
+        "stroke-width": (e.terminal ? 1.2 : 1.1 + weight * 3.4).toFixed(2),
+        "marker-end": e.terminal ? "url(#pm-arrowSoft)"
+          : (weight > 0.66 ? "url(#pm-arrowHot)" : "url(#pm-arrow)"),
       });
-      path.appendChild(el("title", {}, e.source + " → " + e.target + ": " + e.freq));
+      path.appendChild(el("title", {}, a.label + " → " + b.label +
+        ": " + shortCount(e.freq) + (e.terminal ? " кейсов" : " переходов") +
+        (e.median ? ", медиана " + shortDuration(e.median) : "")));
+
+      if (options.onEdge && !e.terminal) {
+        path.style.cursor = "pointer";
+        path.addEventListener("click", function () { options.onEdge(e); });
+      }
       edgeLayer.appendChild(path);
+
+      var caption = e.terminal
+        ? shortCount(e.freq)
+        : (byTime
+          ? shortDuration(e.median !== null && e.median !== undefined ? e.median : e.mean)
+          : shortCount(e.freq));
+      if (caption) {
+        edgeLayer.appendChild(el("text", {
+          class: "map-edge-label" + (e.terminal ? " is-terminal" : ""),
+          x: geometry.label[0], y: geometry.label[1], "text-anchor": geometry.anchor,
+        }, caption));
+      }
     });
     svg.appendChild(edgeLayer);
 
     var nodeLayer = el("g", { class: "map-nodes" });
     model.nodes.forEach(function (n) {
-      var cls = "node-box";
-      if (starts[n.id]) cls += " is-start";
-      if (ends[n.id]) cls += " is-end";
-      if (hot[n.id]) cls += " is-hot";
-      if (n.type === "place") cls += " is-place";
-      if (n.silent) cls += " is-silent";
+      var group = el("g", { transform: "translate(" + n.x + "," + n.y + ")" });
 
-      var group = el("g", { class: cls, transform: "translate(" + n.x + "," + n.y + ")" });
-
-      if (n.type === "place") {
+      if (n.kind === "place") {
+        group.setAttribute("class", "node-box is-place" +
+          ((graph.start_activities || {})[n.id] ? " is-start" : "") +
+          ((graph.end_activities || {})[n.id] ? " is-end" : ""));
         group.appendChild(el("circle", { cx: n.w / 2, cy: n.h / 2, r: n.w / 2 }));
-        group.appendChild(el("title", {}, starts[n.id] ? "Начальная позиция" : (ends[n.id] ? "Конечная позиция" : "Позиция")));
-      } else if (n.silent) {
-        group.appendChild(el("rect", { width: n.w, height: n.h, rx: 6 }));
-        group.appendChild(el("title", {}, "Невидимый переход: нужен модели, в журнале ему события не соответствуют"));
-      } else {
-        group.appendChild(el("rect", { width: n.w, height: n.h, rx: 11 }));
-        group.appendChild(el("text", { x: n.w / 2, y: 20, "text-anchor": "middle" },
-          truncate(options.label ? options.label(n.id) : n.label, 24)));
-
-        var share = totalCases && n.cases ? Math.round((n.cases / totalCases) * 100) : null;
-        var sub = (share === null ? "" : share + "% ") + "(" + n.freq.toLocaleString("ru-RU") + ")";
-        group.appendChild(el("text", { class: "sub", x: n.w / 2, y: 35, "text-anchor": "middle" }, sub));
-        group.appendChild(el("title", {}, n.label + " — событий: " + n.freq + ", кейсов: " + n.cases));
+        group.appendChild(el("title", {}, "Позиция сети Петри"));
+        nodeLayer.appendChild(group);
+        return;
       }
 
-      if (options.onNode && n.type !== "place" && !n.silent) {
+      if (n.kind === "silent") {
+        group.setAttribute("class", "node-box is-silent");
+        group.appendChild(el("rect", { width: n.w, height: n.h, rx: 6 }));
+        group.appendChild(el("title", {}, "Невидимый переход: нужен модели, событий в журнале ему не соответствует"));
+        nodeLayer.appendChild(group);
+        return;
+      }
+
+      if (n.kind === "start" || n.kind === "finish") {
+        group.setAttribute("class", "node-term is-" + n.kind);
+        group.appendChild(el("circle", { class: "term-mark", cx: 17, cy: n.h / 2, r: 12 }));
+        group.appendChild(n.kind === "start"
+          ? el("path", { class: "term-icon", d: "M14 " + (n.h / 2 - 5) + "l7 5-7 5z" })
+          : el("rect", { class: "term-icon", x: 13, y: n.h / 2 - 4, width: 8, height: 8, rx: 1.5 }));
+        group.appendChild(el("text", { class: "term-label", x: 37, y: n.h / 2 - 2 }, n.label));
+        group.appendChild(el("text", { class: "term-count", x: 37, y: n.h / 2 + 12 },
+          shortCount(n.cases) + " кейсов"));
+        nodeLayer.appendChild(group);
+        return;
+      }
+
+      // ------------------------------------------------------ активность
+      group.setAttribute("class", "node-box" + (hot[n.id] ? " is-hot" : ""));
+      group.appendChild(el("rect", { width: n.w, height: n.h, rx: 13 }));
+
+      var share = totalCases ? Math.min(1, n.cases / totalCases) : 0;
+      var badge = el("g", { class: "node-badge" });
+      // Насыщенность по доле кейсов: беглый взгляд отделяет магистраль процесса
+      // от редких ответвлений, не читая чисел.
+      badge.appendChild(el("circle", {
+        cx: 28, cy: n.h / 2, r: 17,
+        style: "fill-opacity:" + (0.2 + share * 0.8).toFixed(2),
+      }));
+      badge.appendChild(el("text", { x: 28, y: n.h / 2 + 4, "text-anchor": "middle" },
+        totalCases ? Math.round(share * 100) + "%" : "—"));
+      group.appendChild(badge);
+
+      group.appendChild(el("text", { class: "node-name", x: 55, y: n.h / 2 - 3 }, truncate(n.label, 19)));
+      // В режиме времени под названием стоит время, и только оно. Подставлять
+      // сюда число событий, когда паузы нет, значило бы смешивать единицы в
+      // одном столбце: у последнего шага кейса ждать нечего, так и пишем.
+      group.appendChild(el("text", { class: "node-metric", x: 55, y: n.h / 2 + 14 },
+        byTime
+          ? (durations[n.id] !== undefined ? shortDuration(durations[n.id]) : "нет ожидания")
+          : shortCount(n.freq) + " событий"));
+
+      group.appendChild(el("title", {}, n.label +
+        " — событий: " + shortCount(n.freq) + ", кейсов: " + shortCount(n.cases) +
+        (n.loop ? ", повторов подряд: " + shortCount(n.loop.freq) : "")));
+
+      if (n.loop) {
+        var loop = el("path", { class: "map-edge self-loop", d: loopPath(n), "marker-end": "url(#pm-arrowHot)" });
+        loop.appendChild(el("title", {}, "Шаг повторяется подряд: " + shortCount(n.loop.freq) + " раз"));
+        nodeLayer.appendChild(loop);
+        nodeLayer.appendChild(el("text", {
+          class: "map-edge-label is-loop", x: n.x + n.w + 24, y: n.y - 4,
+        }, byTime ? shortDuration(n.loop.median || n.loop.mean) : shortCount(n.loop.freq)));
+      }
+
+      if (options.onNode) {
         group.style.cursor = "pointer";
         group.addEventListener("click", function () { options.onNode(n); });
       }
@@ -360,7 +509,7 @@ window.ProcMap = (function () {
       /* Вписать. Масштаб не опускаем ниже 55%: длинный линейный процесс на
        * два десятка шагов ужался бы до нечитаемых подписей. Если после этого
        * граф выше холста - прижимаем к верху и оставляем прокрутку мышью:
-       * читать сверху вниз удобнее, чем разглядывать середину. */
+       * читать сверху вниз удобнее, чем разглядывать нечитаемую середину. */
       fit: function (model) {
         if (!model) return;
         var box = canvas.getBoundingClientRect();

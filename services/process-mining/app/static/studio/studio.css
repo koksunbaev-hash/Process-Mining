@@ -324,30 +324,43 @@ body.rail-collapsed .foot-actions { grid-template-columns: 1fr; }
 .map-zoom button svg { width: 15px; height: 15px; }
 .map-zoom .level { font-size: 11px; color: var(--muted); text-align: center; padding: 6px 0; background: var(--panel-3); }
 
-.node-box { cursor: default; }
+/* Узел активности: слева кружок с долей кейсов, справа название и главная
+ * величина. Так принято в процессной аналитике, и не зря - доля читается
+ * взглядом, без чтения цифр, а размер узла при этом не пляшет. */
 .node-box rect {
-  fill: rgba(124, 92, 255, .14); stroke: var(--violet); stroke-width: 1.4;
-  filter: drop-shadow(0 0 9px rgba(124, 92, 255, .32));
+  fill: var(--panel-3); stroke: var(--line); stroke-width: 1.3;
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .35));
 }
-.node-box.is-start rect, .node-box.is-end rect {
-  fill: rgba(34, 211, 238, .12); stroke: var(--cyan);
-  filter: drop-shadow(0 0 9px rgba(34, 211, 238, .3));
-}
-.node-box.is-hot rect {
-  fill: rgba(244, 63, 94, .14); stroke: var(--rose);
-  filter: drop-shadow(0 0 10px rgba(244, 63, 94, .34));
-}
+.node-box.is-hot rect { stroke: rgba(244, 63, 94, .55); fill: rgba(244, 63, 94, .07); }
+.node-badge circle { fill: var(--violet); stroke: none; }
+.node-badge text { fill: #fff; stroke: none; font-size: 11px; font-weight: 700; }
+.node-box .node-name { fill: var(--ink); stroke: none; font-size: 12.5px; font-weight: 500; }
+.node-box .node-metric { fill: var(--muted); stroke: none; font-size: 11px; }
+
+/* Начало и конец процесса. Отдельные узлы со счётчиком кейсов: сколько
+ * экземпляров здесь стартовало и сколько дошло до конца - вопрос, на который
+ * первая и последняя активность сами по себе не отвечают. */
+.node-term .term-mark { stroke: none; fill: var(--blue); }
+.node-term.is-finish .term-mark { fill: var(--green); }
+.node-term .term-icon { fill: #fff; stroke: none; }
+.node-term .term-label { fill: var(--ink-dim); stroke: none; font-size: 12px; font-weight: 500; }
+.node-term .term-count { fill: var(--muted); stroke: none; font-size: 11px; }
+
 /* Сеть Петри: позиция - кружок, невидимый переход - глухая планка без подписи.
  * Им в журнале не соответствует ни одно событие, и подписывать их нечем. */
 .node-box.is-place circle { fill: var(--panel-3); stroke: var(--faint); stroke-width: 1.6; filter: none; }
 .node-box.is-place.is-start circle { stroke: var(--cyan); fill: rgba(34, 211, 238, .14); }
 .node-box.is-place.is-end circle { stroke: var(--green); fill: rgba(52, 211, 153, .14); }
 .node-box.is-silent rect { fill: rgba(124, 92, 255, .5); stroke: var(--violet); filter: none; }
-.node-box text { fill: var(--ink); stroke: none; font-size: 11.5px; font-weight: 500; }
-.node-box text.sub { fill: var(--muted); font-size: 10px; font-weight: 400; }
-.map-edge { stroke: var(--blue); fill: none; opacity: .75; filter: drop-shadow(0 0 5px rgba(59, 130, 246, .5)); }
-.map-edge.loop { stroke: var(--faint); stroke-dasharray: 5 4; opacity: .8; filter: none; }
-.map-edge-label { fill: var(--muted); stroke: none; font-size: 9.5px; }
+
+.map-edge { stroke: #5b8cff; fill: none; opacity: .6; }
+.map-edge.is-heavy { stroke: var(--rose); opacity: .85; }
+.map-edge.loop { stroke: var(--amber); stroke-dasharray: 6 4; opacity: .85; }
+.map-edge.self-loop { stroke: var(--rose); opacity: .9; }
+.map-edge.terminal { stroke: var(--faint); stroke-dasharray: 4 4; opacity: .7; }
+.map-edge-label { fill: var(--muted); stroke: none; font-size: 10px; }
+.map-edge-label.is-terminal { fill: var(--faint); }
+.map-edge-label.is-loop { fill: #ff9bab; }
 .map-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 13.5px; text-align: center; padding: 24px; }
 
 /* ------------------------------------------------- анализ длительности */

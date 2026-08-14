@@ -942,11 +942,20 @@
       if (neck.target) hot[neck.target] = true;
     });
 
+    // Время шага - это пауза до следующего шага: собственной длительности у
+    // мгновенного события в журнале нет, и выдумывать её нечем.
+    var durations = {};
+    ((state.stats && state.stats.activity_stats) || []).forEach(function (item) {
+      if (item.mean_waiting_after_seconds) durations[item.activity] = item.mean_waiting_after_seconds;
+    });
+
     var model = window.ProcMap.render(stage, state.graph, {
       cases: state.stats ? state.stats.cases : 0,
       mode: state.mapMode,
       hot: hot,
+      durations: durations,
       onNode: function (node) { showActivity(node.id); },
+      onEdge: function (edge) { showTransition(edge); },
     });
     if (!model) {
       canvas.insertAdjacentHTML("beforeend", '<div class="map-empty">Граф пуст: в журнале нет переходов между активностями.</div>');
@@ -1018,8 +1027,9 @@
           '<div class="level" id="zoomLevel">100%</div></div>' +
         "</div></div>" +
 
-        '<div class="note">Голубые рамки — старт и финиш процесса, красные — три самых дорогих по времени шага. ' +
-        "Пунктирная стрелка — возврат назад по процессу. Нажмите на активность, чтобы увидеть её показатели." +
+        '<div class="note">Кружок слева в узле — доля кейсов, прошедших через шаг; чем насыщеннее, тем чаще. ' +
+        "Синяя стрелка — переход, красная — самый нагруженный, оранжевая пунктирная — возврат назад по процессу, " +
+        "красная дуга сбоку — повтор шага подряд. Нажмите на узел или на стрелку, чтобы увидеть их показатели." +
         (((state.graph.stats || {}).places !== undefined)
           ? " У сети Петри кружки — позиции, глухая планка — невидимый переход: модели он нужен, событий в журнале ему не соответствует."
           : "") + "</div>" +
@@ -1088,6 +1098,45 @@
     if (button) button.addEventListener("click", function () {
       closeSheet();
       caseFilter = name;
+      go("cases");
+    });
+  }
+
+  /* Панель перехода. Узкое место в таблице - это строка; здесь то же самое,
+   * но от конкретной стрелки на карте, по которой человек и щёлкнул. */
+  function showTransition(edge) {
+    var neck = ((state.necks && state.necks.bottlenecks) || []).filter(function (item) {
+      return item.kind === "transition" && item.source === edge.source && item.target === edge.target;
+    })[0];
+    var metrics = neck || {};
+
+    openSheet(edge.source + " → " + edge.target, (
+      '<div class="stat-row" style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">' +
+        "<div><b>" + num(edge.freq) + "</b><span>Переходов</span></div>" +
+        "<div><b>" + dur(edge.median !== null && edge.median !== undefined ? edge.median : edge.mean) +
+          "</b><span>Медианное время</span></div>" +
+      "</div>" +
+      (neck
+        ? '<div class="tbl-wrap"><table class="tbl"><tbody>' +
+          [["Общее время", dur(metrics.total_duration_seconds)],
+           ["Среднее", dur(metrics.mean_duration_seconds)],
+           ["Медиана", dur(metrics.median_duration_seconds)],
+           ["p95", dur(metrics.p95_duration_seconds)],
+           ["Доля всего времени процесса", pct(metrics.share_of_total_time)]].map(function (row) {
+            return "<tr><td>" + esc(row[0]) + '</td><td class="num strong">' + row[1] + "</td></tr>";
+          }).join("") + "</tbody></table></div>"
+        : '<div class="note">Этот переход не попал в список узких мест: по суммарному времени он не в верхних ' +
+          num(((state.necks && state.necks.bottlenecks) || []).length) + ".</div>") +
+      '<button class="btn secondary" id="sheetToCases" type="button">' + icon("cases") +
+      " Кейсы с этим шагом</button>"
+    ));
+
+    var button = $("sheetToCases");
+    if (button) button.addEventListener("click", function () {
+      closeSheet();
+      caseFilter = edge.target;
+      caseStatus = "all";
+      casePage = 0;
       go("cases");
     });
   }
