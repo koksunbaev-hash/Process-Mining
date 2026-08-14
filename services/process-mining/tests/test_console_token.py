@@ -117,6 +117,35 @@ class TestAssetFreshness:
         static = tmp_path / "static"
         static.mkdir()
         (static / "app.js").write_text("one", encoding="utf-8")
-        before = _asset_tag(static)
+        before = _asset_tag(static, ("app.js",))
         (static / "app.js").write_text("two", encoding="utf-8")
-        assert _asset_tag(static) != before
+        assert _asset_tag(static, ("app.js",)) != before
+
+    def test_each_console_gets_its_own_stamp(self, tmp_path):
+        """Правка одной консоли не должна сбрасывать кэш второй."""
+        from app.main import _asset_tag
+
+        static = tmp_path / "static"
+        static.mkdir()
+        (static / "app.js").write_text("one", encoding="utf-8")
+        (static / "studio.js").write_text("two", encoding="utf-8")
+
+        studio_before = _asset_tag(static, ("studio.js",))
+        (static / "app.js").write_text("one changed", encoding="utf-8")
+        assert _asset_tag(static, ("studio.js",)) == studio_before
+
+
+class TestStudio:
+    """Вторая консоль отдаётся отдельным адресом и не мешает первой."""
+
+    def test_studio_is_served_with_stamped_assets(self, console_client):
+        for path in ("/studio", "/studio/"):
+            response = console_client.get(path)
+            assert response.status_code == 200, path
+            assert "studio.js?v=" in response.text
+            assert "studio.css?v=" in response.text
+
+    def test_the_first_console_is_untouched(self, console_client):
+        html = console_client.get("/").text
+        assert "app.js?v=" in html
+        assert "studio.js" not in html

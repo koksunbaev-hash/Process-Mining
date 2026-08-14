@@ -37,6 +37,10 @@ from app.storage import build_repository
 log = get_logger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
+# Вторая консоль. Живёт рядом с первой и ничего у неё не заимствует: своя
+# разметка, свои стили, свой скрипт. Обе ходят в один и тот же API, поэтому
+# сравнивать их можно на одних данных, а выключить лишнюю - удалением каталога.
+STUDIO_DIR = STATIC_DIR / "studio"
 
 DESCRIPTION = """
 Process mining as a service. Upload an event log (CSV / XES / JSON) or stream
@@ -57,14 +61,21 @@ Authenticate with `X-API-Key: <key>` or `Authorization: Bearer <key>`.
 
 
 
-def _asset_tag(static_dir: Path) -> str:
+def _asset_tag(static_dir: Path, names: tuple[str, ...]) -> str:
     """Короткий отпечаток статики консоли — меняется вместе с файлами."""
     digest = hashlib.sha256()
-    for name in sorted(("app.js", "styles.css", "i18n.js", "dashboard.js", "dashboard.css")):
+    for name in sorted(names):
         path = static_dir / name
         if path.exists():
             digest.update(path.read_bytes())
     return digest.hexdigest()[:12]
+
+
+def _stamped(directory: Path, tag: str) -> HTMLResponse:
+    """index.html с отпечатком в адресах стилей и скриптов."""
+    html = (directory / "index.html").read_text(encoding="utf-8")
+    html = html.replace('.css"', f'.css?v={tag}"').replace('.js"', f'.js?v={tag}"')
+    return HTMLResponse(html)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -145,13 +156,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # держит старую консоль сколько захочет: правка выкачена, у клиента её
         # нет, и понять это можно только из отладчика. Считается один раз при
         # запуске - файлы внутри образа не меняются.
-        asset_tag = _asset_tag(STATIC_DIR)
+        asset_tag = _asset_tag(
+            STATIC_DIR, ("app.js", "styles.css", "i18n.js", "dashboard.js", "dashboard.css")
+        )
 
         @application.get("/", include_in_schema=False)
         async def root() -> HTMLResponse:
-            html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-            html = html.replace('.css"', f'.css?v={asset_tag}"').replace('.js"', f'.js?v={asset_tag}"')
-            return HTMLResponse(html)
+            return _stamped(STATIC_DIR, asset_tag)
+
+        if STUDIO_DIR.exists():
+            studio_tag = _asset_tag(STUDIO_DIR, ("studio.js", "studio.css", "procmap.js"))
+
+            # Две записи, а не редирект: адрес без косой черты человек наберёт
+            # руками, а с косой чертой его оставит браузер после перехода по
+            # разделам. Обе должны отдать одно и то же.
+            @application.get("/studio", include_in_schema=False)
+            @application.get("/studio/", include_in_schema=False)
+            async def studio() -> HTMLResponse:
+                return _stamped(STUDIO_DIR, studio_tag)
 
         @application.get("/{asset_name}", include_in_schema=False)
         async def root_asset(asset_name: str) -> FileResponse:

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Process Mining — Studio</title>
+<link rel="stylesheet" href="/ui/studio/studio.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%237c5cff'/><text x='16' y='21' font-size='13' font-family='sans-serif' font-weight='bold' fill='white' text-anchor='middle'>PM</text></svg>">
+</head>
+<body>
+
+<!--
+  Каркас: слева колонка разделов, справа полотно. Содержимое разделов рисует
+  studio.js - разметка у них целиком данные, и держать восемь мёртвых копий
+  в документе значило бы править каждую при любой правке макета.
+-->
+<div class="app" id="app">
+
+  <aside class="rail" id="rail">
+    <div class="rail-head">
+      <a class="brand" href="#/overview">
+        <span class="brand-mark">PM</span>
+        <span class="brand-text">Process <b>Mining</b></span>
+      </a>
+      <button class="rail-toggle" id="railToggle" type="button" title="Свернуть меню" aria-label="Свернуть меню">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg>
+      </button>
+    </div>
+
+    <nav class="rail-nav" id="railNav" aria-label="Разделы"></nav>
+
+    <div class="rail-foot">
+      <button class="user-card" id="userCard" type="button">
+        <span class="avatar" id="avatar">A</span>
+        <span class="user-text">
+          <b id="userName">Admin</b>
+          <span id="userRole">Администратор</span>
+        </span>
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+      <div class="foot-actions">
+        <button class="ghost-btn" id="themeToggle" type="button" title="Тема">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+        </button>
+        <button class="ghost-btn" id="helpBtn" type="button" title="Справка">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 113.2 2.4c-.7.2-1.2.9-1.2 1.6v.5"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
+        </button>
+        <button class="ghost-btn" id="newBtn" type="button" title="Загрузить журнал">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="canvas">
+
+    <header class="topbar">
+      <button class="ghost-btn rail-open" id="railOpen" type="button" aria-label="Меню">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div class="crumb" id="crumb"></div>
+      <div class="topbar-right">
+        <span class="pill pill-status" id="apiStatus" data-state="checking">
+          <i class="dot"></i><span id="apiStatusText">Проверка…</span>
+        </span>
+        <button class="pill pill-key" id="keysBtn" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="12" r="3.2"/><path d="M11.2 12H20M17 12v3M20 12v2.5"/></svg>
+          <span>API-ключи</span>
+        </button>
+        <div class="select-wrap">
+          <select id="language" aria-label="Язык интерфейса">
+            <option value="ru">Русский</option>
+            <option value="en">English</option>
+            <option value="kk">Қазақша</option>
+          </select>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="ghost-btn bell" id="bellBtn" type="button" aria-label="Уведомления">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 15v-4a6 6 0 10-12 0v4l-1.5 2.5h15z"/><path d="M10 20a2 2 0 004 0"/></svg>
+          <i class="badge" id="bellBadge" hidden></i>
+        </button>
+      </div>
+    </header>
+
+    <main class="view" id="view" tabindex="-1"></main>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet-head">
+    <h2 id="sheetTitle"></h2>
+    <button class="ghost-btn" id="sheetClose" type="button" aria-label="Закрыть">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<input type="file" id="filePicker" accept=".csv,.xes,.json,.gz,.zip" hidden>
+
+<script src="/ui/studio/procmap.js"></script>
+<script src="/ui/studio/studio.js"></script>
+</body>
+</html>
