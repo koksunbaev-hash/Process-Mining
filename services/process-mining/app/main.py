@@ -60,7 +60,7 @@ Authenticate with `X-API-Key: <key>` or `Authorization: Bearer <key>`.
 def _asset_tag(static_dir: Path) -> str:
     """Короткий отпечаток статики консоли — меняется вместе с файлами."""
     digest = hashlib.sha256()
-    for name in sorted(("app.js", "styles.css", "i18n.js")):
+    for name in sorted(("app.js", "styles.css", "i18n.js", "dashboard.js", "dashboard.css")):
         path = static_dir / name
         if path.exists():
             digest.update(path.read_bytes())
@@ -155,7 +155,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         @application.get("/{asset_name}", include_in_schema=False)
         async def root_asset(asset_name: str) -> FileResponse:
-            if asset_name not in {"styles.css", "app.js", "i18n.js", "sample_log.csv"}:
+            if asset_name not in {"styles.css", "app.js", "i18n.js", "dashboard.js", "dashboard.css", "sample_log.csv"}:
                 raise HTTPException(status_code=404)
             return FileResponse(STATIC_DIR / asset_name)
 
