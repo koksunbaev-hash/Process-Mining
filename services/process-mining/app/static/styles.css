@@ -108,6 +108,8 @@ a:hover { text-decoration: underline; }
 .field-top { width: 150px; }
 .field-top:focus, .select-top:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
 .field-top.needed { border-color: var(--amber); background: var(--amber-bg); }
+/* Вход по пропуску из KMS: вводить ключ некуда и незачем. */
+.field-top.by-pass { display: none; }
 .icon-btn {
   width: 34px; height: 34px; border-radius: 9px;
   border: 1px solid var(--line); background: var(--paper-2);

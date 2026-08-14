@@ -207,6 +207,7 @@
 
       if (state.authRequired && !$("apiKey").value.trim()) {
         setStatus("auth");
+        setKeyFieldHidden(false);
         $("apiKey").classList.add("needed");
       } else if (checks.graphviz && checks.graphviz.ok === false) {
         setStatus("nographviz");
@@ -453,6 +454,7 @@
       const err = body && body.error;
       if (response.status === 401) {
         showError(t("error.auth"));
+        setKeyFieldHidden(false);
         $("apiKey").classList.add("needed");
         $("apiKey").focus();
         setStatus("auth");
@@ -963,6 +965,14 @@
       value >= 1 ? t("controls.coverageAll") : Math.round(value * 100) + "%";
   }
 
+  function isPass(value) {
+    return (value || "").trim().startsWith("c1.");
+  }
+
+  function setKeyFieldHidden(hidden) {
+    $("apiKey").classList.toggle("by-pass", Boolean(hidden));
+  }
+
   // --------------------------------------------------------------- boot
   function init() {
     applyTheme();
@@ -979,6 +989,10 @@
       history.replaceState(null, "", location.pathname + location.search);
     }
     $("apiKey").value = store.get("pm-api-key", "");
+    // Поле ключа прячется, когда работаем по пропуску: клиенту вводить сюда
+    // нечего и неоткуда, а видимая строка "API-ключ" читается как требование.
+    // Появится обратно, если пропуск протухнет — тогда ввод снова осмыслен.
+    setKeyFieldHidden(isPass($("apiKey").value));
     $("apiKey").addEventListener("input", (event) => {
       store.set("pm-api-key", event.target.value);
       if (event.target.value.trim()) {
