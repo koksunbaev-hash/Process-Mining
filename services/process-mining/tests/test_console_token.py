@@ -101,3 +101,22 @@ class TestWhatThePassOpens:
     def test_master_key_keeps_working_on_analysis(self, console_client):
         response = console_client.get("/api/v1/logs", headers={"X-API-Key": "master-key"})
         assert response.status_code == 200
+
+
+class TestAssetFreshness:
+    """Правка консоли должна доезжать до браузера без Ctrl+F5."""
+
+    def test_index_stamps_a_version_on_its_assets(self, console_client):
+        html = console_client.get("/").text
+        assert "app.js?v=" in html
+        assert "styles.css?v=" in html
+
+    def test_the_stamp_follows_the_file_contents(self, console_settings, tmp_path):
+        from app.main import _asset_tag
+
+        static = tmp_path / "static"
+        static.mkdir()
+        (static / "app.js").write_text("one", encoding="utf-8")
+        before = _asset_tag(static)
+        (static / "app.js").write_text("two", encoding="utf-8")
+        assert _asset_tag(static) != before

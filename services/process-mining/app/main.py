@@ -7,13 +7,15 @@ the whole thing testable and safe to run with multiple workers.
 
 from __future__ import annotations
 
+import hashlib
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import integration, transcriptions
@@ -52,6 +54,17 @@ edges + metrics, feed it to D3 / Cytoscape / React Flow) and as a ready-made
 
 Authenticate with `X-API-Key: <key>` or `Authorization: Bearer <key>`.
 """
+
+
+
+def _asset_tag(static_dir: Path) -> str:
+    """Короткий отпечаток статики консоли — меняется вместе с файлами."""
+    digest = hashlib.sha256()
+    for name in sorted(("app.js", "styles.css", "i18n.js")):
+        path = static_dir / name
+        if path.exists():
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -128,9 +141,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if STATIC_DIR.exists():
         application.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
 
+        # Отпечаток содержимого в адресах app.js/styles.css. Без него браузер
+        # держит старую консоль сколько захочет: правка выкачена, у клиента её
+        # нет, и понять это можно только из отладчика. Считается один раз при
+        # запуске - файлы внутри образа не меняются.
+        asset_tag = _asset_tag(STATIC_DIR)
+
         @application.get("/", include_in_schema=False)
-        async def root() -> FileResponse:
-            return FileResponse(STATIC_DIR / "index.html")
+        async def root() -> HTMLResponse:
+            html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+            html = html.replace('.css"', f'.css?v={asset_tag}"').replace('.js"', f'.js?v={asset_tag}"')
+            return HTMLResponse(html)
 
         @application.get("/{asset_name}", include_in_schema=False)
         async def root_asset(asset_name: str) -> FileResponse:
