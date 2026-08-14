@@ -83,6 +83,46 @@ def test_filters_shrink_the_model(client, sample_events):
     assert labels == {"start_mixing", "proving"}
 
 
+def test_kpi_endpoints_take_the_same_filters(client, sample_events):
+    """Отбор нужен и на GET: без него консоль не может сузить период."""
+    log_id = client.post(
+        "/api/v1/logs", json={"name": "f", "events": sample_events}
+    ).json()["log_id"]
+
+    full = client.get(f"/api/v1/logs/{log_id}/statistics").json()
+    assert full["cases"] == 5
+    assert full["activities"] == 5
+
+    by_activity = client.get(
+        f"/api/v1/logs/{log_id}/statistics",
+        params={"activities": ["start_mixing", "proving"]},
+    ).json()
+    assert by_activity["activities"] == 2
+    assert by_activity["events"] < full["events"]
+
+    by_resource = client.get(
+        f"/api/v1/logs/{log_id}/bottlenecks", params={"resources": ["op-1"]}
+    )
+    assert by_resource.status_code == 200
+
+    # Первый кейс начинается в 09:00, каждый следующий часом позже.
+    narrowed = client.get(
+        f"/api/v1/logs/{log_id}/variants", params={"date_from": "2026-01-01T11:00:00"}
+    ).json()
+    assert narrowed["covered_cases"] < full["cases"]
+
+
+def test_unfiltered_calls_are_unchanged(client, sample_events):
+    """Пустой отбор не должен превращаться в фильтр: это другой ключ кэша."""
+    log_id = client.post(
+        "/api/v1/logs", json={"name": "f", "events": sample_events}
+    ).json()["log_id"]
+
+    plain = client.get(f"/api/v1/logs/{log_id}/statistics").json()
+    with_empty = client.get(f"/api/v1/logs/{log_id}/statistics", params={}).json()
+    assert plain == with_empty
+
+
 def test_unknown_log_returns_404(client):
     response = client.get("/api/v1/logs/does-not-exist")
     assert response.status_code == 404

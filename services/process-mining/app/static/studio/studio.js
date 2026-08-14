@@ -18,6 +18,11 @@
 
   var $ = function (id) { return document.getElementById(id); };
 
+  /* Разделитель ключа "откуда-куда". Escape-последовательностью, а не сырым
+   * байтом в исходнике: сырой ноль делает файл для git бинарным, и diff по
+   * нему перестаёт показываться. В названиях активностей такого символа нет. */
+  var SEP = String.fromCharCode(0);
+
   function esc(value) {
     return String(value === null || value === undefined ? "" : value)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -190,6 +195,8 @@
     graph: null,
     cases: [],
     events: [],
+    rawEvents: [],
+    rawLogId: "",
     truncated: false,
     algorithm: store.get("pm-studio-algo", "dfg_frequency"),
     mapMode: store.get("pm-studio-mapmode", "frequency"),
@@ -201,6 +208,63 @@
   var listeners = [];
   function onChange(fn) { listeners.push(fn); }
   function emit() { listeners.forEach(function (fn) { fn(); }); }
+
+  // ------------------------------------------------------------- фильтры
+
+  /* Отбор событий. Период, активности и исполнители уходят и в API, и в
+   * клиентский индекс кейсов - иначе плитки считались бы по одному набору
+   * данных, а список кейсов по другому. Охват маршрутов применяется только на
+   * сервере: он отбрасывает целые варианты, и повторять эту логику в браузере
+   * значило бы писать второй pm4py. Так и написано в панели отбора. */
+  var filters = store.json("pm-studio-filters", {
+    dateFrom: "", dateTo: "", activities: [], resources: [], coverage: "",
+  });
+
+  function filtersActive() {
+    return Boolean(filters.dateFrom || filters.dateTo || filters.coverage ||
+      (filters.activities || []).length || (filters.resources || []).length);
+  }
+
+  function saveFilters() { store.set("pm-studio-filters", JSON.stringify(filters)); }
+
+  function filterQuery() {
+    var parts = [];
+    if (filters.dateFrom) parts.push("date_from=" + encodeURIComponent(filters.dateFrom + "T00:00:00"));
+    if (filters.dateTo) parts.push("date_to=" + encodeURIComponent(filters.dateTo + "T23:59:59"));
+    (filters.activities || []).forEach(function (name) { parts.push("activities=" + encodeURIComponent(name)); });
+    (filters.resources || []).forEach(function (name) { parts.push("resources=" + encodeURIComponent(name)); });
+    if (filters.coverage) parts.push("variant_coverage=" + filters.coverage);
+    return parts.length ? "&" + parts.join("&") : "";
+  }
+
+  function filterBody() {
+    var body = {};
+    if (filters.dateFrom) body.date_from = filters.dateFrom + "T00:00:00";
+    if (filters.dateTo) body.date_to = filters.dateTo + "T23:59:59";
+    if ((filters.activities || []).length) body.activities_include = filters.activities;
+    if ((filters.resources || []).length) body.resources = filters.resources;
+    if (filters.coverage) body.variant_coverage = Number(filters.coverage);
+    return body;
+  }
+
+  function applyLocalFilters() {
+    var from = filters.dateFrom ? new Date(filters.dateFrom + "T00:00:00") : null;
+    var to = filters.dateTo ? new Date(filters.dateTo + "T23:59:59") : null;
+    var keepActivity = (filters.activities || []).length
+      ? filters.activities.reduce(function (acc, name) { acc[name] = true; return acc; }, {}) : null;
+    var keepResource = (filters.resources || []).length
+      ? filters.resources.reduce(function (acc, name) { acc[name] = true; return acc; }, {}) : null;
+
+    state.events = state.rawEvents.filter(function (event) {
+      var moment = new Date(event.timestamp);
+      if (from && moment < from) return false;
+      if (to && moment > to) return false;
+      if (keepActivity && !keepActivity[event.activity]) return false;
+      if (keepResource && !keepResource[event.resource]) return false;
+      return true;
+    });
+    state.cases = buildCases(state.events);
+  }
 
   // ------------------------------------------------------ загрузка данных
 
@@ -223,11 +287,14 @@
     state.error = "";
     emit();
 
+    var query = filterQuery();
     return Promise.all([
-      api.post("/api/v1/logs/" + id + "/discover", { algorithm: state.algorithm, format: "json" }),
-      api.get("/api/v1/logs/" + id + "/statistics"),
-      api.get("/api/v1/logs/" + id + "/variants?limit=25"),
-      api.get("/api/v1/logs/" + id + "/bottlenecks?limit=25"),
+      api.post("/api/v1/logs/" + id + "/discover", {
+        algorithm: state.algorithm, format: "json", filters: filterBody(),
+      }),
+      api.get("/api/v1/logs/" + id + "/statistics" + (query ? "?" + query.slice(1) : "")),
+      api.get("/api/v1/logs/" + id + "/variants?limit=25" + query),
+      api.get("/api/v1/logs/" + id + "/bottlenecks?limit=25" + query),
       api.get("/api/v1/logs/" + id),
     ]).then(function (results) {
       if (state.logId !== id) return; // пользователь успел переключить журнал
@@ -237,6 +304,13 @@
       state.necks = results[3];
       state.summary = results[4];
       state.loading = false;
+      // События перевыкачиваем только при смене журнала: отбор по периоду,
+      // активностям и исполнителям применяется к уже скачанному набору.
+      if (state.rawLogId === id && state.rawEvents.length) {
+        applyLocalFilters();
+        emit();
+        return;
+      }
       emit();
       return loadEvents(id);
     }).catch(function (error) {
@@ -267,8 +341,9 @@
 
     return page(0).then(function () {
       if (state.logId !== id) return;
-      state.events = collected;
-      state.cases = buildCases(collected);
+      state.rawEvents = collected;
+      state.rawLogId = id;
+      applyLocalFilters();
       emit();
     }).catch(function (error) {
       state.error = error.message;
@@ -276,23 +351,22 @@
     });
   }
 
-  function finalActivity() {
-    var ends = (state.graph && state.graph.end_activities) || {};
-    var best = "", bestCount = -1;
-    Object.keys(ends).forEach(function (name) {
-      if (ends[name] > bestCount) { best = name; bestCount = ends[name]; }
-    });
-    return best;
-  }
+  /* Шаг, которым процесс нормально заканчивается: самый частый последний шаг
+   * кейса. Раньше он брался из end_activities построенной модели - и это
+   * молча ломалось на сети Петри и дереве процесса, где концы графа не
+   * активности, а позиции ("p:sink"). Ни один кейс с ними не совпадал, и все
+   * до одного числились незавершёнными. Журнал знает ответ сам, без модели. */
+  var finalStep = "";
+
+  function finalActivity() { return finalStep; }
 
   function buildCases(events) {
-    var final = finalActivity();
     var map = {};
     events.forEach(function (event) {
       var bucket = map[event.case_id] || (map[event.case_id] = { id: event.case_id, steps: [] });
       bucket.steps.push(event);
     });
-    return Object.keys(map).map(function (id) {
+    var items = Object.keys(map).map(function (id) {
       var item = map[id];
       item.steps.sort(function (a, b) { return new Date(a.timestamp) - new Date(b.timestamp); });
       var first = new Date(item.steps[0].timestamp);
@@ -304,14 +378,20 @@
       item.first = item.steps[0].activity;
       item.sequence = item.steps.map(function (s) { return s.activity; });
       item.variant = item.sequence.join(" → ");
-      item.done = final ? item.last === final : false;
       item.resources = item.steps.map(function (s) { return s.resource; }).filter(Boolean);
       // Возврат: активность встретилась в кейсе больше одного раза.
       var seen = {};
       item.rework = 0;
       item.sequence.forEach(function (a) { if (seen[a]) item.rework++; seen[a] = true; });
       return item;
-    }).sort(function (a, b) { return b.start - a.start; });
+    });
+
+    var tally = {};
+    items.forEach(function (item) { tally[item.last] = (tally[item.last] || 0) + 1; });
+    finalStep = Object.keys(tally).sort(function (a, b) { return tally[b] - tally[a]; })[0] || "";
+    items.forEach(function (item) { item.done = Boolean(finalStep) && item.last === finalStep; });
+
+    return items.sort(function (a, b) { return b.start - a.start; });
   }
 
   // -------------------------------------------------- производные величины
@@ -512,7 +592,7 @@
     ((state.graph && state.graph.edges) || []).forEach(function (edge) {
       var value = edge.median_duration_seconds;
       if (value === null || value === undefined) value = edge.mean_duration_seconds;
-      if (value !== null && value !== undefined) map[edge.source + " " + edge.target] = value;
+      if (value !== null && value !== undefined) map[edge.source + SEP + edge.target] = value;
     });
     return map;
   }
@@ -530,7 +610,7 @@
       var seconds = 0;
       var known = true;
       for (var i = 0; i < remaining.length - 1; i++) {
-        var value = medians[remaining[i] + " " + remaining[i + 1]];
+        var value = medians[remaining[i] + SEP + remaining[i + 1]];
         if (value === undefined) { known = false; continue; }
         seconds += value;
       }
@@ -675,7 +755,8 @@
           '<div class="hero-tools">' +
             '<button class="chip" id="rangeChip" type="button">' + icon("calendar") +
               "<span>" + esc(range) + "</span>" + icon("chevron", "chev") + "</button>" +
-            '<button class="icon-square" id="filterChip" type="button" title="Параметры анализа">' + icon("filter") + "</button>" +
+            '<button class="icon-square' + (filtersActive() ? " is-on" : "") +
+              '" id="filterChip" type="button" title="Отбор данных">' + icon("filter") + "</button>" +
           "</div>" +
         "</div>" +
 
@@ -844,9 +925,9 @@
       render();
     });
     var range = $("rangeChip");
-    if (range) range.addEventListener("click", function () { go("settings"); });
+    if (range) range.addEventListener("click", openFilters);
     var filter = $("filterChip");
-    if (filter) filter.addEventListener("click", function () { go("settings"); });
+    if (filter) filter.addEventListener("click", openFilters);
   }
 
   var mapControl = null;
@@ -876,7 +957,12 @@
     // мог уйти в другой раздел, и общий уже обнулён перерисовкой.
     var control = window.ProcMap.attachPanZoom(canvas, stage, $(levelId));
     mapControl = control;
-    // Ждём раскладки, иначе ширина холста ещё нулевая и вписывать не во что.
+    // Сразу: высота холста задана в CSS, мерить можно уже сейчас. И ещё раз на
+    // следующем кадре, если раскладка к этому моменту ещё не устоялась. Полагаться
+    // на один requestAnimationFrame нельзя - в фоновой вкладке он не приходит, и
+    // карта осталась бы в масштабе 100% за краем экрана. Повтор безвреден: fit
+    // выходит сам, пока холст нулевой ширины.
+    control.fit(model);
     requestAnimationFrame(function () { control.fit(model); });
 
     [["zoomIn", "zoomIn"], ["zoomOut", "zoomOut"]].forEach(function (pair) {
@@ -891,16 +977,30 @@
 
   // ------------------------------------------------------- карта процесса
 
+  /* Подпись под заголовком. У графа переходов и у сети Петри узлы означают
+   * разное, и общее "N активностей" на сети Петри было бы просто неправдой:
+   * половина её узлов - позиции, а один переход невидимый. */
+  function graphCaption() {
+    var stats = (state.graph && state.graph.stats) || {};
+    var parts = [];
+    if (stats.places !== undefined) {
+      parts.push(num(stats.places) + " позиций");
+      parts.push(num(stats.transitions) + " переходов");
+      if (stats.silent_transitions) parts.push("из них " + num(stats.silent_transitions) + " невидимых");
+    } else {
+      parts.push(num(stats.activities !== undefined ? stats.activities : (state.graph.nodes || []).length) + " активностей");
+      parts.push(num(stats.arcs !== undefined ? stats.arcs : (state.graph.edges || []).length) + " переходов");
+    }
+    return parts.join(", ") + ". Алгоритм: " + algoLabel(state.algorithm);
+  }
+
   function pageMap() {
     if (!hasData()) return skeletonPage();
-    var graph = state.graph;
-    var nodes = (graph.nodes || []).length;
-    var edges = (graph.edges || []).length;
 
     return (
       '<section class="surface page">' +
         '<div class="hero"><div><h1>Карта процесса</h1>' +
-        "<p>" + num(nodes) + " активностей, " + num(edges) + " переходов. Алгоритм: " + esc(algoLabel(state.algorithm)) + "</p></div>" +
+        "<p>" + esc(graphCaption()) + "</p></div>" +
         '<div class="hero-tools">' +
           '<div class="select-wrap" style="height:42px"><select id="algoSelect" style="height:42px;border-radius:9px">' +
             algoOptions() + "</select>" + icon("chevron", "chev") + "</div>" +
@@ -919,7 +1019,10 @@
         "</div></div>" +
 
         '<div class="note">Голубые рамки — старт и финиш процесса, красные — три самых дорогих по времени шага. ' +
-        "Пунктирная стрелка — возврат назад по процессу. Нажмите на активность, чтобы увидеть её показатели.</div>" +
+        "Пунктирная стрелка — возврат назад по процессу. Нажмите на активность, чтобы увидеть её показатели." +
+        (((state.graph.stats || {}).places !== undefined)
+          ? " У сети Петри кружки — позиции, глухая планка — невидимый переход: модели он нужен, событий в журнале ему не соответствует."
+          : "") + "</div>" +
       "</section>"
     );
   }
@@ -1878,10 +1981,6 @@
     $("crumb").textContent = route.label;
     document.title = route.label + " — Process Mining Studio";
 
-    // Общие для всех разделов кнопки перехода.
-    view.querySelectorAll("[data-goto]").forEach(function (element) {
-      element.addEventListener("click", function () { go(element.dataset.goto); });
-    });
     var retry = $("retryLoad");
     if (retry) retry.addEventListener("click", function () { state.error = ""; boot(); });
     var errKeys = $("errKeys");
@@ -1905,6 +2004,67 @@
   function closeSheet() {
     $("sheet").hidden = true;
     $("scrim").hidden = true;
+  }
+
+  function openFilters() {
+    var activities = ((state.stats && state.stats.activity_stats) || []).map(function (item) { return item.activity; });
+    var resources = ((state.stats && state.stats.resource_stats) || []).map(function (item) { return item.resource; });
+    var bounds = state.summary || {};
+    var minDay = bounds.start_time ? String(bounds.start_time).slice(0, 10) : "";
+    var maxDay = bounds.end_time ? String(bounds.end_time).slice(0, 10) : "";
+
+    function boxes(list, chosen, name) {
+      if (!list.length) return '<span class="hint">нет данных</span>';
+      return '<div style="display:grid;gap:7px;max-height:190px;overflow-y:auto">' + list.map(function (value) {
+        var on = chosen.indexOf(value) !== -1;
+        return '<label class="switch" style="gap:9px"><input type="checkbox" data-' + name + '="' + esc(value) + '"' +
+          (on ? " checked" : "") + '><span class="track"></span><span style="font-size:13px">' + esc(value) + "</span></label>";
+      }).join("") + "</div>";
+    }
+
+    openSheet("Отбор данных", (
+      '<div class="field"><label>Период</label><div class="field-row">' +
+        '<input type="date" id="fFrom" value="' + esc(filters.dateFrom) + '" min="' + minDay + '" max="' + maxDay + '">' +
+        '<input type="date" id="fTo" value="' + esc(filters.dateTo) + '" min="' + minDay + '" max="' + maxDay + '">' +
+      '</div><span class="hint">Журнал: ' + esc(minDay || "—") + " – " + esc(maxDay || "—") + "</span></div>" +
+
+      '<div class="field"><label>Активности</label>' + boxes(activities, filters.activities || [], "activity") + "</div>" +
+      (resources.length ? '<div class="field"><label>Исполнители</label>' + boxes(resources, filters.resources || [], "resource") + "</div>" : "") +
+
+      '<div class="field"><label for="fCoverage">Охват маршрутов</label><select id="fCoverage">' +
+        ['', "0.95", "0.9", "0.8", "0.5"].map(function (value) {
+          var label = value ? "самые частые маршруты до " + Math.round(value * 100) + " % кейсов" : "все маршруты";
+          return '<option value="' + value + '"' + (String(filters.coverage) === value ? " selected" : "") + ">" + label + "</option>";
+        }).join("") +
+      '</select><span class="hint">Считается на сервере: отбрасываются целые варианты. ' +
+      "Влияет на карту, маршруты и узкие места; список кейсов остаётся полным.</span></div>" +
+
+      '<div class="btn-row"><button class="btn" id="fApply" type="button">Применить</button>' +
+      '<button class="btn secondary" id="fReset" type="button">Сбросить</button></div>'
+    ));
+
+    var apply = $("fApply");
+    if (apply) apply.addEventListener("click", function () {
+      filters.dateFrom = $("fFrom").value;
+      filters.dateTo = $("fTo").value;
+      filters.coverage = $("fCoverage").value;
+      filters.activities = [].slice.call(document.querySelectorAll("[data-activity]:checked"))
+        .map(function (box) { return box.dataset.activity; });
+      filters.resources = [].slice.call(document.querySelectorAll("[data-resource]:checked"))
+        .map(function (box) { return box.dataset.resource; });
+      saveFilters();
+      closeSheet();
+      resetPaging();
+      loadCore();
+    });
+    var reset = $("fReset");
+    if (reset) reset.addEventListener("click", function () {
+      filters = { dateFrom: "", dateTo: "", activities: [], resources: [], coverage: "" };
+      saveFilters();
+      closeSheet();
+      resetPaging();
+      loadCore();
+    });
   }
 
   function openKeys() {
@@ -2000,6 +2160,14 @@
       store.set("pm-studio-rail", document.body.classList.contains("rail-collapsed") ? "1" : "0");
     });
     if (store.get("pm-studio-rail", "0") === "1") document.body.classList.add("rail-collapsed");
+
+    /* Переходы ловим на документе, а не на перерисованных узлах. Пункты меню
+     * живут в боковой колонке, а не внутри #view, и навешивание обработчиков
+     * "на то, что сейчас в #view" молча оставляло всё меню мёртвым. */
+    document.addEventListener("click", function (event) {
+      var target = event.target.closest ? event.target.closest("[data-goto]") : null;
+      if (target) go(target.dataset.goto);
+    });
 
     $("railOpen").addEventListener("click", function () { document.body.classList.toggle("rail-open"); });
     $("scrim").addEventListener("click", closeSheet);

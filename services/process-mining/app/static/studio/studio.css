@@ -249,6 +249,9 @@ body.rail-collapsed .foot-actions { grid-template-columns: 1fr; }
 }
 .icon-square:hover { color: var(--ink); border-color: var(--violet); }
 .icon-square svg { width: 17px; height: 17px; }
+.icon-square.is-on {
+  color: var(--violet-2); border-color: rgba(124, 92, 255, .5); background: rgba(124, 92, 255, .14);
+}
 
 /* ----------------------------------------------------------- метрики */
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
@@ -334,6 +337,12 @@ body.rail-collapsed .foot-actions { grid-template-columns: 1fr; }
   fill: rgba(244, 63, 94, .14); stroke: var(--rose);
   filter: drop-shadow(0 0 10px rgba(244, 63, 94, .34));
 }
+/* Сеть Петри: позиция - кружок, невидимый переход - глухая планка без подписи.
+ * Им в журнале не соответствует ни одно событие, и подписывать их нечем. */
+.node-box.is-place circle { fill: var(--panel-3); stroke: var(--faint); stroke-width: 1.6; filter: none; }
+.node-box.is-place.is-start circle { stroke: var(--cyan); fill: rgba(34, 211, 238, .14); }
+.node-box.is-place.is-end circle { stroke: var(--green); fill: rgba(52, 211, 153, .14); }
+.node-box.is-silent rect { fill: rgba(124, 92, 255, .5); stroke: var(--violet); filter: none; }
 .node-box text { fill: var(--ink); stroke: none; font-size: 11.5px; font-weight: 500; }
 .node-box text.sub { fill: var(--muted); font-size: 10px; font-weight: 400; }
 .map-edge { stroke: var(--blue); fill: none; opacity: .75; filter: drop-shadow(0 0 5px rgba(59, 130, 246, .5)); }

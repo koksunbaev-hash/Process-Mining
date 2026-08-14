@@ -11,9 +11,10 @@ lifecycle to manage.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Form, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 
 from app.deps import ApiKeyDep, JobManagerDep, LogServiceDep, MiningServiceDep
 from app.errors import ValidationError
@@ -40,6 +41,37 @@ def _parse_json_form(raw: str | None, model: type, field: str) -> Any:
         return model.model_validate(json.loads(raw))
     except (json.JSONDecodeError, ValueError) as exc:
         raise ValidationError(f"'{field}' must be a valid JSON object: {exc}") from exc
+
+
+def _query_filters(
+    date_from: Annotated[datetime | None, Query(description="Keep events at or after this moment")] = None,
+    date_to: Annotated[datetime | None, Query(description="Keep events at or before this moment")] = None,
+    activities: Annotated[list[str] | None, Query(description="Keep only these activities")] = None,
+    exclude_activities: Annotated[list[str] | None, Query(description="Drop these activities")] = None,
+    resources: Annotated[list[str] | None, Query(description="Keep only these resources")] = None,
+    variant_coverage: Annotated[
+        float | None,
+        Query(gt=0, le=1, description="Keep the top variants covering this share of cases"),
+    ] = None,
+) -> LogFilters | None:
+    """The subset of ``LogFilters`` that fits in a query string.
+
+    ``None`` when nothing was asked for, not an empty ``LogFilters``: the two
+    are different cache keys, and an unfiltered call must keep hitting the
+    entry it has always hit.
+    """
+    filters = LogFilters(
+        date_from=date_from,
+        date_to=date_to,
+        activities_include=activities,
+        activities_exclude=exclude_activities,
+        resources=resources,
+        variant_coverage=variant_coverage,
+    )
+    return filters if filters.model_dump(exclude_none=True) else None
+
+
+FiltersDep = Annotated[LogFilters | None, Depends(_query_filters)]
 
 
 def _image_response(result: DiscoverResponse) -> Response:
@@ -141,11 +173,12 @@ async def discover_async(
 )
 async def statistics(
     log_id: str, logs: LogServiceDep, mining: MiningServiceDep, jobs: JobManagerDep, _: ApiKeyDep,
+    filters: FiltersDep,
     tenant: str | None = None,
 ) -> Any:
     record = logs.require(log_id, tenant)
     return await jobs.run_blocking(
-        mining.statistics, record.frame, None, log_id=log_id, log_version=record.updated_at
+        mining.statistics, record.frame, filters, log_id=log_id, log_version=record.updated_at
     )
 
 
@@ -158,6 +191,7 @@ async def variants(
     mining: MiningServiceDep,
     jobs: JobManagerDep,
     _: ApiKeyDep,
+    filters: FiltersDep,
     limit: Annotated[int, Query(ge=1, le=200)] = 20,
     tenant: str | None = None,
 ) -> Any:
@@ -165,7 +199,7 @@ async def variants(
     return await jobs.run_blocking(
         mining.variants,
         record.frame,
-        None,
+        filters,
         limit=limit,
         log_id=log_id,
         log_version=record.updated_at,
@@ -183,6 +217,7 @@ async def bottlenecks(
     mining: MiningServiceDep,
     jobs: JobManagerDep,
     _: ApiKeyDep,
+    filters: FiltersDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
     tenant: str | None = None,
 ) -> Any:
@@ -190,7 +225,7 @@ async def bottlenecks(
     return await jobs.run_blocking(
         mining.bottlenecks,
         record.frame,
-        None,
+        filters,
         limit=limit,
         log_id=log_id,
         log_version=record.updated_at,
