@@ -418,3 +418,178 @@ table.data td.seq { white-space: normal; min-width: 320px; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ============================================================================
+   Оформление «Ночь и фиолет» — по присланному макету.
+
+   Слой намеренно последний и трогает только внешний вид: цвета, свечение,
+   скругления, типографику. Сетки и брейкпоинты выше не тронуты — они писаны
+   по следам конкретных поломок, и переоформление не повод их ворошить.
+
+   Всё живёт внутри тёмной темы. Светлая остаётся прежней: карта процесса -
+   это SVG от Graphviz, он рисует чёрным по белому, и на светлом полотне
+   читается лучше. Тёмная тема оставляет полотно карты светлым по той же
+   причине.
+   ========================================================================== */
+
+:root[data-theme="dark"] {
+  --bg: #08080f;
+  --paper: #101019;
+  --paper-2: #14141f;
+  --ink: #ececf5;
+  --muted: #8b8ba3;
+  --line: #23232f;
+  --line-soft: rgba(255, 255, 255, 0.06);
+  --blue: #8b5cf6;
+  --blue-soft: rgba(139, 92, 246, 0.14);
+  --radius: 16px;
+  --radius-sm: 11px;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 2px 14px rgba(0, 0, 0, 0.35);
+  --glow: 0 0 0 1px rgba(139, 92, 246, 0.28), 0 8px 28px rgba(139, 92, 246, 0.22);
+}
+
+/* Подсветка из-за верхнего края: на макете фон не плоский, а с отсветом. */
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(900px 420px at 18% -8%, rgba(139, 92, 246, 0.16), transparent 70%),
+    radial-gradient(700px 380px at 92% 0%, rgba(56, 132, 255, 0.10), transparent 72%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+:root[data-theme="dark"] .header {
+  background: rgba(10, 10, 18, 0.82);
+  backdrop-filter: saturate(140%) blur(14px);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+:root[data-theme="dark"] .logo {
+  background: linear-gradient(135deg, #8b5cf6, #5b8cff);
+  box-shadow: var(--glow);
+  border: 0;
+}
+
+/* Панели: тень вместо рамки, рамка остаётся волосяной - чтобы на почти чёрном
+   фоне карточка не растворялась. */
+:root[data-theme="dark"] .card,
+:root[data-theme="dark"] .metric,
+:root[data-theme="dark"] .glossary,
+:root[data-theme="dark"] .dropzone {
+  background: linear-gradient(180deg, var(--paper-2), var(--paper));
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Плитка показателя: подпись тише содержимого, число - главное на карточке,
+   сверху тонкая цветная черта, как на макете. */
+:root[data-theme="dark"] .metric {
+  position: relative;
+  overflow: hidden;
+}
+:root[data-theme="dark"] .metric::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, #8b5cf6, #5b8cff);
+  opacity: 0.75;
+}
+:root[data-theme="dark"] .metric:nth-child(2)::before { background: linear-gradient(90deg, #3b82f6, #22d3ee); }
+:root[data-theme="dark"] .metric:nth-child(3)::before { background: linear-gradient(90deg, #f43f5e, #f59e0b); }
+:root[data-theme="dark"] .metric:nth-child(4)::before { background: linear-gradient(90deg, #10b981, #34d399); }
+
+:root[data-theme="dark"] .metric .label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+:root[data-theme="dark"] .metric .value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Заголовок: на макете он крупный и с градиентом по тексту. */
+:root[data-theme="dark"] .hero h1 {
+  background: linear-gradient(100deg, #ffffff 30%, #b9a6ff 75%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: -0.03em;
+}
+:root[data-theme="dark"] .eyebrow {
+  color: #a78bfa;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Действие: заливка с отсветом, как у кнопок на макете. */
+:root[data-theme="dark"] .btn:not(.secondary):not(.link-btn) {
+  background: linear-gradient(135deg, #8b5cf6, #6d4aff);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.32);
+}
+:root[data-theme="dark"] .btn:not(.secondary):not(.link-btn):hover {
+  box-shadow: 0 8px 26px rgba(139, 92, 246, 0.45);
+}
+:root[data-theme="dark"] .btn.secondary,
+:root[data-theme="dark"] .icon-btn,
+:root[data-theme="dark"] .select-top,
+:root[data-theme="dark"] .field-top {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line-soft);
+}
+
+/* Вкладки: выбранная - капсула с отсветом, остальные молчат. */
+:root[data-theme="dark"] .tab {
+  border-radius: 999px;
+  color: var(--muted);
+  border: 1px solid transparent;
+}
+:root[data-theme="dark"] .tab:hover { background: rgba(255, 255, 255, 0.05); }
+:root[data-theme="dark"] .tab.active,
+:root[data-theme="dark"] .tab[aria-selected="true"] {
+  background: var(--blue-soft);
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #cbb6ff;
+  box-shadow: inset 0 0 18px rgba(139, 92, 246, 0.12);
+}
+
+/* Область загрузки: пунктир и подсветка при наведении файла. */
+:root[data-theme="dark"] .dropzone { border: 1px dashed rgba(139, 92, 246, 0.34); }
+:root[data-theme="dark"] .dropzone:hover,
+:root[data-theme="dark"] .dropzone.active {
+  border-color: rgba(139, 92, 246, 0.65);
+  box-shadow: var(--glow);
+}
+
+/* Таблицы: линия только между строками, шапка тише содержимого. */
+:root[data-theme="dark"] .data th {
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+:root[data-theme="dark"] .data td,
+:root[data-theme="dark"] .data th { border-bottom-color: var(--line-soft); }
+:root[data-theme="dark"] .data tbody tr:hover { background: rgba(139, 92, 246, 0.06); }
+:root[data-theme="dark"] .count { font-variant-numeric: tabular-nums; }
+
+/* Состояние службы: точка светится, а не просто закрашена. */
+:root[data-theme="dark"] .status .dot { box-shadow: 0 0 10px currentColor; }
+
+:root[data-theme="dark"] :where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="dark"] * { transition-duration: 0.01ms !important; }
+}
