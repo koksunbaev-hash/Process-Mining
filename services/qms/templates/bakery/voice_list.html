@@ -12,23 +12,6 @@
 </section>
 
 <section class="panel">
-  <div class="panel-header">
-    <h3>Запись</h3>
-    <span id="recordTimer" class="badge">00:00</span>
-  </div>
-  <button id="recordButton" class="primary" type="button">Начать запись</button>
-  <audio id="previewAudio" controls hidden></audio>
-  <form id="voiceForm" method="post" action="{% url 'bakery:voice_upload' %}" enctype="multipart/form-data" class="form-grid">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <div class="dialog-actions">
-      <button class="primary" id="sendVoice" disabled>Отправить</button>
-      <button type="button" id="deleteVoice">Удалить запись</button>
-    </div>
-  </form>
-</section>
-
-<section class="panel">
   <div class="table-wrap"><table>
     <tr>
       <th>Автор</th>
@@ -70,80 +53,4 @@
   </table></div>
 </section>
 
-<script>
-let mediaRecorder, chunks = [], startedAt, timer, selectedMime = "audio/webm", selectedExt = "webm";
-const recordButton = document.getElementById("recordButton");
-const audioInput = document.querySelector("#id_audio_file");
-const preview = document.getElementById("previewAudio");
-const sendButton = document.getElementById("sendVoice");
-const timerEl = document.getElementById("recordTimer");
-const mimeChoices = [
-  ["audio/mp4", "m4a"],
-  ["audio/webm;codecs=opus", "webm"],
-  ["audio/webm", "webm"],
-  ["audio/ogg;codecs=opus", "ogg"],
-  ["audio/ogg", "ogg"]
-];
-for (const [mime, ext] of mimeChoices) {
-  if (window.MediaRecorder && MediaRecorder.isTypeSupported(mime)) {
-    selectedMime = mime;
-    selectedExt = ext;
-    break;
-  }
-}
-audioInput.closest("p").style.display = "none";
-recordButton.addEventListener("click", async () => {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop();
-    recordButton.textContent = "Начать запись";
-    clearInterval(timer);
-    return;
-  }
-  const stream = await navigator.mediaDevices.getUserMedia({audio: true});
-  chunks = [];
-  mediaRecorder = new MediaRecorder(stream, {mimeType: selectedMime});
-  startedAt = Date.now();
-  timer = setInterval(() => {
-    const seconds = Math.floor((Date.now() - startedAt) / 1000);
-    timerEl.textContent = String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
-    document.querySelector("#id_duration_seconds").value = seconds;
-  }, 500);
-  mediaRecorder.ondataavailable = event => chunks.push(event.data);
-  mediaRecorder.onstop = () => {
-    const blob = new Blob(chunks, {type: selectedMime});
-    const file = new File([blob], `voice-${Date.now()}.${selectedExt}`, {type: selectedMime});
-    const transfer = new DataTransfer();
-    transfer.items.add(file);
-    audioInput.files = transfer.files;
-    preview.src = URL.createObjectURL(blob);
-    preview.hidden = false;
-    sendButton.disabled = false;
-    stream.getTracks().forEach(track => track.stop());
-  };
-  mediaRecorder.start();
-  recordButton.textContent = "Остановить запись";
-});
-document.getElementById("deleteVoice").addEventListener("click", () => {
-  audioInput.value = "";
-  preview.hidden = true;
-  sendButton.disabled = true;
-  timerEl.textContent = "00:00";
-});
-document.querySelectorAll(".voice-command-action").forEach(button => {
-  button.addEventListener("click", async () => {
-    const id = button.dataset.commandId;
-    const action = button.dataset.action;
-    const response = await fetch(`/api/voice-commands/${id}/${action}/`, {
-      method: "POST",
-      headers: {"X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value}
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      alert(data.detail || "Команду не удалось выполнить");
-      return;
-    }
-    window.location.reload();
-  });
-});
-</script>
 {% endblock %}

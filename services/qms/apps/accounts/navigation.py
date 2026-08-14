@@ -51,6 +51,10 @@ class Section:
     roles: frozenset
     #: остальные адреса раздела - формы, карточки записей, служебные обработчики
     routes: tuple = field(default=())
+    #: Из меню убран, но раздел остаётся: адреса по-прежнему под охраной
+    #: посредника, а ссылки из других мест не превращаются в 404. Убрать
+    #: раздел совсем значило бы открыть его всем ролям разом.
+    hidden: bool = False
 
     @property
     def all_routes(self):
@@ -96,7 +100,7 @@ SECTIONS = [
     Section("reports", "Отчёты", "bakery:reports", "Контроль", OFFICE),
     Section("process_mining", "Process Mining", "process_mining:dashboard", "Контроль", OFFICE),
     Section("audit", "Журнал действий", "audit:logs", "Контроль", OFFICE),
-    Section("notifications", "Уведомления", "notifications:list", "Система", EVERYONE),
+    Section("notifications", "Уведомления", "notifications:list", "Система", EVERYONE, hidden=True),
     Section("settings", "Настройки", "accounts:settings", "Система", EVERYONE),
 ]
 
@@ -141,9 +145,18 @@ def sections_for(user):
     return [section for section in SECTIONS if role in section.roles]
 
 
+def menu_sections(user):
+    """Только то, что рисуется в меню.
+
+    Отличается от `sections_for` на скрытые разделы: те доступны по ссылке и
+    охраняются посредником, но пункта в меню не имеют.
+    """
+    return [section for section in sections_for(user) if not section.hidden]
+
+
 def grouped_sections(user):
     """Разделы пользователя, разложенные по группам, в порядке GROUPS."""
-    visible = sections_for(user)
+    visible = menu_sections(user)
     by_group = {name: [] for name in GROUPS}
     for section in visible:
         by_group[section.group].append(section)

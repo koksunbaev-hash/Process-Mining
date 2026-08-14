@@ -169,15 +169,18 @@ class KanbanDemoTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["stages"]["queue"], 2)
 
-    def test_kanban_page_has_demo_controls_for_admin(self):
-        web = Client()
-        web.force_login(self.user)
-        response = web.get("/bakery/board/")
-        self.assertContains(response, "Демо процесса")
+    def test_kanban_page_has_no_demo_controls_at_all(self):
+        """Демо ушло с доски вместе с фильтром «Рабочие/Демо/Все».
 
-    def test_kanban_page_hides_demo_controls_for_auditor(self):
-        auditor = create_user("demo-auditor-ui", UserProfile.Role.USER)
-        web = Client()
-        web.force_login(auditor)
-        response = web.get("/bakery/board/")
-        self.assertNotContains(response, "Демо процесса")
+        Сам механизм остался в API и в командах управления - доска просто
+        перестала быть местом, откуда его запускают. Проверяем обе роли: панель
+        не должна вернуться ни к кому.
+        """
+        worker = create_user("demo-worker-ui", UserProfile.Role.USER)
+        for account in (self.user, worker):
+            with self.subTest(user=account.username):
+                web = Client()
+                web.force_login(account)
+                response = web.get("/bakery/board/")
+                self.assertNotContains(response, "Демо процесса")
+                self.assertNotContains(response, 'name="demo"')

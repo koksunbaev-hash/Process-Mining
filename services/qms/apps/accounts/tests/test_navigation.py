@@ -68,6 +68,20 @@ class RoleMenuTests(TestCase):
         user.profile.save(update_fields=["role"])
         self.assertEqual(keys_for(user), keys_for(create_user("worker4", UserProfile.Role.USER)))
 
+    def test_hidden_section_leaves_the_menu_but_keeps_its_guard(self):
+        """Уведомления убраны из меню, но остаются разделом.
+
+        Если бы раздел удалили совсем, его адреса выпали бы из ROUTE_SECTION и
+        стали бы открыты любой роли - молча.
+        """
+        from apps.accounts.navigation import BY_KEY, menu_sections
+
+        user = create_user("worker-hidden", UserProfile.Role.USER)
+        self.assertTrue(BY_KEY["notifications"].hidden)
+        self.assertNotIn("notifications", {s.key for s in menu_sections(user)})
+        self.assertIn("notifications", keys_for(user))
+        self.assertTrue(can_view(user, "notifications"))
+
     def test_anonymous_sees_nothing(self):
         from django.contrib.auth.models import AnonymousUser
 

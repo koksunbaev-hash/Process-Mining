@@ -1,6 +1,6 @@
 from django.urls import reverse
 
-from .navigation import FLAT_MENU_LIMIT, grouped_sections, section_for_route, sections_for
+from .navigation import FLAT_MENU_LIMIT, grouped_sections, menu_sections, section_for_route
 
 
 def navigation(request):
@@ -13,7 +13,7 @@ def navigation(request):
     user = getattr(request, "user", None)
     if user is None or not user.is_authenticated:
         return {}
-    visible = sections_for(user)
+    visible = menu_sections(user)
     match = getattr(request, "resolver_match", None)
     return {
         # Подсветка текущего пункта берётся из того же соответствия
