@@ -15,6 +15,7 @@ env = environ.Env(
     MAX_VOICE_MESSAGE_SIZE_MB=(int, 20),
     VOICE_AUTOCONFIRM_SECONDS=(int, 3),
     PROCESS_MINING_TIMEOUT_SECONDS=(int, 10),
+    PROCESS_MINING_CONSOLE_TOKEN_TTL=(int, 12 * 60 * 60),
     PROCESS_MINING_BATCH_SIZE=(int, 100),
     PROCESS_MINING_EXPORT_INTERVAL_SECONDS=(int, 5),
     PROCESS_MINING_MAX_RETRIES=(int, 5),
@@ -202,6 +203,10 @@ PROCESS_MINING_EVENT_LOG_URL = env("PROCESS_MINING_EVENT_LOG_URL", default="")
 # домене, где никакого 8443 нет: снаружи всё приходит на 443, а Caddy
 # разводит по именам. Отсюда отдельная настройка, а не вычисление в скрипте.
 PROCESS_MINING_CONSOLE_URL = env("PROCESS_MINING_CONSOLE_URL", default="")
+# Сколько живёт пропуск в консоль. Смена длиннее любого разумного значения
+# здесь не нужна: за новым пропуском человек возвращается на эту же страницу
+# и жмёт ту же кнопку, так что истечение стоит ему одного щелчка.
+PROCESS_MINING_CONSOLE_TOKEN_TTL = env("PROCESS_MINING_CONSOLE_TOKEN_TTL")
 PROCESS_MINING_SOURCE = env("PROCESS_MINING_SOURCE", default="kms_bakery")
 PROCESS_MINING_SCHEMA_VERSION = env("PROCESS_MINING_SCHEMA_VERSION", default="1.0")
 PROCESS_MINING_BATCH_SIZE = env("PROCESS_MINING_BATCH_SIZE")

@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from apps.accounts.permissions import user_role
 
+from .console_token import console_link
 from .models import ProcessEvent, ProcessEventExport
 from .services import build_events_csv, export_pending_events_to_process_mining, retry_failed_events
 
@@ -40,7 +41,7 @@ def dashboard(request):
         "process_mining/dashboard.html",
         {
             "url": settings.PROCESS_MINING_EVENT_LOG_URL,
-            "console_url": settings.PROCESS_MINING_CONSOLE_URL,
+            "console_url": console_link(),
             "source": settings.PROCESS_MINING_SOURCE,
             "counts": counts,
             "last_success": last_success,

@@ -968,6 +968,16 @@
     applyTheme();
     applyLanguage();
 
+    // Пропуск из ссылки. KMS открывает консоль как ".../#t=<пропуск>", чтобы
+    // человеку не приходилось где-то доставать ключ развёртывания. Якорь, а не
+    // параметр запроса: якорь не уходит на сервер и не оседает в журналах
+    // прокси. Сразу после чтения он стирается из адресной строки - иначе
+    // остался бы в закладке и в пересланной ссылке.
+    const passFromLink = new URLSearchParams(location.hash.slice(1)).get("t");
+    if (passFromLink) {
+      store.set("pm-api-key", passFromLink);
+      history.replaceState(null, "", location.pathname + location.search);
+    }
     $("apiKey").value = store.get("pm-api-key", "");
     $("apiKey").addEventListener("input", (event) => {
       store.set("pm-api-key", event.target.value);

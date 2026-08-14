@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import Depends, Header, Request
 
+from app import console_token
 from app.config import Settings, get_settings
 from app.errors import AuthError
 from app.jobs.manager import JobManager
@@ -27,11 +28,18 @@ SettingsDep = Annotated[Settings, Depends(get_app_settings)]
 
 
 async def require_api_key(
+    request: Request,
     settings: SettingsDep,
     x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
     authorization: Annotated[str | None, Header()] = None,
 ) -> str:
-    """Accepts ``X-API-Key: <key>`` or ``Authorization: Bearer <key>``."""
+    """Accepts ``X-API-Key: <key>`` or ``Authorization: Bearer <key>``.
+
+    A short-lived console pass issued by QMS is accepted in the same place, but
+    only for reading: ingest paths stay behind the deployment key. Without that
+    split the pass would be the master key with an expiry date - a link mailed
+    to a colleague could import events.
+    """
     if not settings.auth_enabled:
         return "anonymous"
 
@@ -45,6 +53,14 @@ async def require_api_key(
     for known in settings.api_key_set:
         if secrets.compare_digest(presented, known):
             return known
+
+    if console_token.is_console_token(presented):
+        if not console_token.verify(presented, settings.callback_secret):
+            raise AuthError("Console pass is invalid or has expired. Reopen the console from KMS.")
+        if not request.url.path.startswith(settings.api_prefix):
+            raise AuthError("Console pass is read-only; this endpoint needs the API key.")
+        return "console"
+
     raise AuthError("Invalid API key.")
 
 

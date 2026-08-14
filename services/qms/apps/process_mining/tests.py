@@ -1,9 +1,13 @@
 import csv
+import hashlib
+import hmac
 import json
+import time
 from decimal import Decimal
 from io import StringIO
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -17,6 +21,7 @@ from apps.bakery.tests.batch_workflow.helpers import move_batch, stage
 from apps.bakery.kanban_demo import create_demo_run, reset_demo, start_demo, tick_demo
 from apps.bakery.models import KanbanDemoRun
 
+from . import console_token
 from .models import ProcessEvent, ProcessEventExport
 from .views import can_view_integration
 from .services import (
@@ -399,7 +404,7 @@ class ProcessMiningDashboardTests(TestCase):
         """Настроенный адрес ведёт прямо в консоль, без сборки из порта."""
         self.client.login(username="pm-ui-admin", password="pass")
         html = self.client.get(reverse("process_mining:dashboard")).content.decode()
-        self.assertIn('href="https://pm.example.kz"', html)
+        self.assertIn('href="https://pm.example.kz/', html)
         # Скрипт-запасной путь не должен даже выводиться: иначе он перепишет
         # href на qms.kzt.asia:8443, куда снаружи не попасть.
         self.assertNotIn("pmConsoleLink\")", html)
@@ -411,6 +416,19 @@ class ProcessMiningDashboardTests(TestCase):
         html = self.client.get(reverse("process_mining:dashboard")).content.decode()
         self.assertIn("pmConsoleLink", html)
         self.assertIn("8443", html)
+
+    @override_settings(
+        PROCESS_MINING_CONSOLE_URL="https://pm.example.kz",
+        PROCESS_MINING_CALLBACK_SECRET="shared-secret",
+    )
+    def test_console_link_carries_a_pass(self):
+        """Клиенту не нужно нигде брать ключ - пропуск уже в ссылке."""
+        self.client.login(username="pm-ui-admin", password="pass")
+        html = self.client.get(reverse("process_mining:dashboard")).content.decode()
+        self.assertIn("https://pm.example.kz/#t=c1.", html)
+        # Мастер-ключ в разметку попадать не должен ни при каких условиях.
+        self.assertNotIn(settings.PROCESS_MINING_API_TOKEN or "\0", html)
+
 
     def test_admin_can_open_dashboard(self):
         self.client.login(username="pm-ui-admin", password="pass")
@@ -543,3 +561,50 @@ class DemoEventsStayOutOfTheLogTests(TestCase):
         self.assertTrue(ProcessEvent.objects.filter(order=order, batch__isnull=True).exists())
         reset_demo(run, self.user)
         self.assertFalse(ProcessEvent.objects.exclude(export_status=ProcessEvent.ExportStatus.SENT).exists())
+
+
+class ConsolePassTests(TestCase):
+    """Формат пропуска - договор между двумя службами на разных языках."""
+
+    SECRET = "shared-secret"
+
+    def verify_like_the_analytics_service_does(self, token, now=None):
+        """Повтор проверки из services/process-mining/app/console_token.py.
+
+        Намереннонезависимая реализация: если одна из сторон поменяет формат, тест
+        расскажет об этом здесь, а не пользователь — пустой консолью.
+        """
+        version, raw_expiry, presented = token.split(".")
+        self.assertEqual(version, "c1")
+        expires_at = int(raw_expiry)
+        if expires_at < int(now if now is not None else time.time()):
+            return False
+        expected = hmac.new(
+            self.SECRET.encode(), f"console.{expires_at}".encode(), hashlib.sha256
+        ).hexdigest()
+        return hmac.compare_digest(presented, expected)
+
+    @override_settings(PROCESS_MINING_CALLBACK_SECRET=SECRET)
+    def test_issued_pass_verifies_on_the_other_side(self):
+        self.assertTrue(self.verify_like_the_analytics_service_does(console_token.issue(3600)))
+
+    @override_settings(PROCESS_MINING_CALLBACK_SECRET=SECRET)
+    def test_pass_expires(self):
+        self.assertFalse(self.verify_like_the_analytics_service_does(console_token.issue(-1)))
+
+    @override_settings(PROCESS_MINING_CALLBACK_SECRET="")
+    def test_without_a_secret_no_pass_is_issued(self):
+        """Молча подписать нечем - лучше отдать ссылку без пропуска, чем сломанную."""
+        self.assertEqual(console_token.issue(), "")
+
+    @override_settings(PROCESS_MINING_CONSOLE_URL="", PROCESS_MINING_CALLBACK_SECRET=SECRET)
+    def test_no_console_address_means_no_link(self):
+        self.assertEqual(console_token.console_link(), "")
+
+    @override_settings(
+        PROCESS_MINING_CONSOLE_URL="https://pm.example.kz/",
+        PROCESS_MINING_CALLBACK_SECRET="",
+    )
+    def test_link_survives_a_missing_secret(self):
+        """Консоль всё равно откроется - просто спросит ключ, как раньше."""
+        self.assertEqual(console_token.console_link(), "https://pm.example.kz/")
