@@ -498,6 +498,9 @@ table.tbl .empty { color: var(--muted); text-align: center; padding: 26px 19px; 
   background: var(--panel); border-left: 1px solid var(--line);
   box-shadow: -24px 0 60px rgba(0, 0, 0, .5);
 }
+/* Атрибута hidden мало: display:flex выше по силе, чем правило браузера для
+ * hidden, и шторка осталась бы висеть поверх страницы навсегда. */
+.sheet[hidden], .scrim[hidden] { display: none; }
 .sheet-head { display: flex; align-items: center; gap: 12px; padding: 20px 22px; border-bottom: 1px solid var(--line-soft); }
 .sheet-head h2 { font-size: 16px; margin-right: auto; }
 .sheet-body { padding: 20px 22px 28px; overflow-y: auto; display: grid; gap: 16px; align-content: start; }
