@@ -328,6 +328,9 @@ body.rail-collapsed .foot-actions { grid-template-columns: 1fr; }
   position: absolute; inset: 0; cursor: grab; touch-action: none;
   background-image: radial-gradient(circle, var(--line) 1px, transparent 1px);
   background-size: 22px 22px; background-position: 6px 6px;
+  /* Холст таскают мышью, а не выделяют. Без запрета протяжка захватывала
+   * подписи узлов и время на стрелках: вместо карты ехало выделение текста. */
+  user-select: none; -webkit-user-select: none;
 }
 .map-canvas.dragging { cursor: grabbing; }
 .map-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }

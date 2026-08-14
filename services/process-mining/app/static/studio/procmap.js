@@ -484,6 +484,10 @@ window.ProcMap = (function () {
 
     canvas.addEventListener("pointerdown", function (event) {
       if (event.button !== 0) return;
+      // Гасим действие браузера по умолчанию: иначе нажатие на подпись узла
+      // начинает выделение текста, и дальше мышь тянет выделение, а не карту.
+      // Запрета в CSS мало - выделение может начаться от соседнего элемента.
+      event.preventDefault();
       drag = { x: event.clientX - view.x, y: event.clientY - view.y };
       canvas.classList.add("dragging");
       canvas.setPointerCapture(event.pointerId);
