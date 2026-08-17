@@ -1969,6 +1969,15 @@
         (state.authRequired ? '<button class="btn secondary" id="errKeys" type="button">Ввести ключ</button>' : "") +
         "</div></div></section>";
     }
+    /* Пустой список журналов и закрытый доступ выглядят одинаково - экран без
+     * данных, - но чинятся по-разному. Не разделив их, мы предлагали загрузить
+     * файл человеку, которому просто нужен пропуск. */
+    if (state.authRequired && !api.key) {
+      return '<section class="surface page"><div class="empty-state">' + icon("key") +
+        "<h3>Нужен доступ</h3><p>Сервис закрыт ключом. Откройте консоль ссылкой «Открыть консоль» из КМС — " +
+        "она принесёт временный пропуск, вводить ничего не придётся. Либо введите ключ вручную.</p>" +
+        '<button class="btn" id="emptyKeys" type="button">' + icon("key") + " Ввести ключ</button></div></section>";
+    }
     if (!state.logId && !state.loading) {
       return '<section class="surface page"><div class="empty-state">' + icon("inbox") +
         "<h3>Нет журналов событий</h3><p>Загрузите файл в разделе «Источники данных» — карта, показатели и кейсы соберутся сами.</p>" +
@@ -2032,8 +2041,10 @@
 
     var retry = $("retryLoad");
     if (retry) retry.addEventListener("click", function () { state.error = ""; boot(); });
-    var errKeys = $("errKeys");
-    if (errKeys) errKeys.addEventListener("click", openKeys);
+    ["errKeys", "emptyKeys"].forEach(function (id) {
+      var button = $(id);
+      if (button) button.addEventListener("click", openKeys);
+    });
 
     if (AFTER[id]) AFTER[id]();
   }
@@ -2158,7 +2169,10 @@
       .then(function (payload) {
         state.online = true;
         state.version = payload.version;
-        state.authRequired = Boolean(payload.checks && payload.checks.auth);
+        // Поле называется auth_enabled. Читая несуществующее checks.auth, мы
+        // всегда получали false: консоль рисовала зелёное "API подключен" там,
+        // где ключа нет, и молча показывала пустой экран вместо приглашения.
+        state.authRequired = Boolean(payload.checks && payload.checks.auth_enabled);
         if (state.authRequired && !api.key) {
           setStatus("auth", "Нужен ключ");
           return false;
@@ -2177,6 +2191,19 @@
     return checkHealth().then(function (ready) {
       if (!ready) { state.error = ""; render(); return; }
       return loadLogs().then(function () { return loadCore(); });
+    }).catch(function (error) {
+      /* Список журналов - первый запрос, требующий ключа. Без этой ветки его
+       * отказ никто не ловил, и человек видел "Нет журналов событий" там, где
+       * дело было в отсутствующем пропуске. */
+      if (error && (error.status === 401 || error.status === 403)) {
+        state.authRequired = true;
+        state.logs = [];
+        state.logId = "";
+        setStatus("auth", "Нужен ключ");
+      } else if (error) {
+        state.error = error.message;
+      }
+      render();
     });
   }
 
