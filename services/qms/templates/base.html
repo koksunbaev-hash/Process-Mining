@@ -15,11 +15,18 @@
   <link rel="stylesheet" href="{% static 'css/styles.css' %}">
   <link rel="stylesheet" href="{% static 'css/voice-widget.css' %}">
   <link rel="stylesheet" href="{% static 'css/kanban-demo.css' %}">
+  <link rel="stylesheet" href="{% static 'css/ui-i18n.css' %}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+  <script src="{% static 'js/ui-i18n.js' %}" defer></script>
   <script src="{% static 'js/app.js' %}" defer></script>
   <script src="{% static 'js/voice-widget.js' %}" defer></script>
 </head>
 <body>
+  {% if not user.is_authenticated %}
+  <select class="language-switcher language-switcher--guest" data-ui-language aria-label="Язык интерфейса">
+    <option value="ru">RU</option><option value="kk">KZ</option><option value="en">EN</option>
+  </select>
+  {% endif %}
   {% if user.is_authenticated %}
   <header class="mobile-header">
     <button class="menu-toggle" type="button" aria-label="Открыть меню" aria-expanded="false">☰</button>
@@ -88,7 +95,12 @@
         <h2>{% block page_title %}QMS{% endblock %}</h2>
         <p>{% block page_subtitle %}Управление качеством производства{% endblock %}</p>
       </div>
-      {% block top_action %}{% endblock %}
+      <div class="topbar-tools">
+        <select class="language-switcher" data-ui-language aria-label="Язык интерфейса">
+          <option value="ru">RU</option><option value="kk">KZ</option><option value="en">EN</option>
+        </select>
+        {% block top_action %}{% endblock %}
+      </div>
     </header>
     {% endif %}
     {% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}

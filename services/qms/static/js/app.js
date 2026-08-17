@@ -51,7 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (monthly && window.Chart) {
     new Chart(monthly, {
       type: "line",
-      data: { labels: ["Янв", "Фев", "Мар", "Апр", "Май", "Июн"], datasets: [{ label: "Дефекты", data: [1, 2, 3, 2, 4, 1], borderColor: "#2457d6", tension: .3 }] },
+      data: { labels: ["Янв", "Фев", "Мар", "Апр", "Май", "Июн"], datasets: [{ label: window.qmsTranslate ? window.qmsTranslate("Дефекты") : "Дефекты", data: [1, 2, 3, 2, 4, 1], borderColor: "#2457d6", tension: .3 }] },
     });
   }
   const severity = document.getElementById("severityChart");
