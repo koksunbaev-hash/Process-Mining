@@ -233,8 +233,14 @@ body.rail-collapsed .foot-actions { grid-template-columns: 1fr; }
 
 .bell { position: relative; width: 38px; border-radius: 50%; }
 .bell .badge {
-  position: absolute; top: 8px; right: 9px; width: 7px; height: 7px;
-  border-radius: 50%; background: var(--rose); border: 2px solid var(--bg);
+  /* С числом внутри: точка говорила лишь «что-то есть», а сколько именно -
+   * приходилось открывать, чтобы узнать. */
+  position: absolute; top: 2px; right: 1px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  display: grid; place-items: center;
+  border-radius: 9px; background: #d61f3d; color: #fff;
+  border: 2px solid var(--bg);
+  font-size: 10px; font-weight: 700; font-style: normal; line-height: 1;
 }
 
 /* ============================================================ полотно */

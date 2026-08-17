@@ -2127,6 +2127,52 @@
     });
   }
 
+  /* Что требует внимания.
+   *
+   * Колокольчик раньше просто перебрасывал в раздел «Анализ». Значок обещает
+   * список - и должен его показывать, а не уводить туда, где читателю снова
+   * искать глазами, из-за чего он загорелся.
+   */
+  function openFindings() {
+    var necks = ((state.necks && state.necks.bottlenecks) || []).slice(0, 4);
+    var rework = ((state.necks && state.necks.rework) || []).slice(0, 3);
+
+    if (!necks.length && !rework.length) {
+      openSheet("Что требует внимания", '<div class="note">' +
+        (hasData()
+          ? "Ни узких мест, ни возвратов не нашлось — процесс идёт ровно."
+          : "Данных пока нет. Загрузите журнал событий, и находки появятся здесь.") +
+        "</div>");
+      return;
+    }
+
+    var rows = necks.map(function (neck) {
+      var problem = neckProblem(neck);
+      return '<div class="task" data-go="analysis">' +
+        '<span class="task-icon">' + icon("alert") + "</span>" +
+        '<span class="task-text"><b>' + esc(neckLabel(neck)) + "</b>" +
+        "<span>" + esc(problem.text) + " · медиана " + dur(neck.median_duration_seconds) +
+        " · " + pct(neck.share_of_total_time, 0) + " всего времени</span></span>" +
+        '<span class="tag" data-tone="' + problem.tone + '">' + pct(neck.share_of_total_time, 0) + "</span></div>";
+    }).concat(rework.map(function (item) {
+      var share = state.cases.length ? item.cases_with_rework / state.cases.length : null;
+      return '<div class="task" data-go="analysis">' +
+        '<span class="task-icon">' + icon("repeat") + "</span>" +
+        '<span class="task-text"><b>' + esc(item.activity) + "</b>" +
+        "<span>повторяется в " + num(item.cases_with_rework) + " кейсах, всего " +
+        num(item.total_repetitions) + " повторов</span></span>" +
+        '<span class="tag" data-tone="amber">' + (share === null ? "—" : pct(share, 0)) + "</span></div>";
+    })).join("");
+
+    openSheet("Что требует внимания", '<div class="tasks" style="display:grid;gap:8px">' + rows + "</div>" +
+      '<button class="btn secondary" data-go="analysis" type="button">' + icon("analysis") + " Открыть анализ</button>");
+
+    document.querySelectorAll("#sheetBody [data-go]").forEach(function (element) {
+      element.style.cursor = "pointer";
+      element.addEventListener("click", function () { closeSheet(); go(element.dataset.go); });
+    });
+  }
+
   function openKeys() {
     openSheet("Доступ к API", (
       '<div class="field"><label for="sheetKey">API-ключ или временный пропуск</label>' +
@@ -2266,7 +2312,7 @@
     $("helpBtn").addEventListener("click", function () { go("integrations"); });
     $("newBtn").addEventListener("click", function () { go("sources"); });
     $("userCard").addEventListener("click", function () { go("settings"); });
-    $("bellBtn").addEventListener("click", function () { go("analysis"); });
+    $("bellBtn").addEventListener("click", openFindings);
 
     $("filePicker").addEventListener("change", function (event) {
       if (event.target.files && event.target.files[0]) uploadFile(event.target.files[0]);
@@ -2287,7 +2333,10 @@
       render();
       // Колокольчик отмечает узкие места - единственное, что стоит внимания.
       var necks = (state.necks && state.necks.bottlenecks) || [];
-      $("bellBadge").hidden = !necks.length;
+      var rework = (state.necks && state.necks.rework) || [];
+      var found = Math.min(necks.length, 4) + Math.min(rework.length, 3);
+      $("bellBadge").hidden = !found;
+      $("bellBadge").textContent = found || "";
     });
 
     if (!location.hash) location.hash = "#/overview";
