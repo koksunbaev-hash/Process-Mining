@@ -2134,43 +2134,54 @@
    * искать глазами, из-за чего он загорелся.
    */
   function openFindings() {
+    var box = $("findings");
+    var button = $("bellBtn");
+    if (!box) return;
+    if (!box.hidden) return closeFindings();
+
     var necks = ((state.necks && state.necks.bottlenecks) || []).slice(0, 4);
     var rework = ((state.necks && state.necks.rework) || []).slice(0, 3);
 
     if (!necks.length && !rework.length) {
-      openSheet("Что требует внимания", '<div class="note">' +
+      box.innerHTML = '<p class="empty">' +
         (hasData()
           ? "Ни узких мест, ни возвратов не нашлось — процесс идёт ровно."
-          : "Данных пока нет. Загрузите журнал событий, и находки появятся здесь.") +
-        "</div>");
-      return;
+          : "Данных пока нет. Загрузите журнал, и находки появятся здесь.") + "</p>";
+    } else {
+      box.innerHTML = necks.map(function (neck) {
+        var problem = neckProblem(neck);
+        return '<button class="finding" type="button"><b>' + esc(neckLabel(neck)) + "</b>" +
+          '<span class="tag" data-tone="' + problem.tone + '">' + pct(neck.share_of_total_time, 0) + "</span>" +
+          "<span>" + esc(problem.text) + " · " + dur(neck.median_duration_seconds) + "</span></button>";
+      }).concat(rework.map(function (item) {
+        return '<button class="finding" type="button"><b>' + esc(item.activity) + "</b>" +
+          '<span class="tag" data-tone="amber">×' + num(item.total_repetitions) + "</span>" +
+          "<span>повторы в " + num(item.cases_with_rework) + " кейсах</span></button>";
+      })).join("") +
+        '<button class="foot" type="button">Открыть анализ →</button>';
     }
 
-    var rows = necks.map(function (neck) {
-      var problem = neckProblem(neck);
-      return '<div class="task" data-go="analysis">' +
-        '<span class="task-icon">' + icon("alert") + "</span>" +
-        '<span class="task-text"><b>' + esc(neckLabel(neck)) + "</b>" +
-        "<span>" + esc(problem.text) + " · медиана " + dur(neck.median_duration_seconds) +
-        " · " + pct(neck.share_of_total_time, 0) + " всего времени</span></span>" +
-        '<span class="tag" data-tone="' + problem.tone + '">' + pct(neck.share_of_total_time, 0) + "</span></div>";
-    }).concat(rework.map(function (item) {
-      var share = state.cases.length ? item.cases_with_rework / state.cases.length : null;
-      return '<div class="task" data-go="analysis">' +
-        '<span class="task-icon">' + icon("repeat") + "</span>" +
-        '<span class="task-text"><b>' + esc(item.activity) + "</b>" +
-        "<span>повторяется в " + num(item.cases_with_rework) + " кейсах, всего " +
-        num(item.total_repetitions) + " повторов</span></span>" +
-        '<span class="tag" data-tone="amber">' + (share === null ? "—" : pct(share, 0)) + "</span></div>";
-    })).join("");
-
-    openSheet("Что требует внимания", '<div class="tasks" style="display:grid;gap:8px">' + rows + "</div>" +
-      '<button class="btn secondary" data-go="analysis" type="button">' + icon("analysis") + " Открыть анализ</button>");
-
-    document.querySelectorAll("#sheetBody [data-go]").forEach(function (element) {
-      element.style.cursor = "pointer";
-      element.addEventListener("click", function () { closeSheet(); go(element.dataset.go); });
+    box.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    box.querySelectorAll("button").forEach(function (element) {
+      element.addEventListener("click", function () { closeFindings(); go("analysis"); });
     });
+    // Закрытие по щелчку мимо. Слушатель ставится следующим кадром, иначе он
+    // поймает тот же щелчок, которым выноску открыли, и она мигнёт.
+    window.setTimeout(function () { document.addEventListener("click", outsideFindings); }, 0);
+  }
+
+  function closeFindings() {
+    var box = $("findings");
+    if (!box || box.hidden) return;
+    box.hidden = true;
+    $("bellBtn").setAttribute("aria-expanded", "false");
+    document.removeEventListener("click", outsideFindings);
+  }
+
+  function outsideFindings(event) {
+    var wrap = document.querySelector(".bell-wrap");
+    if (wrap && !wrap.contains(event.target)) closeFindings();
   }
 
   function openKeys() {
@@ -2303,7 +2314,11 @@
     $("railOpen").addEventListener("click", function () { document.body.classList.toggle("rail-open"); });
     $("scrim").addEventListener("click", closeSheet);
     $("sheetClose").addEventListener("click", closeSheet);
-    document.addEventListener("keydown", function (event) { if (event.key === "Escape") closeSheet(); });
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape") return;
+      closeSheet();
+      closeFindings();
+    });
 
     $("themeToggle").addEventListener("click", function () {
       setTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
@@ -2321,6 +2336,7 @@
 
     window.addEventListener("hashchange", function () {
       document.body.classList.remove("rail-open");
+      closeFindings();
       if (takePassFromLink()) {
         toast("Пропуск принят", "good");
         boot();

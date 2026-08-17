@@ -592,3 +592,37 @@ table.tbl .empty { color: var(--muted); text-align: center; padding: 26px 19px; 
 @media (max-width: 560px) {
   .kpis, .insights { grid-template-columns: minmax(0, 1fr); }
 }
+
+
+/* ------------------------------------------------------------- находки
+ * Выноска под колокольчиком. Шторка во весь экран для пяти строк - это
+ * несоразмерно: чтобы прочесть одну строку, приходилось накрывать всю работу.
+ */
+.bell-wrap { position: relative; }
+.findings {
+  position: absolute; z-index: 50; top: calc(100% + 8px); right: 0;
+  width: min(330px, calc(100vw - 28px));
+  padding: 6px; display: grid; gap: 2px;
+  border-radius: 14px; border: 1px solid var(--line);
+  background: var(--panel-2);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .5);
+}
+.findings[hidden] { display: none; }
+.finding {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center;
+  padding: 8px 10px; border-radius: 9px; cursor: pointer;
+  background: transparent; border: 0; text-align: left; width: 100%; color: inherit;
+}
+.finding:hover { background: var(--panel-3); }
+.finding b { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.finding span { grid-column: 1; font-size: 11px; color: var(--muted); }
+.finding .tag { grid-row: 1 / span 2; grid-column: 2; }
+.findings .empty {
+  padding: 14px 12px; font-size: 12.5px; color: var(--muted); line-height: 1.45;
+}
+.findings .foot {
+  margin-top: 2px; padding: 8px 10px; border-top: 1px solid var(--line-soft);
+  font-size: 12px; color: var(--violet-ink); cursor: pointer;
+  background: transparent; border-left: 0; border-right: 0; border-bottom: 0; width: 100%; text-align: left;
+}
+.findings .foot:hover { color: var(--ink); }
