@@ -2185,6 +2185,9 @@
     var found = findingList();
     var necks = found.necks;
     var rework = found.rework;
+    // Считаем ДО пометки прочитанными - иначе к моменту отрисовки новых уже нет.
+    var fresh = unreadFindings();
+    var isNew = function (key) { return fresh.indexOf(key) !== -1; };
 
     if (!necks.length && !rework.length) {
       box.innerHTML = '<p class="empty">' +
@@ -2192,16 +2195,36 @@
           ? "Ни узких мест, ни возвратов не нашлось — процесс идёт ровно."
           : "Данных пока нет. Загрузите журнал, и находки появятся здесь.") + "</p>";
     } else {
-      box.innerHTML = necks.map(function (neck) {
+      var rows = necks.map(function (neck) {
         var problem = neckProblem(neck);
-        return '<button class="finding" type="button"><b>' + esc(neckLabel(neck)) + "</b>" +
-          '<span class="tag" data-tone="' + problem.tone + '">' + pct(neck.share_of_total_time, 0) + "</span>" +
-          "<span>" + esc(problem.text) + " · " + dur(neck.median_duration_seconds) + "</span></button>";
+        return {
+          fresh: isNew("n:" + neckLabel(neck)),
+          html: '<b>' + esc(neckLabel(neck)) + "</b>" +
+            '<span class="tag" data-tone="' + problem.tone + '">' + pct(neck.share_of_total_time, 0) + "</span>" +
+            "<span>" + esc(problem.text) + " · " + dur(neck.median_duration_seconds) + "</span>",
+        };
       }).concat(rework.map(function (item) {
-        return '<button class="finding" type="button"><b>' + esc(item.activity) + "</b>" +
-          '<span class="tag" data-tone="amber">×' + num(item.total_repetitions) + "</span>" +
-          "<span>повторы в " + num(item.cases_with_rework) + " кейсах</span></button>";
-      })).join("") +
+        return {
+          fresh: isNew("r:" + item.activity),
+          html: '<b>' + esc(item.activity) + "</b>" +
+            '<span class="tag" data-tone="amber">×' + num(item.total_repetitions) + "</span>" +
+            "<span>повторы в " + num(item.cases_with_rework) + " кейсах</span>",
+        };
+      }));
+
+      var draw = function (list, cls) {
+        return list.map(function (row) {
+          return '<button class="finding' + cls + '" type="button">' + row.html + "</button>";
+        }).join("");
+      };
+      var freshRows = rows.filter(function (row) { return row.fresh; });
+      var oldRows = rows.filter(function (row) { return !row.fresh; });
+
+      // Новое сверху и с пометкой; прежнее - ниже, под своим заголовком. Так
+      // видно, что именно добавилось, не сверяясь с памятью.
+      box.innerHTML =
+        (freshRows.length ? '<div class="group">Новое</div>' + draw(freshRows, " is-new") : "") +
+        (oldRows.length ? (freshRows.length ? '<div class="group">Просмотрено ранее</div>' : "") + draw(oldRows, "") : "") +
         '<button class="foot" type="button">Открыть анализ →</button>';
     }
 
