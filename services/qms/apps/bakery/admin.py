@@ -59,9 +59,9 @@ class CustomerAdmin(admin.ModelAdmin):
 
 @admin.register(ProductionOrder)
 class ProductionOrderAdmin(admin.ModelAdmin):
-    list_display = ("order_number", "customer", "required_date", "priority", "status")
-    list_filter = ("priority", "status")
-    search_fields = ("order_number", "customer__name")
+    list_display = ("order_number", "status")
+    list_filter = ("status",)
+    search_fields = ("order_number",)
     inlines = [ProductionOrderItemInline]
 
 

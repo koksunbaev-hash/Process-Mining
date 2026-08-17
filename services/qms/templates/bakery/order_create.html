@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Новый заказ{% endblock %}
+{% block page_title %}Новый заказ{% endblock %}
+{% block page_subtitle %}Добавьте продукцию и количество{% endblock %}
+{% block content %}
+<section class="panel">
+  <form method="post" class="form-grid" id="order-create-form">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    {% if formset.non_form_errors %}<div class="alert error">{{ formset.non_form_errors }}</div>{% endif %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Продукт</th><th>Количество</th><th></th></tr></thead>
+        <tbody id="order-items">
+          {% for form in formset %}
+            <tr class="order-item-row">
+              <td>{{ form.product }}{{ form.product.errors }}</td>
+              <td>{{ form.quantity }}{{ form.quantity.errors }}</td>
+              <td><button type="button" class="secondary remove-order-row">Убрать</button></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <template id="empty-order-item">
+      <tr class="order-item-row">
+        <td>{{ formset.empty_form.product }}</td>
+        <td>{{ formset.empty_form.quantity }}</td>
+        <td><button type="button" class="secondary remove-order-row">Убрать</button></td>
+      </tr>
+    </template>
+    <div class="dialog-actions">
+      <button type="button" class="secondary" id="add-order-row">+ Добавить строку</button>
+      <button class="primary" type="submit">Создать заказ</button>
+    </div>
+  </form>
+</section>
+<script>
+(() => {
+  const rows = document.getElementById("order-items");
+  const total = document.getElementById("id_items-TOTAL_FORMS");
+  const template = document.getElementById("empty-order-item");
+  document.getElementById("add-order-row").addEventListener("click", () => {
+    const index = Number(total.value);
+    rows.insertAdjacentHTML("beforeend", template.innerHTML.replaceAll("__prefix__", index));
+    total.value = index + 1;
+  });
+  rows.addEventListener("click", event => {
+    if (!event.target.classList.contains("remove-order-row")) return;
+    const row = event.target.closest("tr");
+    row.querySelectorAll("select, input").forEach(field => field.value = "");
+    row.hidden = true;
+  });
+})();
+</script>
+{% endblock %}

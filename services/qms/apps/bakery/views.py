@@ -7,7 +7,9 @@ import time
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
 from django.db.models import Count, Q
+from django.db.models.deletion import ProtectedError
 from django.http import FileResponse, Http404, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -22,6 +24,7 @@ from .production_sheet import build_rows, shifts_for, totals
 from .forms import (
     CustomerForm,
     IngredientForm,
+    ProductionOrderCreateItemFormSet,
     ProductionOrderForm,
     ProductionOrderItemForm,
     ProductForm,
@@ -76,19 +79,14 @@ def filter_batches(request):
             batch_number_query(q)
             | Q(product__name__icontains=q)
             | Q(order_item__order__order_number__icontains=q)
-            | Q(order_item__order__customer__name__icontains=q)
         )
     for key, field in {
         "product": "product_id",
-        "customer": "order_item__order__customer_id",
         "status": "status",
-        "priority": "order_item__order__priority",
     }.items():
         value = request.GET.get(key)
         if value:
             qs = qs.filter(**{field: value})
-    if request.GET.get("date"):
-        qs = qs.filter(order_item__order__required_date__date=request.GET["date"])
     demo_filter = request.GET.get("demo", "work")
     if demo_filter == "demo":
         qs = qs.filter(is_demo=True)
@@ -128,9 +126,7 @@ def kanban_context(request):
         "board_url": f"{reverse('bakery:kanban')}?{query}" if query else reverse("bakery:kanban"),
         "columns": columns,
         "products": Product.objects.filter(is_active=True),
-        "customers": Customer.objects.filter(is_active=True),
         "statuses": ProductionBatch.Status.choices,
-        "priorities": ProductionOrder.Priority.choices,
         "can_manage_demo": can_manage_kanban_demo(request.user),
         "demo_filter": request.GET.get("demo", "work"),
     }
@@ -373,6 +369,19 @@ def order_detail(request, pk):
     if request.method == "POST" and can_manage_orders(request.user):
         action = request.POST.get("action")
 
+        if action == "delete":
+            order_number = order.order_number
+            try:
+                order.delete()
+            except ProtectedError:
+                messages.error(
+                    request,
+                    "Заказ нельзя удалить: по нему уже созданы производственные партии.",
+                )
+                return redirect("bakery:order_detail", pk=order.pk)
+            messages.success(request, f"Заказ №{order_number} удалён.")
+            return redirect("bakery:orders")
+
         if action == "confirm":
             confirm_order(order, user=request.user)
             messages.success(
@@ -451,23 +460,61 @@ def order_detail(request, pk):
 def order_form(request, pk=None):
     if not can_manage_orders(request.user):
         raise PermissionDenied
+
+    if pk is None:
+        formset = ProductionOrderCreateItemFormSet(request.POST or None, prefix="items")
+        if request.method == "POST" and formset.is_valid():
+            now = timezone.now()
+            local_now = timezone.localtime(now)
+            required_date = local_now.replace(hour=23, minute=59, second=59, microsecond=0)
+
+            with transaction.atomic():
+                customer, _ = Customer.objects.get_or_create(
+                    name="Производство",
+                    defaults={"notes": "Системная запись для заказов без клиента."},
+                )
+                order = ProductionOrder.objects.create(
+                    customer=customer,
+                    order_date=now,
+                    required_date=required_date,
+                    priority=ProductionOrder.Priority.NORMAL,
+                    status=ProductionOrder.Status.DRAFT,
+                    created_by=request.user,
+                )
+                for item_form in formset:
+                    if not item_form.cleaned_data.get("product"):
+                        continue
+                    line = item_form.save(commit=False)
+                    line.order = order
+                    line.unit = line.product.unit
+                    line.recipe = line.product.recipes.filter(is_active=True).first()
+                    line.save()
+
+                safe_record_process_event(
+                    case_id=f"ORDER-{order.order_number}",
+                    case_type="order",
+                    activity="Создание заказа",
+                    order=order,
+                    user=request.user,
+                    status=order.status,
+                )
+
+            messages.success(request, "Заказ с продуктами создан.")
+            return redirect("bakery:order_detail", pk=order.pk)
+
+        return render(
+            request,
+            "bakery/order_create.html",
+            {"formset": formset},
+        )
+
     item = get_object_or_404(ProductionOrder, pk=pk) if pk else None
     form = ProductionOrderForm(request.POST or None, instance=item)
     if form.is_valid():
         order = form.save(commit=False)
-        created = order.pk is None
         if not order.created_by_id:
             order.created_by = request.user
         order.save()
-        if created:
-            safe_record_process_event(
-                case_id=f"ORDER-{order.order_number}",
-                case_type="order",
-                activity="Создание заказа",
-                order=order,
-                user=request.user,
-                status=order.status,
-            )
         messages.success(request, "Заказ сохранён.")
         return redirect("bakery:order_detail", pk=order.pk)
     return render(request, "bakery/form.html", {"form": form, "title": "Заказ"})

@@ -1,4 +1,6 @@
 from django import forms
+from django.core.exceptions import ValidationError
+from django.forms import BaseFormSet, formset_factory
 
 from .models import (
     Customer,
@@ -50,11 +52,49 @@ class CustomerForm(forms.ModelForm):
 class ProductionOrderForm(forms.ModelForm):
     class Meta:
         model = ProductionOrder
-        fields = ["customer", "order_date", "required_date", "priority", "status", "notes"]
+        fields = ["status", "notes"]
+
+
+class ProductionOrderCreateItemForm(forms.ModelForm):
+    class Meta:
+        model = ProductionOrderItem
+        fields = ["product", "quantity"]
         widgets = {
-            "order_date": forms.DateTimeInput(attrs={"type": "datetime-local"}),
-            "required_date": forms.DateTimeInput(attrs={"type": "datetime-local"}),
+            "quantity": forms.NumberInput(attrs={"min": "0.001", "step": "0.001"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["product"].queryset = Product.objects.filter(is_active=True).order_by("name")
+        self.fields["product"].empty_label = "Выберите продукт"
+
+
+class BaseProductionOrderItemFormSet(BaseFormSet):
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+
+        products = []
+        for form in self.forms:
+            product = form.cleaned_data.get("product")
+            quantity = form.cleaned_data.get("quantity")
+            if product and quantity:
+                products.append(product.pk)
+
+        if not products:
+            raise ValidationError("Добавьте хотя бы один продукт и укажите количество.")
+        if len(products) != len(set(products)):
+            raise ValidationError("Один продукт можно добавить только один раз.")
+
+
+ProductionOrderCreateItemFormSet = formset_factory(
+    ProductionOrderCreateItemForm,
+    formset=BaseProductionOrderItemFormSet,
+    extra=5,
+    max_num=100,
+    validate_max=True,
+)
 
 
 class ProductionOrderItemForm(forms.ModelForm):

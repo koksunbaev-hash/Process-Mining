@@ -27,8 +27,6 @@ made every card look identical at a glance.
           <span class="kanban-card__id" title="{{ batch.batch_number }}">{{ batch.short_batch_number }}</span>
           {% if batch.has_blocking_problem %}
             <span class="kanban-card__flag is-critical" title="Есть блокирующая проблема">проблема</span>
-          {% elif batch.order_item.order.priority == 'urgent' or batch.order_item.order.priority == 'high' %}
-            <span class="kanban-card__flag is-urgent">{{ batch.order_item.order.get_priority_display }}</span>
           {% endif %}
         </header>
 
@@ -36,16 +34,11 @@ made every card look identical at a glance.
 
         <p class="kanban-card__meta">
           <strong>{{ batch.planned_quantity|floatformat:"-2" }} {{ batch.unit }}</strong>
-          <span>·</span>
-          <span>{{ batch.order_item.order.customer.name }}</span>
         </p>
 
         <footer class="kanban-card__foot">
           <span class="kanban-card__who" title="Ответственный">
             {{ batch.assigned_to.get_full_name|default:batch.assigned_to.username|default:"не назначен" }}
-          </span>
-          <span class="kanban-card__due" title="Срок: {{ batch.order_item.order.required_date|date:'d.m.Y H:i' }}">
-            {{ batch.order_item.order.required_date|date:"d.m H:i" }}
           </span>
         </footer>
 
