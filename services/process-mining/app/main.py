@@ -152,28 +152,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if STATIC_DIR.exists():
         application.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
 
-        # Отпечаток содержимого в адресах app.js/styles.css. Без него браузер
+        # Отпечаток содержимого в адресах скриптов и стилей. Без него браузер
         # держит старую консоль сколько захочет: правка выкачена, у клиента её
         # нет, и понять это можно только из отладчика. Считается один раз при
         # запуске - файлы внутри образа не меняются.
-        asset_tag = _asset_tag(
+        classic_tag = _asset_tag(
             STATIC_DIR, ("app.js", "styles.css", "i18n.js", "dashboard.js", "dashboard.css")
         )
 
-        @application.get("/", include_in_schema=False)
-        async def root() -> HTMLResponse:
-            return _stamped(STATIC_DIR, asset_tag)
-
+        # Studio - основная консоль, она и стоит на корне. Прежняя осталась на
+        # /classic: ссылки на неё могли разойтись по закладкам и переписке, и
+        # снимать её в тот же день, когда сменился корень, незачем.
         if STUDIO_DIR.exists():
             studio_tag = _asset_tag(STUDIO_DIR, ("studio.js", "studio.css", "procmap.js"))
 
-            # Две записи, а не редирект: адрес без косой черты человек наберёт
-            # руками, а с косой чертой его оставит браузер после перехода по
-            # разделам. Обе должны отдать одно и то же.
+            # Несколько записей, а не редирект: адрес без косой черты человек
+            # наберёт руками, с косой чертой его оставит браузер после перехода
+            # по разделам. Все должны отдать одно и то же.
+            @application.get("/", include_in_schema=False)
             @application.get("/studio", include_in_schema=False)
             @application.get("/studio/", include_in_schema=False)
-            async def studio() -> HTMLResponse:
+            async def root() -> HTMLResponse:
                 return _stamped(STUDIO_DIR, studio_tag)
+
+            @application.get("/classic", include_in_schema=False)
+            @application.get("/classic/", include_in_schema=False)
+            async def classic() -> HTMLResponse:
+                return _stamped(STATIC_DIR, classic_tag)
+
+        else:  # pragma: no cover - каталог Studio удалён
+
+            @application.get("/", include_in_schema=False)
+            async def root() -> HTMLResponse:
+                return _stamped(STATIC_DIR, classic_tag)
 
         @application.get("/{asset_name}", include_in_schema=False)
         async def root_asset(asset_name: str) -> FileResponse:

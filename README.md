@@ -20,8 +20,8 @@ anywhere else the script says so and stops.
 | | URL | What it is |
 |---|---|---|
 | QMS | <http://localhost:8000> | Django app: orders, production batches, stages, quality, stock |
-| Process mining | <http://localhost:8001> | FastAPI + pm4py: process maps, KPIs, variants, bottlenecks |
-| Studio | <http://localhost:8001/studio> | Вторая консоль над тем же API: кейсы, анализ, показатели, предсказания |
+| Process mining | <http://localhost:8001> | Консоль Studio: карта процесса, кейсы, анализ, показатели, предсказания |
+| Прежняя консоль | <http://localhost:8001/classic> | Первая версия консоли. Оставлена ради разошедшихся ссылок |
 | Push-to-talk | <http://localhost:8002> | Backend for the Android app: audio in, a command awaiting confirmation out |
 | API docs | <http://localhost:8001/docs> | OpenAPI for the analytics service |
 

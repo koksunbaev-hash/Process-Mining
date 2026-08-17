@@ -2182,17 +2182,26 @@
 
   // ------------------------------------------------------------- запуск
 
+  /* Пропуск приходит якорем "#t=...", а якорь у нас занят маршрутом. Читаем его
+   * и сразу стираем: иначе он осядет в закладке и в пересланной ссылке, а
+   * маршрутизатор споткнётся о неизвестный раздел.
+   *
+   * Вызывается и при запуске, и на смену якоря. Одного запуска мало: если
+   * консоль уже открыта, переход по ссылке из КМС на тот же адрес меняет только
+   * якорь, страница не перезагружается - и пропуск проходил мимо. */
+  function takePassFromLink() {
+    var token = new URLSearchParams(location.hash.replace(/^#\/?/, "")).get("t");
+    if (!token) return false;
+    store.set("pm-api-key", token);
+    api.key = token;
+    history.replaceState(null, "", location.pathname + location.search + "#/overview");
+    return true;
+  }
+
   function init() {
     setTheme(store.get("pm-studio-theme", "dark"));
 
-    /* Пропуск приходит якорем "#t=...", а якорь у нас занят маршрутом. Читаем
-     * его первым и сразу стираем: иначе он осядет в закладке и в пересланной
-     * ссылке, а маршрутизатор споткнётся о неизвестный раздел. */
-    var fromLink = new URLSearchParams(location.hash.replace(/^#\/?/, "")).get("t");
-    if (fromLink) {
-      store.set("pm-api-key", fromLink);
-      history.replaceState(null, "", location.pathname + location.search + "#/overview");
-    }
+    takePassFromLink();
     api.key = store.get("pm-api-key", "");
 
     var languageSelect = $("language");
@@ -2239,6 +2248,11 @@
 
     window.addEventListener("hashchange", function () {
       document.body.classList.remove("rail-open");
+      if (takePassFromLink()) {
+        toast("Пропуск принят", "good");
+        boot();
+        return; // boot перерисует сам, когда данные приедут
+      }
       render();
     });
 

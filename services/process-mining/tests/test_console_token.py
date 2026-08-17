@@ -108,8 +108,8 @@ class TestAssetFreshness:
 
     def test_index_stamps_a_version_on_its_assets(self, console_client):
         html = console_client.get("/").text
-        assert "app.js?v=" in html
-        assert "styles.css?v=" in html
+        assert "studio.js?v=" in html
+        assert "studio.css?v=" in html
 
     def test_the_stamp_follows_the_file_contents(self, console_settings, tmp_path):
         from app.main import _asset_tag
@@ -136,16 +136,26 @@ class TestAssetFreshness:
 
 
 class TestStudio:
-    """Вторая консоль отдаётся отдельным адресом и не мешает первой."""
+    """Studio стоит на корне; прежняя консоль осталась на /classic."""
 
-    def test_studio_is_served_with_stamped_assets(self, console_client):
-        for path in ("/studio", "/studio/"):
+    def test_studio_answers_on_the_root(self, console_client):
+        for path in ("/", "/studio", "/studio/"):
             response = console_client.get(path)
             assert response.status_code == 200, path
-            assert "studio.js?v=" in response.text
-            assert "studio.css?v=" in response.text
+            assert "studio.js?v=" in response.text, path
+            assert "studio.css?v=" in response.text, path
 
-    def test_the_first_console_is_untouched(self, console_client):
+    def test_the_old_console_stays_reachable(self, console_client):
+        """Ссылки на неё могли разойтись по закладкам - пусть открываются."""
+        for path in ("/classic", "/classic/"):
+            response = console_client.get(path)
+            assert response.status_code == 200, path
+            assert "app.js?v=" in response.text, path
+            assert "studio.js" not in response.text, path
+
+    def test_the_console_pass_link_lands_on_studio(self, console_client):
+        """КМС открывает консоль как '<база>/#t=<пропуск>'. Якорь до сервера не
+        доходит, поэтому проверяем главное: по корню теперь отдаётся Studio,
+        и разбирать пропуск будет её скрипт."""
         html = console_client.get("/").text
-        assert "app.js?v=" in html
-        assert "studio.js" not in html
+        assert "studio.js?v=" in html
