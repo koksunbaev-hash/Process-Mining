@@ -12,6 +12,11 @@ class BatchKanbanTests(TestCase):
     def setUp(self):
         self.user = create_user()
 
+    def test_board_loads_live_refresh_script(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("bakery:kanban"))
+        self.assertContains(response, "kanban-demo")
+
 
 def make_kanban_stage_test(code):
     def test(self):
