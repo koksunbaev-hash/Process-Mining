@@ -310,12 +310,24 @@ window.ProcMap = (function () {
     var durations = options.durations || {};
     var byTime = options.mode === "performance";
 
-    var maxWeight = 1;
-    model.edges.forEach(function (e) {
-      if (e.terminal) return;
-      var value = byTime ? (e.median || e.mean || 0) : e.freq;
-      if (value > maxWeight) maxWeight = value;
-    });
+    var values = model.edges
+      .filter(function (e) { return !e.terminal; })
+      .map(function (e) { return byTime ? (e.median || e.mean || 0) : e.freq; });
+    var maxWeight = Math.max(1, Math.max.apply(null, values.concat([1])));
+
+    /* Порог для «тяжёлого» перехода считается от типичного, а не от предела.
+     *
+     * Доля от максимума не годится: в ровном процессе все переходы проходят
+     * одинаковое число раз, любой из них равен максимуму - и красными
+     * становились все восемь стрелок разом. Красное должно означать «заметно
+     * тяжелее обычного», иначе оно не значит ничего.
+     *
+     * Полтора медианных значения: случайный разброс в него укладывается,
+     * настоящий затор - нет. Если выделять нечего, порог уходит выше предела,
+     * и красных стрелок просто не будет. */
+    var sorted = values.slice().sort(function (a, b) { return a - b; });
+    var median = sorted.length ? sorted[Math.floor((sorted.length - 1) / 2)] : 0;
+    var heavyFrom = median > 0 ? median * 1.5 : Infinity;
 
     var svg = el("svg", {
       width: model.width, height: model.height,
@@ -339,19 +351,21 @@ window.ProcMap = (function () {
       var a = model.byId[e.source], b = model.byId[e.target];
       if (!a || !b) return;
       var geometry = edgeGeometry(a, b);
-      var weight = e.terminal ? 0 : (byTime ? (e.median || e.mean || 0) : e.freq) / maxWeight;
+      var value = e.terminal ? 0 : (byTime ? (e.median || e.mean || 0) : e.freq);
+      var weight = e.terminal ? 0 : value / maxWeight;
+      var heavy = !e.terminal && !e.back && value >= heavyFrom;
 
       var cls = "map-edge";
       if (e.terminal) cls += " terminal";
       else if (e.back) cls += " loop";
-      else if (weight > 0.66) cls += " is-heavy";
+      else if (heavy) cls += " is-heavy";
 
       var path = el("path", {
         class: cls,
         d: geometry.d,
         "stroke-width": (e.terminal ? 1.2 : 1.1 + weight * 3.4).toFixed(2),
         "marker-end": e.terminal ? "url(#pm-arrowSoft)"
-          : (weight > 0.66 ? "url(#pm-arrowHot)" : "url(#pm-arrow)"),
+          : (heavy ? "url(#pm-arrowHot)" : "url(#pm-arrow)"),
       });
       path.appendChild(el("title", {}, a.label + " → " + b.label +
         ": " + shortCount(e.freq) + (e.terminal ? " кейсов" : " переходов") +
@@ -482,24 +496,40 @@ window.ProcMap = (function () {
       apply();
     }
 
+    /* Захват указателя откладывается до первого движения.
+     *
+     * Если забрать его сразу на pointerdown, то и pointerup достаётся холсту,
+     * а click браузер адресует общему предку обоих - то есть холсту. Узел под
+     * пальцем клика уже не получает, и карта перестаёт открываться по нажатию.
+     * Порог в четыре пикселя отделяет нажатие от протяжки: дрожание руки в
+     * него укладывается, осмысленное перетаскивание - нет. */
+    var press = null;
+
     canvas.addEventListener("pointerdown", function (event) {
       if (event.button !== 0) return;
-      // Гасим действие браузера по умолчанию: иначе нажатие на подпись узла
-      // начинает выделение текста, и дальше мышь тянет выделение, а не карту.
-      // Запрета в CSS мало - выделение может начаться от соседнего элемента.
-      event.preventDefault();
-      drag = { x: event.clientX - view.x, y: event.clientY - view.y };
-      canvas.classList.add("dragging");
-      canvas.setPointerCapture(event.pointerId);
+      press = { x: event.clientX, y: event.clientY, vx: view.x, vy: view.y, id: event.pointerId };
     });
     canvas.addEventListener("pointermove", function (event) {
-      if (!drag) return;
-      view.x = event.clientX - drag.x;
-      view.y = event.clientY - drag.y;
+      if (!press) return;
+      if (!drag) {
+        if (Math.abs(event.clientX - press.x) + Math.abs(event.clientY - press.y) < 4) return;
+        drag = true;
+        canvas.classList.add("dragging");
+        canvas.setPointerCapture(press.id);
+        // Здесь, а не на нажатии: гасим выделение текста ровно тогда, когда
+        // началась протяжка, и не мешаем обычному клику.
+        event.preventDefault();
+      }
+      view.x = press.vx + (event.clientX - press.x);
+      view.y = press.vy + (event.clientY - press.y);
       apply();
     });
     ["pointerup", "pointercancel"].forEach(function (name) {
-      canvas.addEventListener(name, function () { drag = null; canvas.classList.remove("dragging"); });
+      canvas.addEventListener(name, function () {
+        press = null;
+        drag = false;
+        canvas.classList.remove("dragging");
+      });
     });
     canvas.addEventListener("wheel", function (event) {
       event.preventDefault();
