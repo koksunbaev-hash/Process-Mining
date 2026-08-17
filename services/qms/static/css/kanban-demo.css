@@ -76,12 +76,21 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
-  animation: kanban-in .32s ease both;
-  animation-delay: calc(var(--card-index, 0) * 35ms);
+  transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+}
+
+/* Появление проигрывается один раз, при первой загрузке. Каскад по трёмстам
+ * карточкам с шагом 35 мс - это десять секунд, в течение которых доска
+ * выглядит зависшей; при обновлении он не нужен вовсе. */
+.kanban-boot .kanban-card {
+  animation: kanban-in .28s ease both;
+  animation-delay: calc(min(var(--card-index, 0), 12) * 28ms);
 }
 .kanban-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15,35,75,.13); }
-.kanban-card.dragging { opacity: .55; transform: scale(.97) rotate(-1deg); cursor: grabbing; }
+.kanban-card.dragging { opacity: .5; transform: scale(.98); cursor: grabbing; }
+/* Пока идёт запрос, карточка уже стоит на новом месте - показываем это
+ * приглушением, а не спиннером: движение уже произошло, ждём лишь ответа. */
+.kanban-card.is-moving { opacity: .6; }
 
 @keyframes kanban-in {
   from { opacity: 0; transform: translateY(8px); }
@@ -139,7 +148,7 @@
 }
 
 /* a card that just arrived gets one flash, so a move is visible across the room */
-.kanban-card.just-moved { animation: kanban-flash 1.1s ease-out; }
+.kanban-card.just-moved { animation: kanban-flash .9s ease-out; }
 @keyframes kanban-flash {
   0%   { box-shadow: 0 0 0 0 rgba(47,158,85,.55); border-color: #2f9e55; }
   100% { box-shadow: 0 0 0 16px rgba(47,158,85,0); }

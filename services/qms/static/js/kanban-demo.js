@@ -25,6 +25,13 @@
     boardErrorTimer = window.setTimeout(() => box.remove(), 6000);
   }
 
+  function recount() {
+    document.querySelectorAll(".kanban-column").forEach((column) => {
+      const badge = column.querySelector("[data-kanban-count]");
+      if (badge) badge.textContent = column.querySelectorAll(".kanban-card").length;
+    });
+  }
+
   function bindDragAndDrop() {
     document.querySelectorAll(".kanban-card").forEach((card) => {
       card.addEventListener("dragstart", (event) => {
@@ -45,23 +52,54 @@
         event.preventDefault();
         column.classList.remove("drop-target");
         const batch = event.dataTransfer.getData("text/plain");
+        const card = document.querySelector(`.kanban-card[data-batch="${batch}"]`);
+        const lane = column.querySelector(".kanban-cards");
+        if (!card || !lane || card.closest(".kanban-column") === column) return;
+
+        // Карточка переезжает сразу, не дожидаясь сервера.
+        //
+        // Раньше она оставалась на месте, пока шёл запрос на перенос, потом
+        // второй - за всей доской, потом доска целиком перерисовывалась. На
+        // трёхстах карточках это секунды, и всё это время экран не отвечал на
+        // то, что человек уже сделал рукой. Ошибку мы всё равно показываем и
+        // возвращаем карточку назад, а отказ - редкий случай, ради которого
+        // незачем тормозить обычный.
+        const home = card.parentElement;
+        const next = card.nextElementSibling;
+        card.classList.add("is-moving");
+        lane.appendChild(card);
+        recount();
+
         const form = new FormData();
         form.append("stage", column.dataset.stage);
         form.append("comment", "Перенос на Kanban-доске");
-        const response = await fetch(`/bakery/batches/${batch}/move/`, {
-          method: "POST",
-          headers: { "X-CSRFToken": csrfToken(), "X-Requested-With": "XMLHttpRequest" },
-          body: form,
-          credentials: "same-origin",
-        });
-        // A refused move still answers 200, so response.ok only says the
-        // request arrived. Trusting it made a rejected transition look like a
-        // card that simply snapped back for no reason.
-        const result = await response.json().catch(() => ({}));
-        if (response.ok && result.ok) {
-          lastMovedBatch = batch;
-          refreshBoard();
+        let result = {};
+        let ok = false;
+        try {
+          const response = await fetch(`/bakery/batches/${batch}/move/`, {
+            method: "POST",
+            headers: { "X-CSRFToken": csrfToken(), "X-Requested-With": "XMLHttpRequest" },
+            body: form,
+            credentials: "same-origin",
+          });
+          // Отказ тоже отвечает 200, поэтому response.ok говорит лишь о том,
+          // что запрос дошёл. Доверие к нему превращало отклонённый перенос в
+          // карточку, которая отпрыгнула назад без объяснений.
+          result = await response.json().catch(() => ({}));
+          ok = response.ok && result.ok;
+        } catch (error) {
+          result = { error: "Сеть недоступна. Перенос не сохранён." };
+        }
+
+        card.classList.remove("is-moving");
+        if (ok) {
+          card.classList.add("just-moved");
+          window.setTimeout(() => card.classList.remove("just-moved"), 1200);
         } else {
+          // Возвращаем ровно туда, откуда взяли, а не в конец колонки.
+          if (next) home.insertBefore(card, next);
+          else home.appendChild(card);
+          recount();
           showBoardError(result.error || "Не удалось перенести партию.");
         }
       });
@@ -298,6 +336,11 @@
       });
     });
   }
+
+  // Анимация появления - только для первой отрисовки. Снимаем метку, как
+  // только она отыграла, чтобы обновления доски проходили без каскада.
+  document.body.classList.add("kanban-boot");
+  window.setTimeout(() => document.body.classList.remove("kanban-boot"), 900);
 
   bindDragAndDrop();
   bindDemoPanel();
