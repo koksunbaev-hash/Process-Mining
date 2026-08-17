@@ -25,6 +25,25 @@
     boardErrorTimer = window.setTimeout(() => box.remove(), 6000);
   }
 
+  /* Куда положить карточку внутри колонки.
+   *
+   * Порядок задаёт Meta.ordering модели: planned_finish, затем id. Класть в
+   * конец было проще, но тогда карточка занимала чужое место и перескакивала
+   * при первом же обновлении доски - перенос выглядел так, будто он не
+   * сохранился, а потом сам себя переиграл.
+   */
+  function insertInOrder(lane, card) {
+    const key = (el) => [el.dataset.finish || "99999999999999", Number(el.dataset.batch) || 0];
+    const mine = key(card);
+    const before = [...lane.querySelectorAll(".kanban-card")].find((other) => {
+      if (other === card) return false;
+      const theirs = key(other);
+      return theirs[0] > mine[0] || (theirs[0] === mine[0] && theirs[1] > mine[1]);
+    });
+    if (before) lane.insertBefore(card, before);
+    else lane.appendChild(card);
+  }
+
   function recount() {
     document.querySelectorAll(".kanban-column").forEach((column) => {
       const badge = column.querySelector("[data-kanban-count]");
@@ -67,7 +86,7 @@
         const home = card.parentElement;
         const next = card.nextElementSibling;
         card.classList.add("is-moving");
-        lane.appendChild(card);
+        insertInOrder(lane, card);
         recount();
 
         const form = new FormData();

@@ -21,6 +21,13 @@ made every card look identical at a glance.
                data-batch="{{ batch.pk }}"
                data-batch-number="{{ batch.short_batch_number }}"
                data-full-batch-number="{{ batch.batch_number }}"
+               {% comment %}
+               Порядок карточек в колонке задаёт Meta.ordering модели:
+               planned_finish, затем id. Без этих двух значений скрипт кладёт
+               перенесённую карточку в конец, и она прыгает на своё место при
+               следующем обновлении доски.
+               {% endcomment %}
+               data-finish="{{ batch.planned_finish|date:'YmdHis'|default:'' }}"
                style="--card-index: {{ forloop.counter0 }}">
 
         <header class="kanban-card__top">
