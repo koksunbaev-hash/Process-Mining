@@ -2047,6 +2047,7 @@
     });
 
     if (AFTER[id]) AFTER[id]();
+    refreshBell();
   }
 
   function resetPaging() {
@@ -2133,14 +2134,57 @@
    * список - и должен его показывать, а не уводить туда, где читателю снова
    * искать глазами, из-за чего он загорелся.
    */
+  /* Что считать непрочитанным.
+   *
+   * Гасить значок навсегда после первого открытия нельзя: узкие места
+   * меняются вместе с данными, и новое затерялось бы в тишине. Поэтому
+   * помним не «открывал ли», а какие именно находки человек видел, - и
+   * считаем непрочитанным то, чего в этом списке нет.
+   *
+   * Ключ привязан к журналу: в другом журнале шаг с тем же названием - другая
+   * находка, и показать её надо заново.
+   */
+  function findingList() {
+    var necks = ((state.necks && state.necks.bottlenecks) || []).slice(0, 4);
+    var rework = ((state.necks && state.necks.rework) || []).slice(0, 3);
+    return { necks: necks, rework: rework };
+  }
+
+  function findingKeys() {
+    var found = findingList();
+    return found.necks.map(function (neck) { return "n:" + neckLabel(neck); })
+      .concat(found.rework.map(function (item) { return "r:" + item.activity; }));
+  }
+
+  function seenKey() { return "pm-studio-seen:" + (state.logId || "-"); }
+
+  function unreadFindings() {
+    var seen = store.json(seenKey(), []);
+    return findingKeys().filter(function (key) { return seen.indexOf(key) === -1; });
+  }
+
+  function markFindingsSeen() {
+    store.set(seenKey(), JSON.stringify(findingKeys()));
+    refreshBell();
+  }
+
+  function refreshBell() {
+    var badge = $("bellBadge");
+    if (!badge) return;
+    var unread = unreadFindings().length;
+    badge.hidden = !unread;
+    badge.textContent = unread || "";
+  }
+
   function openFindings() {
     var box = $("findings");
     var button = $("bellBtn");
     if (!box) return;
     if (!box.hidden) return closeFindings();
 
-    var necks = ((state.necks && state.necks.bottlenecks) || []).slice(0, 4);
-    var rework = ((state.necks && state.necks.rework) || []).slice(0, 3);
+    var found = findingList();
+    var necks = found.necks;
+    var rework = found.rework;
 
     if (!necks.length && !rework.length) {
       box.innerHTML = '<p class="empty">' +
@@ -2163,6 +2207,7 @@
 
     box.hidden = false;
     button.setAttribute("aria-expanded", "true");
+    markFindingsSeen();
     box.querySelectorAll("button").forEach(function (element) {
       element.addEventListener("click", function () { closeFindings(); go("analysis"); });
     });
@@ -2348,11 +2393,7 @@
     onChange(function () {
       render();
       // Колокольчик отмечает узкие места - единственное, что стоит внимания.
-      var necks = (state.necks && state.necks.bottlenecks) || [];
-      var rework = (state.necks && state.necks.rework) || [];
-      var found = Math.min(necks.length, 4) + Math.min(rework.length, 3);
-      $("bellBadge").hidden = !found;
-      $("bellBadge").textContent = found || "";
+      refreshBell();
     });
 
     if (!location.hash) location.hash = "#/overview";
