@@ -73,6 +73,7 @@
 
 .kanban-card {
   position: relative;
+  touch-action: manipulation;   /* палец тащит карточку, а не прокручивает лист */
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -87,7 +88,26 @@
   animation-delay: calc(min(var(--card-index, 0), 12) * 28ms);
 }
 .kanban-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15,35,75,.13); }
-.kanban-card.dragging { opacity: .5; transform: scale(.98); cursor: grabbing; }
+/* Карточка, которую тащат, вынута из потока и едет за курсором. fixed, а не
+ * absolute: колонки прокручиваются, и при прокрутке она уезжала бы вместе с
+ * содержимым, отставая от пальца. */
+.kanban-card.dragging {
+  position: fixed; z-index: 90; margin: 0; pointer-events: none;
+  cursor: grabbing; transform: rotate(1deg);
+  box-shadow: 0 18px 40px rgba(16, 24, 40, .28);
+  transition: none;
+}
+/* Пустышка на месте взятой карточки. Без неё колонка схлопывается под
+ * курсором, соседние карточки подпрыгивают, и вся доска дёргается. */
+.kanban-ghost {
+  border-radius: 8px;
+  border: 1px dashed #9db4dd;
+  background: rgba(122, 167, 240, .08);
+  margin-bottom: 10px;
+}
+/* Пока идёт перенос, выделение текста только мешает. */
+body.kanban-dragging { user-select: none; -webkit-user-select: none; }
+body.kanban-dragging .kanban-card { cursor: grabbing; }
 /* Пока идёт запрос, карточка уже стоит на новом месте - показываем это
  * приглушением, а не спиннером: движение уже произошло, ждём лишь ответа. */
 .kanban-card.is-moving { opacity: .6; }

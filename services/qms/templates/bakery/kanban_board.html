@@ -17,7 +17,11 @@ made every card look identical at a glance.
     <div class="kanban-cards">
     {% for batch in column.batches %}
       <article class="kanban-card{% if batch.is_demo %} kanban-card-demo{% endif %}{% if batch.has_blocking_problem %} is-blocked{% endif %}"
-               draggable="true"
+               {% comment %}
+               draggable убран намеренно: перенос сделан на указателях, а
+               встроенный механизм браузера перехватывал бы нажатие и рисовал
+               поверх свой снимок карточки.
+               {% endcomment %}
                data-batch="{{ batch.pk }}"
                data-batch-number="{{ batch.short_batch_number }}"
                data-full-batch-number="{{ batch.batch_number }}"

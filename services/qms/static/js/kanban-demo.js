@@ -8,6 +8,9 @@
   // can flash once - on a wall screen a silent swap is easy to miss.
   let lastMovedBatch = null;
 
+  // Сколько переносов сейчас ждут ответа сервера.
+  let movesInFlight = 0;
+
   // Sits outside [data-kanban-board-shell] so a board refresh does not wipe it.
   let boardErrorTimer = null;
   function showBoardError(text) {
@@ -51,77 +54,23 @@
     });
   }
 
+  /* Перетаскивание карточек.
+   *
+   * Собственное, на указателях, а не встроенное в браузер drag-and-drop.
+   * У встроенного три беды, и все три видны на этой доске:
+   *
+   *   - оно рисует свой полупрозрачный снимок карточки и двигает его рывками,
+   *     кадр в кадр с dragover, а не с курсором;
+   *   - цель броска - тот элемент, над которым сработал dragover, и попасть в
+   *     нужную колонку на узких колонках и при боковой прокрутке трудно;
+   *   - на сенсорном экране оно не работает вовсе, а доска висит в цеху.
+   *
+   * Здесь карточка едет за пальцем сама, колонка под курсором определяется по
+   * координатам, и то же самое работает мышью, пером и пальцем.
+   */
   function bindDragAndDrop() {
     document.querySelectorAll(".kanban-card").forEach((card) => {
-      card.addEventListener("dragstart", (event) => {
-        event.dataTransfer.setData("text/plain", card.dataset.batch);
-        card.classList.add("dragging");
-      });
-      card.addEventListener("dragend", () => card.classList.remove("dragging"));
-    });
-    document.querySelectorAll(".kanban-column").forEach((column) => {
-      column.addEventListener("dragover", (event) => {
-        event.preventDefault();
-        column.classList.add("drop-target");
-      });
-      column.addEventListener("dragleave", (event) => {
-        if (!column.contains(event.relatedTarget)) column.classList.remove("drop-target");
-      });
-      column.addEventListener("drop", async (event) => {
-        event.preventDefault();
-        column.classList.remove("drop-target");
-        const batch = event.dataTransfer.getData("text/plain");
-        const card = document.querySelector(`.kanban-card[data-batch="${batch}"]`);
-        const lane = column.querySelector(".kanban-cards");
-        if (!card || !lane || card.closest(".kanban-column") === column) return;
-
-        // Карточка переезжает сразу, не дожидаясь сервера.
-        //
-        // Раньше она оставалась на месте, пока шёл запрос на перенос, потом
-        // второй - за всей доской, потом доска целиком перерисовывалась. На
-        // трёхстах карточках это секунды, и всё это время экран не отвечал на
-        // то, что человек уже сделал рукой. Ошибку мы всё равно показываем и
-        // возвращаем карточку назад, а отказ - редкий случай, ради которого
-        // незачем тормозить обычный.
-        const home = card.parentElement;
-        const next = card.nextElementSibling;
-        card.classList.add("is-moving");
-        insertInOrder(lane, card);
-        recount();
-
-        const form = new FormData();
-        form.append("stage", column.dataset.stage);
-        form.append("comment", "Перенос на Kanban-доске");
-        let result = {};
-        let ok = false;
-        try {
-          const response = await fetch(`/bakery/batches/${batch}/move/`, {
-            method: "POST",
-            headers: { "X-CSRFToken": csrfToken(), "X-Requested-With": "XMLHttpRequest" },
-            body: form,
-            credentials: "same-origin",
-          });
-          // Отказ тоже отвечает 200, поэтому response.ok говорит лишь о том,
-          // что запрос дошёл. Доверие к нему превращало отклонённый перенос в
-          // карточку, которая отпрыгнула назад без объяснений.
-          result = await response.json().catch(() => ({}));
-          ok = response.ok && result.ok;
-        } catch (error) {
-          result = { error: "Сеть недоступна. Перенос не сохранён." };
-        }
-
-        card.classList.remove("is-moving");
-        if (ok) {
-          card.classList.add("just-moved");
-          window.setTimeout(() => card.classList.remove("just-moved"), 1200);
-        } else {
-          // Возвращаем ровно туда, откуда взяли, а не в конец колонки.
-          if (next) home.insertBefore(card, next);
-          else home.appendChild(card);
-          recount();
-          showBoardError(result.error || "Не удалось перенести партию.");
-        }
-      });
+      card.addEventListener("pointerdown", (event) => startDrag(event, card));
     });
 
     if (lastMovedBatch) {
@@ -130,6 +79,166 @@
       lastMovedBatch = null;
     }
   }
+
+  let drag = null;
+
+  function startDrag(event, card) {
+    if (event.button !== 0 && event.pointerType === "mouse") return;
+    // Кнопки внутри карточки должны нажиматься, а не таскать её.
+    if (event.target.closest("a, button, input, select, textarea")) return;
+
+    drag = {
+      card,
+      id: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      home: card.parentElement,
+      next: card.nextElementSibling,
+      active: false,
+    };
+    card.setPointerCapture(event.pointerId);
+  }
+
+  function moveDrag(event) {
+    if (!drag || event.pointerId !== drag.id) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+
+    if (!drag.active) {
+      // Четыре пикселя отделяют нажатие от переноса: дрожание руки в них
+      // укладывается, а осмысленное движение - нет. Иначе любой промах по
+      // кнопке утаскивал бы карточку.
+      if (Math.abs(dx) + Math.abs(dy) < 4) return;
+      drag.active = true;
+
+      const box = drag.card.getBoundingClientRect();
+      drag.offsetX = drag.startX - box.left;
+      drag.offsetY = drag.startY - box.top;
+      drag.width = box.width;
+
+      // Место карточки занимает пустышка тех же размеров: без неё колонка
+      // схлопывается под курсором и вся доска дёргается.
+      drag.ghost = document.createElement("div");
+      drag.ghost.className = "kanban-ghost";
+      drag.ghost.style.height = box.height + "px";
+      drag.home.insertBefore(drag.ghost, drag.card);
+
+      drag.card.classList.add("dragging");
+      drag.card.style.width = box.width + "px";
+      document.body.classList.add("kanban-dragging");
+    }
+
+    event.preventDefault();
+    drag.card.style.left = event.clientX - drag.offsetX + "px";
+    drag.card.style.top = event.clientY - drag.offsetY + "px";
+
+    const column = columnAt(event.clientX, event.clientY);
+    document.querySelectorAll(".kanban-column.drop-target").forEach((c) => {
+      if (c !== column) c.classList.remove("drop-target");
+    });
+    if (column && column !== drag.home.closest(".kanban-column")) column.classList.add("drop-target");
+    drag.target = column;
+  }
+
+  /* Колонка под курсором.
+   *
+   * Через elementFromPoint, а не через события над элементами: карточка едет
+   * под курсором и сама перехватывала бы их. На время замера она исключается
+   * из попадания.
+   */
+  function columnAt(x, y) {
+    const card = drag && drag.card;
+    const saved = card ? card.style.pointerEvents : null;
+    if (card) card.style.pointerEvents = "none";
+    const element = document.elementFromPoint(x, y);
+    if (card) card.style.pointerEvents = saved;
+    return element ? element.closest(".kanban-column") : null;
+  }
+
+  async function endDrag(event) {
+    if (!drag || event.pointerId !== drag.id) return;
+    const { card, home, next, target, active } = drag;
+    drag = null;
+
+    if (!active) return;   // просто нажатие, переноса не было
+
+    card.classList.remove("dragging");
+    card.style.left = card.style.top = card.style.width = "";
+    document.body.classList.remove("kanban-dragging");
+    document.querySelectorAll(".kanban-column.drop-target").forEach((c) => c.classList.remove("drop-target"));
+
+    const ghost = document.querySelector(".kanban-ghost");
+    const column = target;
+    const lane = column && column.querySelector(".kanban-cards");
+    const sameColumn = !column || column === home.closest(".kanban-column");
+
+    if (ghost) ghost.remove();
+    if (sameColumn || !lane) {
+      // Вернуть ровно туда, откуда взяли, а не в конец колонки.
+      if (next) home.insertBefore(card, next);
+      else home.appendChild(card);
+      return;
+    }
+
+    card.classList.add("is-moving");
+    insertInOrder(lane, card);
+    recount();
+
+    const form = new FormData();
+    form.append("stage", column.dataset.stage);
+    form.append("comment", "Перенос на Kanban-доске");
+    let result = {};
+    let ok = false;
+    movesInFlight += 1;
+    try {
+      const response = await fetch(`/bakery/batches/${card.dataset.batch}/move/`, {
+        method: "POST",
+        headers: { "X-CSRFToken": csrfToken(), "X-Requested-With": "XMLHttpRequest" },
+        body: form,
+        credentials: "same-origin",
+      });
+      // Отказ тоже отвечает 200, поэтому response.ok говорит лишь о том, что
+      // запрос дошёл. Доверие к нему превращало отклонённый перенос в карточку,
+      // которая отпрыгнула назад без объяснений.
+      result = await response.json().catch(() => ({}));
+      ok = response.ok && result.ok;
+    } catch (error) {
+      result = { error: "Сеть недоступна. Перенос не сохранён." };
+    }
+    movesInFlight -= 1;
+    window.dispatchEvent(new CustomEvent("kanban:move-settled"));
+
+    card.classList.remove("is-moving");
+    if (ok) {
+      card.classList.add("just-moved");
+      window.setTimeout(() => card.classList.remove("just-moved"), 1200);
+    } else {
+      if (next) home.insertBefore(card, next);
+      else home.appendChild(card);
+      recount();
+      showBoardError(result.error || "Не удалось перенести партию.");
+    }
+  }
+
+  // Слушатели на документе, а не на карточках: карточка может уехать из-под
+  // курсора, а захват указателя всё равно шлёт события ей - через всплытие они
+  // доходят сюда, и перенос не обрывается на полпути.
+  document.addEventListener("pointermove", moveDrag);
+  document.addEventListener("pointerup", endDrag);
+  document.addEventListener("pointercancel", endDrag);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !drag || !drag.active) return;
+    const { card, home, next } = drag;
+    drag = null;
+    card.classList.remove("dragging");
+    card.style.left = card.style.top = card.style.width = "";
+    document.body.classList.remove("kanban-dragging");
+    document.querySelectorAll(".kanban-column.drop-target").forEach((c) => c.classList.remove("drop-target"));
+    const ghost = document.querySelector(".kanban-ghost");
+    if (ghost) ghost.remove();
+    if (next) home.insertBefore(card, next);
+    else home.appendChild(card);
+  });
 
   // Exposed so the voice widget can redraw the board after a command runs:
   // the widget floats above the page and otherwise leaves stale markup behind,
@@ -322,6 +431,12 @@
         return;
       }
       if (document.querySelector(".kanban-card.dragging")) return;
+      if (movesInFlight) {
+        // Не теряем повод обновиться: как только перенос подтвердится,
+        // доска догонит сама.
+        pendingRefresh = true;
+        return;
+      }
 
       refreshing = true;
       try {
@@ -353,6 +468,14 @@
       if (!document.hidden && pendingRefresh) refreshBoard().then(() => {
         pendingRefresh = false;
       });
+    });
+
+    // Доска, отложенная из-за переноса, догоняет сама - иначе она осталась бы
+    // с нашей оптимистичной раскладкой до следующего чужого изменения.
+    window.addEventListener("kanban:move-settled", () => {
+      if (!pendingRefresh || movesInFlight) return;
+      pendingRefresh = false;
+      refreshBoard();
     });
   }
 
