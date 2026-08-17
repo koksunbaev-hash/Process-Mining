@@ -310,6 +310,31 @@ def create_voice_command(voice):
     if existing and existing.status in {VoiceCommand.Status.EXECUTED, VoiceCommand.Status.REJECTED}:
         return existing
     parsed = parse_voice_command(voice.transcript, voice.confidence)
+
+    # На заводе говорят подряд, не отпуская кнопку: «339 на формовку, 348 на
+    # формовку». Разбор брал первый номер с последним этапом - выполнял то,
+    # чего не говорили, и терял вторую партию молча. Теперь одна команда несёт
+    # все переходы: сказано одним нажатием - подтверждается одним нажатием.
+    #
+    # Не отдельные записи на каждый переход: связь с сообщением один-к-одному,
+    # и разводить её ради этого значит менять схему живой базы.
+    prepared = speech_kk.prepare(voice.transcript or "")
+    chunks = split_commands(prepared)
+    parsed["moves"] = []
+    if len(chunks) > 1:
+        for chunk in chunks:
+            piece = parse_voice_command(chunk, voice.confidence)
+            found = resolve_batch(piece)
+            parsed["moves"].append({
+                "spoken": piece.get("batch_number", ""),
+                "batch_number": found.batch_number if found else "",
+                "to_stage": piece.get("to_stage", ""),
+                "resolved": bool(found),
+            })
+        # Ведущей остаётся первая: на ней держатся все проверки ниже.
+        parsed.update({k: v for k, v in parse_voice_command(chunks[0], voice.confidence).items()
+                       if k != "moves"})
+
     batch = resolve_batch(parsed)
     if batch:
         parsed["spoken_batch_number"] = parsed.get("batch_number", "")
@@ -391,7 +416,53 @@ def resolve_target_stage(normalized):
         if position > rightmost:
             rightmost = position
             found = code
-    return found
+    if found:
+        return found
+
+    # Ничего не совпало буквально. Распознаватель пишет то, что услышал, и
+    # «расстойка» приходит как «ростойкова» - дописывать каждый такой вариант
+    # в таблицу бесполезно, список не кончится. Последняя попытка - ближайшее
+    # по написанию, с порогом, за которым уже начинаются ложные срабатывания.
+    return speech_kk.stage_by_sound(normalized)
+
+
+def split_commands(text):
+    """Одна запись - сколько угодно команд.
+
+    На заводе говорят подряд, не отпуская кнопку: «339 на формовку, 348 на
+    формовку». Разбор рассчитан на одну команду и брал первый номер с последним
+    этапом - то есть выполнял то, чего не говорили, и терял вторую партию
+    молча.
+
+    Режем по номерам: каждый номер начинает свою команду и забирает всё до
+    следующего. Номер - это то, что уже приведено к цифрам speech_kk.prepare(),
+    так что резать можно по ним, не разбирая язык заново.
+
+    Одна команда возвращается как есть - список из одного куска. Тогда всё, что
+    ниже по течению, не обязано знать, был ли текст разбит.
+    """
+    if not text:
+        return []
+
+    # Позиции чисел длиной от двух цифр: одиночная цифра слишком часто бывает
+    # частью слова или количеством, а не номером партии.
+    starts = [m.start() for m in re.finditer(r"\d{2,}", text)]
+    if len(starts) < 2:
+        return [text]
+
+    parts = []
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(text)
+        chunk = text[start:end].strip(" ,.;")
+        if chunk:
+            parts.append(chunk)
+
+    # Кусок без этапа - это не команда, а хвост предыдущей: «339 и 348 на
+    # формовку» не два приказа, а один на две партии. Такое не угадываем и
+    # возвращаем текст целиком, чтобы человек подтвердил сам.
+    if any(not resolve_target_stage(speech_kk.fold(part)) for part in parts):
+        return [text]
+    return parts
 
 
 def parse_voice_command(text, confidence=None):
@@ -521,6 +592,25 @@ def confirm_voice_command(command, user):
             require_comment=target.sequence < batch.current_stage.sequence,
             allow_skip=True,
         )
+        # Остальные партии из той же фразы. Первая уже переведена выше; здесь
+        # идут те, что были названы следом. Каждая своим переходом - если одна
+        # из них заблокирована, остальные всё равно доедут, а отказ вернётся
+        # человеку списком.
+        refused = []
+        for extra in (data.get("moves") or [])[1:]:
+            other = ProductionBatch.objects.filter(batch_number=extra.get("batch_number") or "").first()
+            stage = ProductionStage.objects.filter(code=extra.get("to_stage") or "").first()
+            if not other or not stage:
+                refused.append(extra.get("spoken") or "?")
+                continue
+            try:
+                move_batch(other, stage, user, data.get("comment", ""),
+                           require_comment=stage.sequence < other.current_stage.sequence,
+                           allow_skip=True)
+            except (ValidationError, ConflictError) as exc:
+                refused.append(f"{other.batch_number}: {exc}")
+        if refused:
+            raise ValidationError("Часть партий не переведена — " + "; ".join(refused))
     elif intent == VoiceCommand.Intent.PAUSE_BATCH:
         pause_batch(batch, user, data.get("comment", ""))
     elif intent == VoiceCommand.Intent.RESUME_BATCH:

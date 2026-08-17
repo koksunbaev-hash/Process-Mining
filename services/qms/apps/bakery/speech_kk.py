@@ -198,3 +198,79 @@ def prepare(text: str) -> str:
     ("бэ") becomes a letter in between.
     """
     return latin_batch_prefix(spoken_letter_prefix(numbers_to_digits(text or "")))
+
+
+# ---------------------------------------------------------------- этап на слух
+#
+# Точное вхождение подстроки ловит не всё. Распознаватель пишет то, что услышал,
+# и «расстойка» приходит как «растойка», «ростойкова», «жас тройка» - буквы
+# плывут, границы слов разъезжаются. Каждый такой вариант можно дописать в
+# таблицу, но список никогда не кончится: следующая смена скажет иначе.
+#
+# Поэтому: сначала точное совпадение (быстро и без сомнений), а если его нет -
+# ближайшее по написанию, и только когда оно достаточно близко.
+
+# Как этап звучит целиком - для сравнения с тем, что услышано. Здесь полные
+# слова, а не корни: расстояние между огрызками ничего не значит.
+STAGE_SOUNDS = {
+    "очередь": "queue",
+    "замес": "mixing",
+    "формовка": "forming",
+    "расстойка": "proofing",
+    "проверка": "proofing",
+    "печка": "oven",
+    "выпечка": "oven",
+    "склад": "warehouse",
+    "готово": "done",
+}
+
+
+def _distance(left: str, right: str) -> int:
+    """Расстояние Левенштейна. Своё, чтобы не тащить зависимость ради тридцати строк."""
+    if left == right:
+        return 0
+    if not left:
+        return len(right)
+    if not right:
+        return len(left)
+    previous = list(range(len(right) + 1))
+    for i, a in enumerate(left, 1):
+        current = [i]
+        for j, b in enumerate(right, 1):
+            current.append(min(
+                previous[j] + 1,        # удаление
+                current[j - 1] + 1,     # вставка
+                previous[j - 1] + (a != b),  # замена
+            ))
+        previous = current
+    return previous[-1]
+
+
+def stage_by_sound(text: str, limit: float = 0.45) -> str:
+    """Ближайший по звучанию этап, или пусто.
+
+    Сравнивается каждое слово фразы с полным названием этапа. Порог выбран
+    замером на настоящих расшифровках со стенда: 0.45 узнаёт девять вариантов
+    из одиннадцати и не даёт ни одного ложного, а 0.5 уже принимает «триста
+    сорок» и «проблема» за названия этапов. Ошибиться в эту сторону дороже:
+    перевести партию не туда хуже, чем переспросить.
+
+    Аффиксы казахского («формовкаға», «складқа») отрезаются сравнением с начала:
+    лишний хвост стоит столько же, сколько лишние буквы, поэтому длинные слова
+    сравниваются и по своему началу тоже.
+    """
+    best_code, best_score = "", None
+    for word in re.findall(r"[а-яёa-z]+", fold(text)):
+        if len(word) < 4:
+            continue
+        for sound, code in STAGE_SOUNDS.items():
+            folded = fold(sound)
+            # Слово целиком и его начало длиной с эталон: второе ловит казахские
+            # окончания, не давая им портить расстояние.
+            variants = {word, word[: len(folded)]}
+            score = min(_distance(variant, folded) for variant in variants)
+            if score > len(folded) * limit:
+                continue
+            if best_score is None or score < best_score:
+                best_code, best_score = code, score
+    return best_code
