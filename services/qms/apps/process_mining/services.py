@@ -42,10 +42,67 @@ CSV_COLUMNS = [
 
 def safe_record_process_event(**kwargs):
     try:
-        return record_process_event(**kwargs)
+        event = record_process_event(**kwargs)
     except Exception:
         logger.exception("Process Mining event recording failed")
         return None
+    maybe_export_pending(event)
+    return event
+
+
+def maybe_export_pending(event=None):
+    """Отправить накопившееся, когда его набралось на порог.
+
+    Раньше события ждали, пока кто-нибудь откроет страницу интеграции и нажмёт
+    «Отправить сейчас». На производстве этого не делает никто, и аналитика
+    отставала на дни.
+
+    Порог, а не отправка каждого события: перевод партии по этапам рождает их
+    пачками, и отдельный HTTP-запрос на каждый шаг превратил бы работу
+    кладовщика в очередь к сети.
+
+    Отправка идёт после фиксации транзакции. Внутри неё событие ещё не видно
+    другим соединениям - выгрузка собрала бы пачку без него, а при откате ушло
+    бы то, чего в базе не осталось.
+    """
+    if not getattr(settings, "PROCESS_MINING_AUTO_EXPORT", True):
+        return
+    if not settings.PROCESS_MINING_EVENT_LOG_URL:
+        return
+
+    threshold = int(getattr(settings, "PROCESS_MINING_AUTO_EXPORT_THRESHOLD", 5))
+    if threshold <= 0:
+        return
+
+    # Одна выгрузка на транзакцию. Перевод партии по этапам пишет несколько
+    # событий подряд; без этого флага каждое повесило бы свой обработчик, и
+    # после фиксации подряд ушло бы столько же выгрузок - первая забрала бы
+    # всё, остальные ходили бы в сеть за пустотой.
+    connection = transaction.get_connection()
+    if getattr(connection, "_pm_auto_export_scheduled", False):
+        return
+    connection._pm_auto_export_scheduled = True
+
+    def run():
+        connection._pm_auto_export_scheduled = False
+        try:
+            pending = ProcessEvent.objects.filter(
+                export_status=ProcessEvent.ExportStatus.PENDING
+            ).count()
+            if pending < threshold:
+                return
+            result = export_pending_events_to_process_mining()
+            logger.info(
+                "process_mining_auto_export",
+                extra={"pending": pending, "sent": result.get("sent"), "failed": result.get("failed")},
+            )
+        except Exception:
+            # Сбой выгрузки не должен ронять то действие, из-за которого
+            # событие вообще появилось: партия уже переведена, и откатывать
+            # перевод из-за недоступной аналитики нельзя.
+            logger.exception("Process Mining auto export failed")
+
+    transaction.on_commit(run)
 
 
 def record_process_event(
