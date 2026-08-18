@@ -9,7 +9,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, Max, Prefetch, Q
 from django.db.models.deletion import ProtectedError
 from django.http import FileResponse, Http404, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -130,9 +130,11 @@ def card_flags(card):
 def stage_lanes(stage, cards, units):
     """Разложить карточки этапа по устройствам.
 
-    Первой идёт общая дорожка «Не распределено»: пока партию никуда не
-    поставили, она ждёт именно там, и пустая доска должна начинаться с неё, а
-    не с пяти пустых печей. Дальше - по одному месту на устройство.
+    Сначала устройства, «Не распределено» - последним. Порядок не косметика:
+    устройств у этапа фиксированное число, а очередь растёт без предела, и
+    стоило поставить её первой, как при трёх десятках ожидающих карточек все
+    пять печей уезжали на экран ниже. Донести до них карточку было нельзя -
+    места, которого не видно, для переноса не существует.
 
     На дорожке устройства помещается ровно одна карточка. Если в базе их
     почему-то оказалось больше (ручная правка, гонка, которую не закрыл
@@ -154,7 +156,7 @@ def stage_lanes(stage, cards, units):
     for card in cards:
         lane = lanes.get(card.production_unit_id) or pool
         lane["cards"].append(card)
-    return [pool] + [lanes[unit.pk] for unit in units]
+    return [lanes[unit.pk] for unit in units] + [pool]
 
 
 def kanban_context(request):
@@ -220,7 +222,7 @@ def kanban_context(request):
             "has_units": bool(units),
             "busy": sum(1 for lane in lanes if not lane["is_pool"] and lane["cards"]),
             "capacity": len(units),
-            "waiting": len(lanes[0]["cards"]),
+            "waiting": len(lanes[-1]["cards"]),
             "query": column_search[stage.code],
             "has_next": index + 1 < len(stages),
             "prev_stage": stages[index - 1] if index else None,
@@ -253,8 +255,18 @@ def kanban_partial(request):
 
 
 def kanban_change_marker():
+    """Отпечаток состояния доски: изменился - значит доску надо перерисовать.
+
+    Одной истории этапов мало. Распределение по устройствам этап не меняет и
+    строки в неё не пишет, поэтому метка на перенос между печами молчала, и у
+    соседа доска догоняла реальность только когда партия поедет дальше.
+
+    Время последней правки партии ловит и распределение, и смену статуса, и
+    правку количества - всё, что доска показывает.
+    """
     latest = BatchStageHistory.objects.order_by("-pk").values_list("pk", flat=True).first()
-    return str(latest or 0)
+    touched = ProductionBatch.objects.aggregate(at=Max("updated_at"))["at"]
+    return f"{latest or 0}:{touched.timestamp() if touched else 0}"
 
 
 @login_required

@@ -286,6 +286,10 @@ body.kanban-dragging .kanban-card { cursor: grabbing; }
   border-color: transparent;
   background: rgba(20, 40, 80, .045);
 }
+/* Своей прокрутки у очереди нет. Полоса внутри полосы - это два разных «вниз»
+   в одной колонке, и на доске, которую читают через цех, непонятно, какая из
+   них сейчас нужна. Растёт очередь свободно: она стоит последней, и устройства
+   над ней остаются на месте. */
 
 .kanban-lane__head {
   display: flex; align-items: center; gap: 8px;

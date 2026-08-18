@@ -169,6 +169,62 @@
       lane.classList.add(laneRefusal(lane) ? "drop-refused" : "drop-target");
     }
     drag.target = lane;
+    updateAutoScroll(lane, event.clientX, event.clientY);
+  }
+
+  /* Прокрутка под курсором во время переноса.
+   *
+   * Без неё доска недостижима с двух сторон. По вертикали: «Не распределено»
+   * набирает три десятка карточек, и пять печей уезжают на экран ниже - донести
+   * до них карточку было нельзя, потому что колонка под курсором не едет. По
+   * горизонтали то же самое с семью колонками на широкой доске.
+   *
+   * Скорость растёт по мере захода в краевую полосу: у самой границы - быстро,
+   * на её краю - едва заметно, чтобы можно было остановиться там, где нужно.
+   */
+  let autoScroll = null;
+
+  function edgeSpeed(near, far, position, zone) {
+    if (position < near + zone) return -Math.ceil((near + zone - position) / 5);
+    if (position > far - zone) return Math.ceil((position - (far - zone)) / 5);
+    return 0;
+  }
+
+  function updateAutoScroll(lane, x, y) {
+    const vertical = lane ? lane.closest(".kanban-lanes") : null;
+    const board = document.querySelector("[data-kanban-board]");
+    const jobs = [];
+    if (vertical) {
+      const box = vertical.getBoundingClientRect();
+      const speed = edgeSpeed(box.top, box.bottom, y, 56);
+      if (speed) jobs.push({ element: vertical, axis: "scrollTop", speed });
+    }
+    if (board) {
+      const box = board.getBoundingClientRect();
+      const speed = edgeSpeed(box.left, box.right, x, 72);
+      if (speed) jobs.push({ element: board, axis: "scrollLeft", speed });
+    }
+    if (!jobs.length) {
+      stopAutoScroll();
+      return;
+    }
+    if (autoScroll) {
+      autoScroll.jobs = jobs;
+      return;
+    }
+    autoScroll = { jobs };
+    const step = () => {
+      if (!autoScroll) return;
+      autoScroll.jobs.forEach((job) => { job.element[job.axis] += job.speed; });
+      autoScroll.frame = window.requestAnimationFrame(step);
+    };
+    autoScroll.frame = window.requestAnimationFrame(step);
+  }
+
+  function stopAutoScroll() {
+    if (!autoScroll) return;
+    window.cancelAnimationFrame(autoScroll.frame);
+    autoScroll = null;
   }
 
   /* Почему бросок сюда невозможен, или пустая строка. */
@@ -223,6 +279,7 @@
     card.style.left = card.style.top = card.style.width = "";
     document.body.classList.remove("kanban-dragging");
     clearDropTargets(null);
+    stopAutoScroll();
 
     const ghost = document.querySelector(".kanban-ghost");
     const homeLane = home.closest(".kanban-lane");
@@ -235,16 +292,21 @@
       if (next) home.insertBefore(card, next);
       else home.appendChild(card);
     };
+    // Перенос закончился в любом случае - удачей, отказом или возвратом на
+    // место. Отложенное обновление ждало именно этого.
+    const settled = () => window.dispatchEvent(new CustomEvent("kanban:move-settled"));
 
     if (ghost) ghost.remove();
     if (sameLane || !slot) {
       // Вернуть ровно туда, откуда взяли, а не в конец дорожки.
       goHome();
+      settled();
       return;
     }
     if (refusal) {
       goHome();
       showBoardError(refusal);
+      settled();
       return;
     }
 
@@ -305,10 +367,12 @@
     card.style.left = card.style.top = card.style.width = "";
     document.body.classList.remove("kanban-dragging");
     clearDropTargets(null);
+    stopAutoScroll();
     const ghost = document.querySelector(".kanban-ghost");
     if (ghost) ghost.remove();
     if (next) home.insertBefore(card, next);
     else home.appendChild(card);
+    window.dispatchEvent(new CustomEvent("kanban:move-settled"));
   });
 
   // Exposed so the voice widget can redraw the board after a command runs:
@@ -501,7 +565,13 @@
         pendingRefresh = true;
         return;
       }
-      if (document.querySelector(".kanban-card.dragging")) return;
+      if (document.querySelector(".kanban-card.dragging")) {
+        // Не просто return: lastMarker уже сдвинут, и второй раз этот повод не
+        // придёт. Отброшенное здесь обновление доска потеряла бы навсегда -
+        // именно так автообновление и «иногда не работало».
+        pendingRefresh = true;
+        return;
+      }
       if (movesInFlight) {
         // Не теряем повод обновиться: как только перенос подтвердится,
         // доска догонит сама.

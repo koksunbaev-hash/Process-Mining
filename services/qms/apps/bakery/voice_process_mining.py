@@ -132,8 +132,20 @@ def may_auto_confirm(command, batch):
     }:
         if not batch.current_stage_id:
             return False
-        target = ProductionStage.objects.filter(code=(command.extracted_data or {}).get("to_stage") or "").first()
-        return bool(target) and target.sequence != batch.current_stage.sequence
+        data = command.extracted_data or {}
+        if data.get("unit_problem"):
+            # Отсчёт до заведомого отказа - три секунды впустую и непонимание,
+            # что именно не так.
+            return False
+        target = ProductionStage.objects.filter(code=data.get("to_stage") or "").first()
+        if not target:
+            return False
+        if target.sequence != batch.current_stage.sequence:
+            return True
+        # Этап тот же, но названо устройство - значит команда распределяющая, и
+        # делать ей есть что. Без этой ветки «партия 3 на печь 2», сказанная про
+        # партию, которая уже в печи, единственная из всех ждала бы нажатия.
+        return bool(data.get("unit"))
     return True
 
 
@@ -257,12 +269,14 @@ def handle_process_mining_callback(payload):
 
 
 # Как устройство называют вслух. Слева - корень, который останется от любого
-# падежа («на печи», «в печку», «печь»); справа - корень названия в базе.
-# Названия придумывает цех, поэтому совпадение ищется по началу строки, а не по
-# точному равенству: «Печь 2» и «Печь №2» - одно и то же место.
+# падежа («на печи», «в печку», «пешке»); справа - корень названия в базе.
+# Это быстрый и несомненный путь; всё, что мимо него, ловится по звучанию ниже.
 UNIT_ALIASES = {
     "печ": "печ",
     "выпеч": "печ",
+    # По-казахски печь - «пеш», и в цеху её так и зовут. Остальные устройства
+    # там называют русскими словами, поэтому пары им не нужно.
+    "пеш": "печ",
     "миксер": "миксер",
     "тестомес": "миксер",
     "шкаф": "шкаф",
@@ -270,12 +284,12 @@ UNIT_ALIASES = {
     "формовщ": "формовщ",
     "формовочн": "формовщ",
 }
-# Номер обязателен: «на печь» - это этап, «на печь 2» - место. Без цифры
-# устройство не названо, и выдумывать его за оператора нельзя.
-UNIT_RE = re.compile(
-    r"\b(" + "|".join(sorted(UNIT_ALIASES, key=len, reverse=True)) + r")[а-яё]*\s*[№#]?\s*(\d{1,2})\b",
-    flags=re.IGNORECASE,
-)
+
+# Слово с числом - вот и весь признак кандидата. Какое из слов окажется
+# названием устройства, решают словарь и звучание, а не эта строка: перечислять
+# здесь корни значило бы вернуться к списку, который никогда не кончается.
+# Номер обязателен - «на печь» это этап, «на печь 2» это место.
+UNIT_CANDIDATE_RE = re.compile(r"\b([а-яё]{3,})\s*[№#]?\s*(\d{1,2})\b", flags=re.IGNORECASE)
 
 
 def _unit_key(value):
@@ -283,28 +297,69 @@ def _unit_key(value):
     return re.sub(r"[^0-9a-zа-яё]", "", (value or "").lower().replace("ё", "е"))
 
 
+def unit_vocabulary():
+    """Основа названия устройства -> {номер: устройство}.
+
+    Словарь строится из самих устройств, а не из таблицы в коде: названия
+    придумывает цех, и купленный «Тестомес 4» должен опознаваться голосом сразу
+    после того, как его завели в админке.
+    """
+    vocabulary = {}
+    for unit in ProductionUnit.objects.filter(is_active=True).select_related("stage"):
+        key = _unit_key(unit.name)
+        tail = re.search(r"(\d+)$", key)
+        if not tail:
+            continue
+        vocabulary.setdefault(key[: tail.start()], {})[int(tail.group(1))] = unit
+    return vocabulary
+
+
+def match_unit_stem(word, vocabulary):
+    """Основа названия устройства, которую услышали в этом слове."""
+    for root, canonical in UNIT_ALIASES.items():
+        if word.startswith(root):
+            for stem in vocabulary:
+                if stem.startswith(canonical):
+                    return stem
+    # Точного корня нет - ищем ближайшее по написанию. «Фармовщик» через «а»
+    # распознаватель выдаёт регулярно: этап по нему опознавался (в таблице
+    # этапов эта форма есть), а устройство - нет, и команда выполнялась
+    # наполовину: партия уезжала на этап и оставалась ни на чём.
+    return speech_kk.nearest(word, list(vocabulary))
+
+
 def extract_unit(text):
-    """(название устройства, текст без него).
+    """(название устройства, код его этапа, текст без него, причина отказа).
 
     Устройство вынимается из фразы до разбора номера партии. Иначе «партия 3 на
     печь 2» разбиралась бы двумя числами подряд, и какое из них номер партии,
     зависело бы от того, что оператор назвал первым.
+
+    Четвёртое значение - причина, по которой названное устройство не нашлось.
+    Молчать здесь нельзя: команду с неопознанным устройством выполнять нечем, а
+    выполнить её частью - перевести партию на этап и бросить - хуже, чем
+    отказать. Ровно так и терялась «он алты фармовщик екіге».
     """
     folded = speech_kk.fold(text or "")
-    match = UNIT_RE.search(folded)
-    if not match:
-        return "", text
-    root = UNIT_ALIASES[match.group(1).lower()]
-    number = match.group(2)
-    for unit in ProductionUnit.objects.filter(is_active=True).select_related("stage"):
-        key = _unit_key(unit.name)
-        tail = re.search(r"(\d+)$", key)
-        # Начало сравнивается по корню, а хвост - по числу: в базе стоит
-        # «Печь 2», корень от произнесённого - «печ», и точного равенства между
-        # ними не будет никогда.
-        if key.startswith(root) and tail and int(tail.group(1)) == int(number):
-            return unit.name, folded[: match.start()] + " " + folded[match.end():]
-    return "", text
+    vocabulary = unit_vocabulary()
+    if not vocabulary:
+        return "", "", text, ""
+    for match in UNIT_CANDIDATE_RE.finditer(folded):
+        stem = match_unit_stem(match.group(1).replace("ё", "е"), vocabulary)
+        if not stem:
+            continue
+        number = int(match.group(2))
+        unit = vocabulary[stem].get(number)
+        if unit is None:
+            names = ", ".join(sorted(u.name for u in vocabulary[stem].values()))
+            return "", "", text, f"Устройства с номером {number} нет. Есть: {names}."
+        rest = folded[: match.start()] + " " + folded[match.end():]
+        # Устройство называет и этап. «Печь 2» об этом молчит - там слова
+        # совпали случайно, - а «миксер 3» и «шкаф 1» этапов «Замес» и
+        # «Расстойка» вслух не произносят вовсе, и без этого команда упиралась
+        # бы в «не понял, на какой этап переводить».
+        return unit.name, unit.stage.code, rest, ""
+    return "", "", text, ""
 
 
 def resolve_unit(name, stage):
@@ -563,7 +618,7 @@ def parse_voice_command(text, confidence=None):
     text = speech_kk.prepare(text)
     # Устройство вынимается первым: его номер - такая же цифра, как номер
     # партии, и оставленный в строке он спорил бы с ней за первое совпадение.
-    unit_name, text_without_unit = extract_unit(text)
+    unit_name, unit_stage, text_without_unit, unit_problem = extract_unit(text)
     normalized = text.lower().replace("№", " ")
     batch_match = re.search(
     r"\b(?:парт(?:ия|ию|ии)\s*[№#]?\s*)?((?:DEMO[-\s]?)?[BD][-\s]?\d+(?:-\d+)?(?:-\d+)?|\d+)\b",
@@ -581,7 +636,7 @@ def parse_voice_command(text, confidence=None):
     # resolve them loosely in resolve_batch().
     order_match = re.search(r"заказ\w*\s*([a-zа-я0-9][a-zа-я0-9\-]*)", normalized, flags=re.IGNORECASE)
     order_number = order_match.group(1).upper().strip("-") if order_match else ""
-    to_stage = resolve_target_stage(normalized)
+    to_stage = resolve_target_stage(normalized) or unit_stage
     folded = speech_kk.fold(normalized)
     if "пауз" in folded or "останов" in folded or _said(folded, "pause"):
         intent = VoiceCommand.Intent.PAUSE_BATCH
@@ -590,7 +645,10 @@ def parse_voice_command(text, confidence=None):
     elif (
         "проблем" in folded
         or "обнаруж" in folded
-        or "подгора" in folded
+        # Корень, а не «подгора»: партия женского рода, и в цеху говорят
+        # «подгорела». Прежняя форма ловила «подгорает» и «подгорание» - то
+        # есть всё, кроме того, что произносят на самом деле.
+        or "подгор" in folded
         or _said(folded, "problem")
     ):
         intent = VoiceCommand.Intent.CREATE_PROBLEM
@@ -613,6 +671,7 @@ def parse_voice_command(text, confidence=None):
         "order_number": order_number,
         "to_stage": to_stage,
         "unit": unit_name,
+        "unit_problem": unit_problem,
         "comment": comment,
         "quantity": quantity,
         "confidence": float(confidence or 0),
@@ -675,6 +734,11 @@ def confirm_voice_command(command, user):
         target = ProductionStage.objects.filter(code=data.get("to_stage") or "").first()
         if not target:
             raise ValidationError("Не понял, на какой этап переводить партию. Назовите этап.")
+        if data.get("unit_problem"):
+            # Устройство названо, но не опознано. Перевести партию на этап и
+            # бросить её нераспределённой - это выполнить половину команды и
+            # промолчать про вторую; отказ честнее.
+            raise ValidationError(data["unit_problem"])
         spoken_unit = data.get("unit") or ""
         # «Партия 3 на печь 2», сказанная про партию, которая уже в печи, - это
         # распределение, а не перевод. Звать move_batch на свой же этап значит

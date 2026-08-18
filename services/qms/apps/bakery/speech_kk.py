@@ -66,6 +66,37 @@ _SCALES = {
 
 _NUMBER_WORDS = set(_UNITS) | set(_TENS) | set(_SCALES)
 
+# Казахское числительное склоняется, и в команде оно почти всегда стоит не в
+# именительном падеже: «миксер бірге» - «на миксер один», «формовкаға екіге».
+# Таблица выше знает только голые формы, поэтому «бірге» до неё не доезжало и
+# оставалось словом - команда теряла номер устройства и превращалась в перевод
+# без цели.
+#
+# Окончания сняты в свёрнутом виде (қ -> к, і -> и), длинные раньше коротких.
+_CASE_SUFFIXES = (
+    "ден", "дан", "тен", "тан", "нен", "нан",
+    "ге", "ке", "га", "ка", "де", "да", "те", "та",
+    "ни", "ны", "ди", "ды", "ти", "ты",
+)
+
+
+def _number_word(folded: str) -> str:
+    """Числительное в основе слова, или пустая строка.
+
+    Окончание снимается только тогда, когда под ним оказывается числительное:
+    «алты» (6) само кончается на «ты», и слепое отсечение превратило бы шестёрку
+    в «ал». Поэтому целое слово проверяется первым, а основа принимается лишь
+    когда она есть в таблице.
+    """
+    if folded in _NUMBER_WORDS:
+        return folded
+    for suffix in _CASE_SUFFIXES:
+        if folded.endswith(suffix):
+            stem = folded[: -len(suffix)]
+            if stem in _NUMBER_WORDS:
+                return stem
+    return ""
+
 # Latin B and D are what the batch numbers are stored with, but a person saying
 # them out loud produces Cyrillic in the transcript. Confined to these two
 # letters on purpose: a general Cyrillic-to-Latin fold would also rewrite words.
@@ -142,11 +173,12 @@ def numbers_to_digits(text: str) -> str:
                 out.append(token)
             continue
 
-        if fold(token) in _NUMBER_WORDS:
+        word = _number_word(fold(token))
+        if word:
             # A space between two number words is inside the run: the digits
             # join up, the space does not survive.
             pending = None
-            run.append(fold(token))
+            run.append(word)
         else:
             flush()
             out.append(token)
@@ -244,6 +276,30 @@ def _distance(left: str, right: str) -> int:
             ))
         previous = current
     return previous[-1]
+
+
+def nearest(word: str, options, limit: float = 0.45) -> str:
+    """Ближайший по написанию вариант из options, или пусто.
+
+    То же, что делает stage_by_sound для этапов, но для одного слова и любого
+    словаря: у названий устройств та же беда, что у названий этапов -
+    «формовщик» приходит как «фармовщик», «шкаф» как «шкап». Порог тот же 0.45,
+    выбранный там замером на настоящих расшифровках.
+
+    Сравнивается и слово целиком, и его начало длиной с эталон: казахские
+    аффиксы («пешке», «шкафка») висят хвостом, и без второй мерки длинное слово
+    проигрывало бы короткому эталону только за счёт этого хвоста.
+    """
+    word = fold(word)
+    best, best_score = "", None
+    for option in options:
+        folded = fold(option)
+        if not folded:
+            continue
+        score = min(_distance(word, folded), _distance(word[: len(folded)], folded)) / len(folded)
+        if score <= limit and (best_score is None or score < best_score):
+            best, best_score = option, score
+    return best
 
 
 def stage_by_sound(text: str, limit: float = 0.45) -> str:
