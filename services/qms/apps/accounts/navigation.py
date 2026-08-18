@@ -65,7 +65,8 @@ SECTIONS = [
     Section("dashboard", "Панель", "dashboard:index", "Производство", OFFICE),
     Section(
         "kanban", "Производственная доска", "bakery:kanban", "Производство", EVERYONE,
-        routes=("bakery:kanban_partial", "bakery:kanban_events", "bakery:move_batch", "bakery:batch_action"),
+        routes=("bakery:kanban_partial", "bakery:kanban_events", "bakery:move_batch", "bakery:batch_action",
+                "bakery:move_order_group"),
     ),
     Section("production_sheet", "Заказ на производство", "bakery:production_sheet", "Производство", OFFICE),
     Section("forecast", "Прогноз на неделю", "bakery:forecast", "Производство", OFFICE),
