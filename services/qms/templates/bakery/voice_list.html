@@ -6,7 +6,7 @@
   <form class="filters">
     <input type="date" name="date" value="{{ request.GET.date }}">
     <select name="order"><option value="">Все заказы</option>{% for order in orders %}<option value="{{ order.pk }}">№{{ order.order_number }}</option>{% endfor %}</select>
-    <select name="batch"><option value="">Все партии</option>{% for batch in batches %}<option value="{{ batch.pk }}">{{ batch.batch_number }}</option>{% endfor %}</select>
+    <select name="batch"><option value="">Все партии</option>{% for batch in batches %}<option value="{{ batch.pk }}">Партия {{ batch.display_batch_label }}</option>{% endfor %}</select>
     <button class="primary">Фильтр</button>
   </form>
 </section>
@@ -28,7 +28,7 @@
       <td>{{ item.created_by|default:"-" }}</td>
       <td>{{ item.created_at }}</td>
       <td>{{ item.duration_seconds|default:"-" }} сек</td>
-      <td>{% if item.order %}Заказ №{{ item.order.order_number }}{% elif item.batch %}{{ item.batch.batch_number }}{% elif item.product %}{{ item.product.name }}{% else %}Общий канал{% endif %}</td>
+      <td>{% if item.order %}Заказ №{{ item.order.order_number }}{% elif item.batch %}<span title="Технический номер: {{ item.batch.batch_number }}">Партия {{ item.batch.display_batch_label }}</span>{% elif item.product %}{{ item.product.name }}{% else %}Общий канал{% endif %}</td>
       <td>
         {% if item.transcript %}<strong>{{ item.transcript }}</strong>{% endif %}
         {% if item.comment %}<div>{{ item.comment }}</div>{% endif %}

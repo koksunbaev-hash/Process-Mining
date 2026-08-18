@@ -21,6 +21,7 @@ from apps.bakery.models import (
     RecipeItem,
 )
 from apps.bakery.services import confirm_order, move_batch
+from apps.bakery.units import ensure_default_units
 from apps.nonconformities.models import DefectType, Nonconformity, NonconformityCause
 from apps.quality.models import ControlPost, ControlType, Department, QualityObject
 
@@ -124,6 +125,10 @@ class Command(BaseCommand):
             ("done", "Готово"),
         ], start=1):
             ProductionStage.objects.update_or_create(code=code, defaults={"name": name, "sequence": seq, "is_active": True})
+        # Этапы только что появились, поэтому устройства заводятся здесь, а не в
+        # миграции 0011: на свежей базе она отработала раньше и цеплять ей было
+        # не к чему.
+        ensure_default_units()
 
     def create_products(self):
         specs = [

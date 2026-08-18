@@ -51,6 +51,35 @@
     document.querySelectorAll(".kanban-column").forEach((column) => {
       const badge = column.querySelector("[data-kanban-count]");
       if (badge) badge.textContent = column.querySelectorAll(".kanban-card").length;
+
+      // Дорожки: занятость и счётчик ожидающих. Без этого перенесённая
+      // карточка стояла на печи, а печь до следующего обновления доски всё
+      // ещё писала «свободно» - и оператор нёс на неё вторую партию.
+      let busy = 0;
+      let slots = 0;
+      column.querySelectorAll(".kanban-lane").forEach((lane) => {
+        const held = lane.querySelectorAll(".kanban-card").length;
+        const pool = lane.classList.contains("is-pool");
+        lane.classList.toggle("is-busy", held > 0);
+        if (!pool) {
+          slots += 1;
+          if (held) busy += 1;
+        }
+        const counter = lane.querySelector(".kanban-lane__count");
+        if (counter) counter.textContent = held;
+        const state = lane.querySelector(".kanban-lane__state");
+        if (state && !lane.classList.contains("is-blocked")) {
+          state.textContent = held ? "занято" : "свободно";
+          state.classList.toggle("is-busy", held > 0);
+        }
+        const empty = lane.querySelector(".kanban-lane__empty");
+        if (empty) empty.hidden = held > 0;
+      });
+      const load = column.querySelector(".kanban-head__load");
+      if (load && slots) {
+        load.textContent = `${busy}/${slots}`;
+        load.classList.toggle("is-full", busy >= slots);
+      }
     });
   }
 
@@ -132,12 +161,34 @@
     drag.card.style.left = event.clientX - drag.offsetX + "px";
     drag.card.style.top = event.clientY - drag.offsetY + "px";
 
-    const column = columnAt(event.clientX, event.clientY);
-    document.querySelectorAll(".kanban-column.drop-target").forEach((c) => {
-      if (c !== column) c.classList.remove("drop-target");
+    const lane = laneAt(event.clientX, event.clientY);
+    clearDropTargets(lane);
+    if (lane && lane !== drag.home.closest(".kanban-lane")) {
+      // Занятое устройство подсвечивается отказом, а не приглашением: на нём
+      // помещается одна партия, и узнать об этом лучше до броска.
+      lane.classList.add(laneRefusal(lane) ? "drop-refused" : "drop-target");
+    }
+    drag.target = lane;
+  }
+
+  /* Почему бросок сюда невозможен, или пустая строка. */
+  function laneRefusal(lane) {
+    if (lane.classList.contains("is-pool")) return "";
+    if (lane.classList.contains("is-blocked")) {
+      return `«${lane.dataset.laneName}» сейчас недоступно.`;
+    }
+    const held = [...lane.querySelectorAll(".kanban-card")].filter((card) => card !== (drag && drag.card));
+    if (held.length) {
+      const number = held[0].dataset.batchNumber || "";
+      return `«${lane.dataset.laneName}» занято: партия ${number}.`;
+    }
+    return "";
+  }
+
+  function clearDropTargets(keep) {
+    document.querySelectorAll(".kanban-lane.drop-target, .kanban-lane.drop-refused").forEach((lane) => {
+      if (lane !== keep) lane.classList.remove("drop-target", "drop-refused");
     });
-    if (column && column !== drag.home.closest(".kanban-column")) column.classList.add("drop-target");
-    drag.target = column;
   }
 
   /* Колонка под курсором.
@@ -146,13 +197,19 @@
    * под курсором и сама перехватывала бы их. На время замера она исключается
    * из попадания.
    */
-  function columnAt(x, y) {
+  function laneAt(x, y) {
     const card = drag && drag.card;
     const saved = card ? card.style.pointerEvents : null;
     if (card) card.style.pointerEvents = "none";
     const element = document.elementFromPoint(x, y);
     if (card) card.style.pointerEvents = saved;
-    return element ? element.closest(".kanban-column") : null;
+    if (!element) return null;
+    const lane = element.closest(".kanban-lane");
+    if (lane) return lane;
+    // Промах между дорожками - но внутри колонки - читается как «в эту
+    // колонку»: партия встаёт в «Не распределено», а не отпрыгивает назад.
+    const column = element.closest(".kanban-column");
+    return column ? column.querySelector(".kanban-lane.is-pool") : null;
   }
 
   async function endDrag(event) {
@@ -165,28 +222,42 @@
     card.classList.remove("dragging");
     card.style.left = card.style.top = card.style.width = "";
     document.body.classList.remove("kanban-dragging");
-    document.querySelectorAll(".kanban-column.drop-target").forEach((c) => c.classList.remove("drop-target"));
+    clearDropTargets(null);
 
     const ghost = document.querySelector(".kanban-ghost");
-    const column = target;
-    const lane = column && column.querySelector(".kanban-cards");
-    const sameColumn = !column || column === home.closest(".kanban-column");
+    const homeLane = home.closest(".kanban-lane");
+    const lane = target;
+    const slot = lane && lane.querySelector(".kanban-cards");
+    const refusal = lane ? laneRefusal(lane) : "";
+    const sameLane = !lane || lane === homeLane;
 
-    if (ghost) ghost.remove();
-    if (sameColumn || !lane) {
-      // Вернуть ровно туда, откуда взяли, а не в конец колонки.
+    const goHome = () => {
       if (next) home.insertBefore(card, next);
       else home.appendChild(card);
+    };
+
+    if (ghost) ghost.remove();
+    if (sameLane || !slot) {
+      // Вернуть ровно туда, откуда взяли, а не в конец дорожки.
+      goHome();
+      return;
+    }
+    if (refusal) {
+      goHome();
+      showBoardError(refusal);
       return;
     }
 
     card.classList.add("is-moving");
-    insertInOrder(lane, card);
+    insertInOrder(slot, card);
     recount();
 
     const form = new FormData();
-    form.append("stage", column.dataset.stage);
-    form.append("from_stage", home.closest(".kanban-column").dataset.stage);
+    form.append("stage", lane.dataset.stage);
+    form.append("from_stage", homeLane.dataset.stage);
+    // Пустая строка - это «в Не распределено», а не «параметр не передан»:
+    // снять партию с печи броском должно быть можно.
+    form.append("unit", lane.dataset.unit || "");
     form.append("comment", "Перенос на Kanban-доске");
     let result = {};
     let ok = false;
@@ -214,8 +285,7 @@
       card.classList.add("just-moved");
       window.setTimeout(() => card.classList.remove("just-moved"), 1200);
     } else {
-      if (next) home.insertBefore(card, next);
-      else home.appendChild(card);
+      goHome();
       recount();
       showBoardError(result.error || "Не удалось перенести партию.");
     }
@@ -234,7 +304,7 @@
     card.classList.remove("dragging");
     card.style.left = card.style.top = card.style.width = "";
     document.body.classList.remove("kanban-dragging");
-    document.querySelectorAll(".kanban-column.drop-target").forEach((c) => c.classList.remove("drop-target"));
+    clearDropTargets(null);
     const ghost = document.querySelector(".kanban-ghost");
     if (ghost) ghost.remove();
     if (next) home.insertBefore(card, next);

@@ -2,7 +2,7 @@
 {% block title %}Производственные партии{% endblock %}
 {% block page_title %}Производственные партии{% endblock %}
 {% block content %}
-<section class="panel"><div class="table-wrap"><table><tr><th>Партия</th><th>Заказ</th><th>Продукт</th><th>План</th><th>Этап</th><th>Статус</th><th>Ответственный</th></tr>
-{% for item in items %}<tr><td><a href="{% url 'bakery:batch_detail' item.pk %}">{{ item.batch_number }}</a></td><td>№{{ item.order_item.order.order_number }}</td><td>{{ item.product.name }}</td><td>{{ item.planned_quantity }} {{ item.unit }}</td><td>{{ item.current_stage.name }}</td><td>{{ item.get_status_display }}</td><td>{{ item.assigned_to|default:"-" }}</td></tr>{% endfor %}
+<section class="panel"><div class="table-wrap"><table><tr><th>Партия</th><th>Дата</th><th>Заказ</th><th>Продукт</th><th>План</th><th>Этап</th><th>Статус</th><th>Ответственный</th></tr>
+{% for item in items %}<tr><td><a href="{% url 'bakery:batch_detail' item.pk %}" title="Технический номер: {{ item.batch_number }}">{{ item.display_batch_number }}</a></td><td>{{ item.display_batch_date|date:"d.m.Y"|default:"-" }}</td><td>№{{ item.order_item.order.order_number }}</td><td>{{ item.product.name }}</td><td>{{ item.planned_quantity }} {{ item.unit }}</td><td>{{ item.current_stage.name }}</td><td>{{ item.get_status_display }}</td><td>{{ item.assigned_to|default:"-" }}</td></tr>{% endfor %}
 </table></div></section>
 {% endblock %}

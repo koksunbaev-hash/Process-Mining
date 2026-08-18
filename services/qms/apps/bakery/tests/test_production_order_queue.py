@@ -134,6 +134,40 @@ class ProductionOrderQueueTests(TestCase):
         self.assertEqual([order.display_batch_number for order in orders], ["01", "01"])
         self.assertNotEqual(orders[0].batch_number_date, orders[1].batch_number_date)
 
+    def test_board_and_lists_name_the_batch_by_its_visible_number_and_day(self):
+        """Один номер на всех страницах, и рядом с ним - его день.
+
+        Нумерация начинается заново каждый производственный день, поэтому «01»
+        в отрыве от даты называет столько партий, сколько дней в базе. А
+        технический номер (B-1000 -> «1000») не должен попадаться человеку
+        нигде: раньше он оставался в списке партий и на складе, и рядом с
+        двузначными номерами доски выглядел номером другой партии.
+        """
+        today = timezone.localdate()
+        self.client.post(
+            reverse("bakery:production_sheet"),
+            {
+                "date": today.isoformat(),
+                f"plan_{self.product.pk}": "20",
+                f"queue_quantity_{self.product.pk}": "20",
+                "queue_product": str(self.product.pk),
+            },
+        )
+        batch = ProductionBatch.objects.get()
+        self.assertEqual(batch.display_batch_number, "01")
+        self.assertEqual(batch.display_batch_date, today)
+
+        board = self.client.get(reverse("bakery:kanban"))
+        self.assertContains(board, "<b>01</b>")
+        self.assertContains(board, f"<i>{today:%d.%m}</i>")
+
+        listing = self.client.get(reverse("bakery:batches"))
+        self.assertContains(listing, ">01</a>")
+        self.assertContains(listing, f"{today:%d.%m.%Y}")
+
+        detail = self.client.get(reverse("bakery:batch_detail", args=[batch.pk]))
+        self.assertContains(detail, f"Партия 01 от {today:%d.%m.%Y}")
+
     def test_orders_page_has_history_and_add_fallback(self):
         response = self.client.get(reverse("bakery:orders"))
 

@@ -261,6 +261,19 @@ class ProductionOrder(TimestampedModel):
             return f"{self.daily_batch_number:02d}"
         return "—"
 
+    @property
+    def display_batch_date(self):
+        if self.batch_number_date:
+            return self.batch_number_date
+        return timezone.localtime(self.required_date).date() if self.required_date else None
+
+    @property
+    def display_batch_label(self):
+        date = self.display_batch_date
+        if date is None:
+            return self.display_batch_number
+        return f"{self.display_batch_number} от {date:%d.%m.%Y}"
+
 
 class ProductionOrderItem(models.Model):
     order = models.ForeignKey(ProductionOrder, verbose_name="заказ", on_delete=models.CASCADE, related_name="items")
@@ -337,6 +350,44 @@ class ProductionStage(models.Model):
         return self.name
 
 
+class ProductionUnit(models.Model):
+    """Устройство, на котором стоит партия: миксер, формовщик, шкаф, печь.
+
+    Этап отвечает на вопрос «что с партией делают», устройство - «на чём
+    именно». Раньше доска знала только этап, и колонка «Печь» с пятью партиями
+    читалась как «пять печей заняты» независимо от того, сколько печей в цеху.
+
+    Одно устройство держит одну партию. Это не украшение интерфейса, а свойство
+    цеха: печь не печёт два замеса разом. Партии, которым устройства не
+    досталось, ждут в «Не распределено» на своём этапе.
+    """
+
+    class Status(models.TextChoices):
+        AVAILABLE = "available", "работает"
+        REPAIR = "repair", "ремонт"
+
+    stage = models.ForeignKey(ProductionStage, verbose_name="этап", on_delete=models.CASCADE, related_name="units")
+    name = models.CharField("название", max_length=60)
+    sequence = models.PositiveIntegerField("порядок", default=1)
+    status = models.CharField("состояние", max_length=16, choices=Status.choices, default=Status.AVAILABLE)
+    is_active = models.BooleanField("активно", default=True, db_index=True)
+
+    class Meta:
+        ordering = ["stage__sequence", "sequence", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["stage", "name"], name="unique_production_unit_name_per_stage"),
+        ]
+        verbose_name = "производственное устройство"
+        verbose_name_plural = "производственные устройства"
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def is_available(self):
+        return self.is_active and self.status == self.Status.AVAILABLE
+
+
 class ProductionBatch(TimestampedModel):
     class Status(models.TextChoices):
         PLANNED = "planned", "запланирована"
@@ -357,6 +408,14 @@ class ProductionBatch(TimestampedModel):
     actual_quantity = models.DecimalField("факт", max_digits=12, decimal_places=3, null=True, blank=True)
     unit = models.CharField("единица", max_length=12, choices=Unit.choices, default=Unit.PCS)
     current_stage = models.ForeignKey(ProductionStage, verbose_name="этап", on_delete=models.PROTECT, related_name="batches")
+    # Пусто - партия ждёт в «Не распределено» своего этапа. Занятость держится
+    # здесь, а не на устройстве, потому что сгруппированный блок - это
+    # несколько строк ProductionBatch на одной карточке и на одном устройстве;
+    # обратная ссылка «устройство -> партия» такой блок бы не выразила.
+    production_unit = models.ForeignKey(
+        ProductionUnit, verbose_name="устройство", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="batches",
+    )
     status = models.CharField("статус", max_length=24, choices=Status.choices, default=Status.PLANNED, db_index=True)
     assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="ответственный", on_delete=models.SET_NULL, null=True, blank=True, related_name="bakery_batches")
     planned_start = models.DateTimeField("план старт", null=True, blank=True)
@@ -403,6 +462,28 @@ class ProductionBatch(TimestampedModel):
             return f"{self.daily_card_number:02d}"
         return self.short_batch_number
 
+    @property
+    def display_batch_date(self):
+        """Производственный день, к которому относится видимый номер.
+
+        Номер начинается заново каждый день, поэтому опознаёт партию только
+        вместе с этой датой - её и показываем рядом везде, где показан номер.
+
+        Запасной вариант - день создания, а не срок заказа: свойство читают в
+        списках по десятку строк, и поход в order_item ради даты превратил бы
+        каждую такую страницу в лишний запрос на строку.
+        """
+        if self.card_number_date:
+            return self.card_number_date
+        return timezone.localtime(self.created_at).date() if self.created_at else None
+
+    @property
+    def display_batch_label(self):
+        date = self.display_batch_date
+        if date is None:
+            return self.display_batch_number
+        return f"{self.display_batch_number} от {date:%d.%m.%Y}"
+
     def save(self, *args, **kwargs):
         if not self.batch_number:
             base = self.order_item_id or int(timezone.now().timestamp())
@@ -415,7 +496,11 @@ class ProductionBatch(TimestampedModel):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return self.batch_number
+        # Технический batch_number остаётся идентификатором кейса в process
+        # mining, но человеку он не говорит ничего: в цеху партию называют
+        # двузначным номером дня. Всё, что рендерит партию как текст -
+        # выпадающие списки, админка, уведомления - должно показывать его.
+        return f"Партия {self.display_batch_label}"
 
     def clean(self):
         if self.planned_quantity is not None and self.planned_quantity <= 0:

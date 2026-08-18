@@ -76,6 +76,8 @@ class BatchCreationTests(TestCase):
         with self.assertRaises(ValidationError):
             batch.full_clean()
 
-    def test_string_representation_returns_batch_number(self):
+    def test_string_representation_returns_visible_number_and_its_day(self):
         batch = create_queued_batch(self.user)
-        self.assertEqual(str(batch), batch.batch_number)
+        self.assertEqual(str(batch), f"Партия {batch.display_batch_label}")
+        self.assertIn(batch.display_batch_number, str(batch))
+        self.assertNotIn(batch.batch_number, str(batch))

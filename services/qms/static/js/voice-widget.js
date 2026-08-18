@@ -318,9 +318,19 @@
     setState("Проверьте и подтвердите");
     setMessage("");
     $("transcript").textContent = data.transcript || "";
-    $("batch").textContent = extracted.batch_number || "-";
+    // Двузначный номер дня - тот, что напечатан на карточке и назван вслух.
+    // Технический B-1000 остаётся запасным вариантом для команд, разобранных
+    // до того, как у партии появился видимый номер.
+    $("batch").textContent = extracted.display_batch_number || extracted.batch_number || "-";
     $("current").textContent = extracted.current_stage || "-";
     $("next").textContent = extracted.next_stage || extracted.to_stage || "-";
+    // Строка появляется, только когда устройство названо: у очереди и склада
+    // устройств нет, и пустое «Устройство: -» там ничего не сообщает.
+    const unitRow = result.querySelector("[data-voice-unit-row]");
+    if (unitRow) {
+      unitRow.hidden = !extracted.unit;
+      $("unit").textContent = extracted.unit || "-";
+    }
     $("comment").textContent = extracted.comment || "-";
     // The speech plugin reports no per-utterance score, and showing that as
     // "0%" plus a low-confidence warning made every correct command look

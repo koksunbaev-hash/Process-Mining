@@ -2,7 +2,7 @@
 {% block title %}Склад{% endblock %}
 {% block page_title %}Склад готовой продукции{% endblock %}
 {% block content %}
-<section class="panel"><div class="table-wrap"><table><tr><th>Продукт</th><th>Партия</th><th>Количество</th><th>Поступило</th><th>Срок годности</th><th>Место</th><th>Статус</th></tr>
-{% for item in items %}<tr><td>{{ item.product.name }}</td><td>{{ item.batch.batch_number }}</td><td>{{ item.quantity }} {{ item.unit }}</td><td>{{ item.received_at }}</td><td>{{ item.expiration_date }}</td><td>{{ item.warehouse_location }}</td><td>{{ item.get_status_display }}</td></tr>{% endfor %}
+<section class="panel"><div class="table-wrap"><table><tr><th>Продукт</th><th>Партия</th><th>Дата партии</th><th>Количество</th><th>Поступило</th><th>Срок годности</th><th>Место</th><th>Статус</th></tr>
+{% for item in items %}<tr><td>{{ item.product.name }}</td><td title="Технический номер: {{ item.batch.batch_number }}">{{ item.batch.display_batch_number }}</td><td>{{ item.batch.display_batch_date|date:"d.m.Y"|default:"-" }}</td><td>{{ item.quantity }} {{ item.unit }}</td><td>{{ item.received_at }}</td><td>{{ item.expiration_date }}</td><td>{{ item.warehouse_location }}</td><td>{{ item.get_status_display }}</td></tr>{% endfor %}
 </table></div></section>
 {% endblock %}

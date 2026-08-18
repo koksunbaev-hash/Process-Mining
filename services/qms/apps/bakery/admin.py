@@ -11,6 +11,7 @@ from .models import (
     ProductionOrder,
     ProductionOrderItem,
     ProductionStage,
+    ProductionUnit,
     Product,
     Recipe,
     RecipeItem,
@@ -59,16 +60,29 @@ class CustomerAdmin(admin.ModelAdmin):
 
 @admin.register(ProductionOrder)
 class ProductionOrderAdmin(admin.ModelAdmin):
-    list_display = ("order_number", "status")
-    list_filter = ("status",)
+    list_display = ("order_number", "display_batch_number", "batch_number_date", "status")
+    list_filter = ("status", "batch_number_date")
     search_fields = ("order_number",)
     inlines = [ProductionOrderItemInline]
 
 
+@admin.register(ProductionUnit)
+class ProductionUnitAdmin(admin.ModelAdmin):
+    """Оборудование цеха. Купленную шестую печь заводят здесь, не в коде."""
+
+    list_display = ("name", "stage", "sequence", "status", "is_active")
+    list_filter = ("stage", "status", "is_active")
+    list_editable = ("sequence", "status", "is_active")
+    search_fields = ("name",)
+
+
 @admin.register(ProductionBatch)
 class ProductionBatchAdmin(admin.ModelAdmin):
-    list_display = ("batch_number", "product", "planned_quantity", "current_stage", "status", "assigned_to", "is_demo")
-    list_filter = ("current_stage", "status", "is_demo", "demo_run")
+    list_display = ("display_batch_number", "card_number_date", "batch_number", "product", "planned_quantity", "current_stage", "status", "assigned_to", "is_demo")
+    list_filter = ("current_stage", "status", "card_number_date", "is_demo", "demo_run")
+    # Видимый номер намеренно не в search_fields: admin ищет по icontains, а на
+    # целочисленной колонке это падает на уровне SQL. Искать по нему есть где -
+    # поиск на доске и в списке партий это умеет.
     search_fields = ("batch_number", "product__name", "order_item__order__order_number")
 
 

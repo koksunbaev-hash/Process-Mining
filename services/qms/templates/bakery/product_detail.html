@@ -24,6 +24,6 @@
   {% empty %}<p class="muted">Рецептура ещё не создана.</p>{% endfor %}
 </section>
 <section class="panel" id="orders"><h3>Заказы</h3>{% for line in item.order_items.all %}<p><a href="{% url 'bakery:order_detail' line.order.pk %}">Заказ №{{ line.order.order_number }}</a> - {{ line.quantity }} {{ line.unit }}</p>{% empty %}<p class="muted">Заказов нет.</p>{% endfor %}</section>
-<section class="panel" id="batches"><h3>Производственные партии</h3>{% for batch in item.batches.all %}<p><a href="{% url 'bakery:batch_detail' batch.pk %}">{{ batch.batch_number }}</a> - {{ batch.current_stage.name }}</p>{% empty %}<p class="muted">Партий нет.</p>{% endfor %}</section>
+<section class="panel" id="batches"><h3>Производственные партии</h3>{% for batch in item.batches.all %}<p><a href="{% url 'bakery:batch_detail' batch.pk %}" title="Технический номер: {{ batch.batch_number }}">Партия {{ batch.display_batch_label }}</a> - {{ batch.current_stage.name }}</p>{% empty %}<p class="muted">Партий нет.</p>{% endfor %}</section>
 <section class="panel" id="history"><h3>История изменений</h3><p class="muted">Создано: {{ item.created_at }}. Обновлено: {{ item.updated_at }}.</p></section>
 {% endblock %}

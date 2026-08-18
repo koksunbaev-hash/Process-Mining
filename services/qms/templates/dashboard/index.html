@@ -19,7 +19,7 @@
 <div class="content-grid">
   <section class="panel"><div class="panel-header"><h3>Партии по этапам</h3></div><canvas id="stageChart"></canvas></section>
   <section class="panel"><div class="panel-header"><h3>Последние проблемы</h3></div>
-    {% for nc in latest_nc %}<p>{{ nc.number }} - {{ nc.defect_type.name }} {% if nc.bakery_batch %}({{ nc.bakery_batch.batch_number }}){% endif %}</p>{% empty %}<p class="muted">Проблем нет.</p>{% endfor %}
+    {% for nc in latest_nc %}<p>{{ nc.number }} - {{ nc.defect_type.name }} {% if nc.bakery_batch %}<span title="Технический номер: {{ nc.bakery_batch.batch_number }}">(партия {{ nc.bakery_batch.display_batch_label }})</span>{% endif %}</p>{% empty %}<p class="muted">Проблем нет.</p>{% endfor %}
   </section>
 </div>
 {{ stage_counts|json_script:"stage-data" }}

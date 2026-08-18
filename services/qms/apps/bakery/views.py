@@ -9,7 +9,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Prefetch, Q
 from django.db.models.deletion import ProtectedError
 from django.http import FileResponse, Http404, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -42,6 +42,7 @@ from .models import (
     ProductionPlan,
     ProductionOrderItem,
     ProductionStage,
+    ProductionUnit,
     Product,
     Recipe,
     RecipeItem,
@@ -50,6 +51,7 @@ from .models import (
 )
 from .permissions import can_manage_catalog, can_manage_orders, can_move_batch, can_view_voice, role
 from .services import (
+    assign_batch_to_unit,
     confirm_order,
     move_batch,
     next_stage_for,
@@ -79,7 +81,7 @@ def visible_batch_number_query(value):
 
 def filter_batches(request):
     qs = ProductionBatch.objects.select_related(
-        "order_item__order__customer", "product", "current_stage", "assigned_to"
+        "order_item__order__customer", "product", "current_stage", "assigned_to", "production_unit"
     ).prefetch_related("voice_messages")
     q = request.GET.get("q", "").strip()
     if q:
@@ -106,8 +108,61 @@ def filter_batches(request):
     return qs
 
 
+def card_flags(card):
+    """Метки карточки одним списком.
+
+    Считаются здесь, а не в шаблоне: карточка бывает двух видов - партия и
+    сгруппированный блок, - и у них по-разному лежит заказ. Ветвление на каждую
+    метку превратило бы шапку карточки в четыре одинаковых условия, а пустой
+    контейнер меток всё равно занимал бы место в сетке.
+    """
+    order = card.order if getattr(card, "is_group", False) else card.order_item.order
+    flags = []
+    if order.priority in {ProductionOrder.Priority.URGENT, ProductionOrder.Priority.HIGH}:
+        flags.append({"kind": "urgent", "text": order.get_priority_display()})
+    if card.has_blocking_problem:
+        flags.append({"kind": "critical", "text": "проблема"})
+    if card.is_demo:
+        flags.append({"kind": "demo", "text": "demo"})
+    return flags
+
+
+def stage_lanes(stage, cards, units):
+    """Разложить карточки этапа по устройствам.
+
+    Первой идёт общая дорожка «Не распределено»: пока партию никуда не
+    поставили, она ждёт именно там, и пустая доска должна начинаться с неё, а
+    не с пяти пустых печей. Дальше - по одному месту на устройство.
+
+    На дорожке устройства помещается ровно одна карточка. Если в базе их
+    почему-то оказалось больше (ручная правка, гонка, которую не закрыл
+    select_for_update), лишние показываются там же и помечены: спрятать их
+    значило бы стереть партию с доски.
+    """
+    pool = {"unit": None, "key": "", "name": "Не распределено", "cards": [], "is_pool": True, "available": True}
+    lanes = {
+        unit.pk: {
+            "unit": unit,
+            "key": str(unit.pk),
+            "name": unit.name,
+            "cards": [],
+            "is_pool": False,
+            "available": unit.is_available,
+        }
+        for unit in units
+    }
+    for card in cards:
+        lane = lanes.get(card.production_unit_id) or pool
+        lane["cards"].append(card)
+    return [pool] + [lanes[unit.pk] for unit in units]
+
+
 def kanban_context(request):
-    stages = list(ProductionStage.objects.filter(is_active=True).order_by("sequence"))
+    stages = list(
+        ProductionStage.objects.filter(is_active=True)
+        .prefetch_related(Prefetch("units", queryset=ProductionUnit.objects.filter(is_active=True)))
+        .order_by("sequence")
+    )
     batches = filter_batches(request)
     column_search = {stage.code: request.GET.get(f"stage_q_{stage.code}", "").strip() for stage in stages}
     columns = []
@@ -136,6 +191,9 @@ def kanban_context(request):
                 order=first.order_item.order,
                 batches=order_batches,
                 first_batch=first,
+                # Блок стоит на устройстве целиком, поэтому место ему даёт
+                # первая строка - остальные едут за ней и повторяют её ссылку.
+                production_unit_id=first.production_unit_id,
                 planned_finish=min(
                     (batch.planned_finish for batch in order_batches if batch.planned_finish),
                     default=None,
@@ -147,6 +205,10 @@ def kanban_context(request):
             card.planned_finish or datetime.max.replace(tzinfo=timezone.get_current_timezone()),
             card.pk,
         ))
+        for card in cards:
+            card.flags = card_flags(card)
+        units = list(stage.units.all())
+        lanes = stage_lanes(stage, cards, units)
         # prev_stage feeds the "← Назад" button, which exists because HTML5 drag
         # and drop fires no events from touch: on a phone or tablet the buttons
         # are the only way to move a batch at all.
@@ -154,6 +216,11 @@ def kanban_context(request):
             "stage": stage,
             "batches": cards,
             "count": len(cards),
+            "lanes": lanes,
+            "has_units": bool(units),
+            "busy": sum(1 for lane in lanes if not lane["is_pool"] and lane["cards"]),
+            "capacity": len(units),
+            "waiting": len(lanes[0]["cards"]),
             "query": column_search[stage.code],
             "has_next": index + 1 < len(stages),
             "prev_stage": stages[index - 1] if index else None,
@@ -219,13 +286,22 @@ def move_batch_view(request, pk):
     if request.method != "POST":
         return redirect("bakery:kanban")
     stage = ProductionStage.objects.filter(pk=request.POST.get("stage")).first() or next_stage_for(batch)
+    # Дорожка устройства - такая же цель броска, как колонка. Бросок внутри
+    # своей колонки этап не меняет, а только переставляет карточку с места на
+    # место, поэтому move_batch на него звать нечего: он бы отказал словами
+    # «партия уже находится на этом этапе».
+    unit, unit_error = requested_unit(request, stage or batch.current_stage)
+    if unit_error:
+        return unit_refusal(request, unit_error)
+    if stage and batch.current_stage_id == stage.pk:
+        return assign_only(request, batch, unit)
     # Both operands are read before move_batch runs, so neither may be None:
     # a batch on the last stage has no next stage, and a batch that never
     # entered production has no current one.
     going_back = bool(stage and batch.current_stage_id and stage.sequence < batch.current_stage.sequence)
     error = ""
     if stage is None:
-        error = f"Партия {batch.batch_number} уже на последнем этапе."
+        error = f"Партия {batch.display_batch_label} уже на последнем этапе."
     else:
         try:
             # allow_skip: dragging a card names a column, not a step. The two
@@ -233,7 +309,10 @@ def move_batch_view(request, pk):
             # nothing for them; it is what lets a drag cross several columns.
             # move_batch still refuses a jump with no comment, and the drop
             # handler always sends one.
-            move_batch(
+            # move_batch перечитывает партию под блокировкой и возвращает уже
+            # переведённую: у переданного объекта этап остался прежним, и
+            # распределение по нему отказало бы «устройство не того этапа».
+            batch = move_batch(
                 batch,
                 stage,
                 request.user,
@@ -241,6 +320,8 @@ def move_batch_view(request, pk):
                 require_comment=going_back,
                 allow_skip=True,
             )
+            if unit is not None:
+                assign_batch_to_unit(batch, unit, request.user)
         except (PermissionDenied, ValidationError) as exc:
             # ValidationError.__str__ is repr(list(self)), which would print
             # ['Переход возможен только на соседний этап.'] - brackets, quotes
@@ -253,7 +334,50 @@ def move_batch_view(request, pk):
     if error:
         messages.error(request, error)
     else:
-        messages.success(request, f"Партия {batch.batch_number} передана на этап {stage.name}.")
+        messages.success(request, f"Партия {batch.display_batch_label} передана на этап {stage.name}.")
+    return redirect(request.POST.get("next") or "bakery:kanban")
+
+
+def requested_unit(request, stage):
+    """Устройство из запроса: (устройство или None, текст отказа).
+
+    Пустая строка - осознанный выбор «в Не распределено», а не отсутствие
+    параметра, поэтому она и None различаются: снять партию с печи должно быть
+    можно, а бросок мимо дорожек - не должен молча её снимать.
+    """
+    raw = request.POST.get("unit")
+    if raw is None or raw == "":
+        return None, ""
+    unit = ProductionUnit.objects.select_related("stage").filter(pk=raw, is_active=True).first()
+    if unit is None:
+        return None, "Устройство не найдено."
+    if stage is not None and unit.stage_id != stage.pk:
+        return None, f"«{unit.name}» не относится к этапу {stage.name}."
+    return unit, ""
+
+
+def unit_refusal(request, error):
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse({"ok": False, "error": error})
+    messages.error(request, error)
+    return redirect(request.POST.get("next") or "bakery:kanban")
+
+
+def assign_only(request, batch, unit):
+    """Перестановка внутри этапа: этап тот же, меняется только устройство."""
+    error = ""
+    try:
+        assign_batch_to_unit(batch, unit, request.user)
+    except (PermissionDenied, ValidationError) as exc:
+        error = " ".join(exc.messages) if isinstance(exc, ValidationError) else str(exc)
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse({"ok": not error, "error": error})
+    if error:
+        messages.error(request, error)
+    elif unit is None:
+        messages.success(request, f"Партия {batch.display_batch_label} снята с устройства.")
+    else:
+        messages.success(request, f"Партия {batch.display_batch_label} поставлена на «{unit.name}».")
     return redirect(request.POST.get("next") or "bakery:kanban")
 
 
@@ -285,19 +409,28 @@ def move_order_group_view(request, pk):
         if stage is None:
             error = f"Заказ №{order.order_number} уже на последнем этапе."
 
+    unit, unit_error = requested_unit(request, stage or (batches[0].current_stage if batches else None))
+    if unit_error:
+        return unit_refusal(request, unit_error)
+    if not error and batches and batches[0].current_stage_id == stage.pk:
+        return assign_only(request, batches[0], unit)
+
     if not error:
         try:
             with transaction.atomic():
+                moved = []
                 for batch in batches:
                     going_back = stage.sequence < batch.current_stage.sequence
-                    move_batch(
+                    moved.append(move_batch(
                         batch,
                         stage,
                         request.user,
                         request.POST.get("comment", ""),
                         require_comment=going_back,
                         allow_skip=True,
-                    )
+                    ))
+                if unit is not None:
+                    assign_batch_to_unit(moved[0], unit, request.user)
         except (PermissionDenied, ValidationError) as exc:
             error = " ".join(exc.messages) if isinstance(exc, ValidationError) else str(exc)
 
@@ -776,7 +909,7 @@ def production_sheet(request):
             else:
                 messages.success(
                     request,
-                    f"Партия {order.display_batch_number} создана: {item_count} позиций отправлено в очередь одним блоком.",
+                    f"Партия {order.display_batch_label} создана: {item_count} позиций отправлено в очередь одним блоком.",
                 )
         else:
             messages.success(request, f"Сохранено позиций: {saved}.")

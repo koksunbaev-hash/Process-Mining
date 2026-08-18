@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ item.batch_number }}{% endblock %}
-{% block page_title %}{{ item.batch_number }}{% endblock %}
+{% block title %}Партия {{ item.display_batch_number }}{% endblock %}
+{% block page_title %}Партия {{ item.display_batch_label }}{% endblock %}
 {% block content %}
 <section class="panel">
-  <div class="meta-grid"><div><span class="muted">Продукт</span><strong>{{ item.product.name }}</strong></div><div><span class="muted">Этап</span><strong>{{ item.current_stage.name }}</strong></div><div><span class="muted">Статус</span><strong>{{ item.get_status_display }}</strong></div></div>
+  <div class="meta-grid"><div><span class="muted">Продукт</span><strong>{{ item.product.name }}</strong></div><div><span class="muted">Этап</span><strong>{{ item.current_stage.name }}</strong></div><div><span class="muted">Статус</span><strong>{{ item.get_status_display }}</strong></div><div><span class="muted">Технический номер</span><strong>{{ item.batch_number }}</strong></div></div>
   <form method="post" action="{% url 'bakery:move_batch' item.pk %}" class="form-grid">{% csrf_token %}<textarea name="comment" placeholder="Комментарий"></textarea>{% if next_stage %}<button class="primary">Передать: {{ next_stage.name }}</button>{% endif %}</form>
   <form method="post" action="{% url 'bakery:batch_action' item.pk 'prev' %}" class="inline-form">{% csrf_token %}<input name="comment" placeholder="Причина возврата"><button>Вернуть назад</button></form>
   <form method="post" action="{% url 'bakery:batch_action' item.pk 'pause' %}" class="inline-form">{% csrf_token %}<button>Остановить</button></form>

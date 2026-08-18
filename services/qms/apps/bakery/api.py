@@ -138,6 +138,10 @@ class ProductionBatchSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
     stage_name = serializers.CharField(source="current_stage.name", read_only=True)
     order_number = serializers.CharField(source="order_item.order.order_number", read_only=True)
+    # Номер с карточки рядом с техническим, а не вместо него: batch_number -
+    # идентификатор кейса в process mining, и клиенты API держатся за него.
+    display_batch_number = serializers.CharField(read_only=True)
+    display_batch_date = serializers.DateField(read_only=True)
 
     class Meta:
         model = ProductionBatch
@@ -188,6 +192,8 @@ class VoiceMessageSerializer(serializers.ModelSerializer):
 class FinishedGoodsStockSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
     batch_number = serializers.CharField(source="batch.batch_number", read_only=True)
+    display_batch_number = serializers.CharField(source="batch.display_batch_number", read_only=True)
+    display_batch_date = serializers.DateField(source="batch.display_batch_date", read_only=True)
 
     class Meta:
         model = FinishedGoodsStock

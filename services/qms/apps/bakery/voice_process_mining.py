@@ -19,9 +19,9 @@ from apps.notifications.services import notify
 from apps.quality.models import ControlPost, ControlType, Department, QualityObject
 
 from . import speech_kk
-from .models import ProductionBatch, ProductionStage, VoiceCommand, VoiceMessage
+from .models import ProductionBatch, ProductionStage, ProductionUnit, VoiceCommand, VoiceMessage
 from .permissions import can_view_voice
-from .services import log_order_event, move_batch, pause_batch, resume_batch
+from .services import assign_batch_to_unit, log_order_event, move_batch, pause_batch, resume_batch
 
 
 STAGE_ALIASES = {
@@ -152,6 +152,11 @@ def process_mining_context():
     ))
     return {
         "stages": ["Очередь", "Замес", "Формовка", "Расстойка", "Печь", "Склад", "Готово"],
+        # Распознаватель должен ждать «печь два» как одно целое. Без списка он
+        # слышит там номер партии и отдаёт команду, которой никто не отдавал.
+        "units": list(
+            ProductionUnit.objects.filter(is_active=True).order_by("stage__sequence", "sequence").values_list("name", flat=True)
+        ),
         "batch_numbers": [f"{number:02d}" for number in visible_numbers] + [batch.batch_number for batch in recent_batches],
         "batch_aliases": [batch.short_batch_number for batch in recent_batches],
     }
@@ -249,6 +254,63 @@ def handle_process_mining_callback(payload):
     if voice.transcription_status == VoiceMessage.TranscriptionStatus.COMPLETED and voice.transcript:
         command = create_voice_command(voice)
     return voice, command
+
+
+# Как устройство называют вслух. Слева - корень, который останется от любого
+# падежа («на печи», «в печку», «печь»); справа - корень названия в базе.
+# Названия придумывает цех, поэтому совпадение ищется по началу строки, а не по
+# точному равенству: «Печь 2» и «Печь №2» - одно и то же место.
+UNIT_ALIASES = {
+    "печ": "печ",
+    "выпеч": "печ",
+    "миксер": "миксер",
+    "тестомес": "миксер",
+    "шкаф": "шкаф",
+    "расстоечн": "шкаф",
+    "формовщ": "формовщ",
+    "формовочн": "формовщ",
+}
+# Номер обязателен: «на печь» - это этап, «на печь 2» - место. Без цифры
+# устройство не названо, и выдумывать его за оператора нельзя.
+UNIT_RE = re.compile(
+    r"\b(" + "|".join(sorted(UNIT_ALIASES, key=len, reverse=True)) + r")[а-яё]*\s*[№#]?\s*(\d{1,2})\b",
+    flags=re.IGNORECASE,
+)
+
+
+def _unit_key(value):
+    """«Печь № 2» -> «печь2». Речь не произносит ни пробелов, ни решёток."""
+    return re.sub(r"[^0-9a-zа-яё]", "", (value or "").lower().replace("ё", "е"))
+
+
+def extract_unit(text):
+    """(название устройства, текст без него).
+
+    Устройство вынимается из фразы до разбора номера партии. Иначе «партия 3 на
+    печь 2» разбиралась бы двумя числами подряд, и какое из них номер партии,
+    зависело бы от того, что оператор назвал первым.
+    """
+    folded = speech_kk.fold(text or "")
+    match = UNIT_RE.search(folded)
+    if not match:
+        return "", text
+    root = UNIT_ALIASES[match.group(1).lower()]
+    number = match.group(2)
+    for unit in ProductionUnit.objects.filter(is_active=True).select_related("stage"):
+        key = _unit_key(unit.name)
+        tail = re.search(r"(\d+)$", key)
+        # Начало сравнивается по корню, а хвост - по числу: в базе стоит
+        # «Печь 2», корень от произнесённого - «печ», и точного равенства между
+        # ними не будет никогда.
+        if key.startswith(root) and tail and int(tail.group(1)) == int(number):
+            return unit.name, folded[: match.start()] + " " + folded[match.end():]
+    return "", text
+
+
+def resolve_unit(name, stage):
+    if not name or stage is None:
+        return None
+    return ProductionUnit.objects.filter(stage=stage, name=name, is_active=True).first()
 
 
 def _squash(value):
@@ -350,6 +412,7 @@ def create_voice_command(voice):
             parsed["moves"].append({
                 "spoken": piece.get("batch_number", ""),
                 "batch_number": found.batch_number if found else "",
+                "display_batch_number": found.display_batch_label if found else "",
                 "to_stage": piece.get("to_stage", ""),
                 "resolved": bool(found),
             })
@@ -361,6 +424,11 @@ def create_voice_command(voice):
     if batch:
         parsed["spoken_batch_number"] = parsed.get("batch_number", "")
         parsed["batch_number"] = batch.batch_number
+        # Карточка подтверждения показывает display_batch_number: оператор
+        # назвал двузначный номер и должен увидеть его же, а не технический,
+        # которым партию не называет никто. Технический остаётся рядом - на нём
+        # держится сверка в confirm_voice_command.
+        parsed["display_batch_number"] = batch.display_batch_label
         parsed["from_stage"] = batch.current_stage.code
         parsed["current_stage"] = batch.current_stage.name
     # No score is not a low score. The plugin reports none at all, so this used
@@ -493,10 +561,13 @@ def parse_voice_command(text, confidence=None):
     # are rewritten before anything below goes looking for a batch. Russian
     # transcripts pass through this untouched.
     text = speech_kk.prepare(text)
+    # Устройство вынимается первым: его номер - такая же цифра, как номер
+    # партии, и оставленный в строке он спорил бы с ней за первое совпадение.
+    unit_name, text_without_unit = extract_unit(text)
     normalized = text.lower().replace("№", " ")
     batch_match = re.search(
     r"\b(?:парт(?:ия|ию|ии)\s*[№#]?\s*)?((?:DEMO[-\s]?)?[BD][-\s]?\d+(?:-\d+)?(?:-\d+)?|\d+)\b",
-    text,
+    text_without_unit,
     flags=re.IGNORECASE,
     )
 
@@ -541,6 +612,7 @@ def parse_voice_command(text, confidence=None):
         "batch_number": batch_number,
         "order_number": order_number,
         "to_stage": to_stage,
+        "unit": unit_name,
         "comment": comment,
         "quantity": quantity,
         "confidence": float(confidence or 0),
@@ -590,6 +662,7 @@ def confirm_voice_command(command, user):
     if data.get("batch_number") != batch.batch_number:
         command.extracted_data["spoken_batch_number"] = data.get("batch_number", "")
         command.extracted_data["batch_number"] = batch.batch_number
+    command.extracted_data["display_batch_number"] = batch.display_batch_label
     expected_stage = data.get("from_stage") or batch.current_stage.code
     if data.get("from_stage") and batch.current_stage.code != data["from_stage"]:
         raise ConflictError(f"Этап партии изменился: сейчас {batch.current_stage.name}.")
@@ -602,6 +675,24 @@ def confirm_voice_command(command, user):
         target = ProductionStage.objects.filter(code=data.get("to_stage") or "").first()
         if not target:
             raise ValidationError("Не понял, на какой этап переводить партию. Назовите этап.")
+        spoken_unit = data.get("unit") or ""
+        # «Партия 3 на печь 2», сказанная про партию, которая уже в печи, - это
+        # распределение, а не перевод. Звать move_batch на свой же этап значит
+        # получить отказ «партия уже находится на этом этапе» на команду,
+        # которая совершенно осмысленна.
+        if spoken_unit and batch.current_stage_id == target.pk:
+            unit = resolve_unit(spoken_unit, target)
+            if unit is None:
+                raise ValidationError(f"«{spoken_unit}» не найдено на этапе {target.name}.")
+            assign_batch_to_unit(batch, unit, user, data.get("comment", ""))
+            command.extracted_data["unit"] = unit.name
+            command.status = VoiceCommand.Status.EXECUTED
+            command.confirmed_by = user
+            command.executed_at = timezone.now()
+            command.extracted_data["from_stage"] = expected_stage
+            command.save(update_fields=["status", "confirmed_by", "executed_at", "extracted_data", "updated_at"])
+            write_audit("voice_command_executed", command, user=user, changes=command.extracted_data)
+            return command
         # allow_skip: spoken orders name a destination, not a step. "B-102
         # закончил замес, отправить в склад" is a legitimate thing to say, and
         # refusing it because Склад is four stages away helps nobody. The jump is
@@ -618,15 +709,25 @@ def confirm_voice_command(command, user):
                 .exclude(status__in=[ProductionBatch.Status.COMPLETED, ProductionBatch.Status.CANCELLED])
                 .order_by("pk")
             )
+        moved = []
         for movement_batch in movement_batches:
-            move_batch(
+            moved.append(move_batch(
                 movement_batch,
                 target,
                 user,
                 data.get("comment", ""),
                 require_comment=target.sequence < movement_batch.current_stage.sequence,
                 allow_skip=True,
-            )
+            ))
+        if spoken_unit:
+            unit = resolve_unit(spoken_unit, target)
+            if unit is None:
+                raise ValidationError(f"«{spoken_unit}» не найдено на этапе {target.name}.")
+            # Именно moved[0], а не batch: move_batch возвращает перечитанную
+            # партию, а у переданной этап остался прежним.
+            assign_batch_to_unit(moved[0], unit, user, data.get("comment", ""))
+            command.extracted_data["unit"] = unit.name
+
         # Остальные партии из той же фразы. Первая уже переведена выше; здесь
         # идут те, что были названы следом. Каждая своим переходом - если одна
         # из них заблокирована, остальные всё равно доедут, а отказ вернётся
@@ -643,7 +744,7 @@ def confirm_voice_command(command, user):
                            require_comment=stage.sequence < other.current_stage.sequence,
                            allow_skip=True)
             except (ValidationError, ConflictError) as exc:
-                refused.append(f"{other.batch_number}: {exc}")
+                refused.append(f"{other.display_batch_label}: {exc}")
         if refused:
             raise ValidationError("Часть партий не переведена — " + "; ".join(refused))
     elif intent == VoiceCommand.Intent.PAUSE_BATCH:
@@ -652,7 +753,7 @@ def confirm_voice_command(command, user):
         resume_batch(batch, user, data.get("comment", ""))
     elif intent == VoiceCommand.Intent.CREATE_PROBLEM:
         create_problem_from_voice(batch, user, data.get("comment", ""))
-        notify(batch.assigned_to or user, "Создана проблема по голосовой команде", batch.batch_number, "voice_problem", reverse("bakery:batch_detail", args=[batch.pk]))
+        notify(batch.assigned_to or user, "Создана проблема по голосовой команде", f"Партия {batch.display_batch_label}", "voice_problem", reverse("bakery:batch_detail", args=[batch.pk]))
     elif intent == VoiceCommand.Intent.ADD_COMMENT:
         log_order_event(batch.order_item.order, data.get("comment", ""), "voice_comment", user=user, batch=batch)
     command.status = VoiceCommand.Status.EXECUTED
@@ -679,7 +780,10 @@ def create_problem_from_voice(batch, user, description):
     control_type, _ = ControlType.objects.get_or_create(code="bakery-problem", defaults={"name": "Производственная проблема"})
     post, _ = ControlPost.objects.get_or_create(code="BAKERY-NC", defaults={"name": "Контроль хлебозавода", "department": dept, "control_type": control_type, "sequence": 1})
     defect, _ = DefectType.objects.get_or_create(code="VOICE-PROBLEM", defaults={"name": "Проблема из голосовой команды", "category": "хлебозавод", "criticality": "critical", "object_block_required": True})
-    qobj, _ = QualityObject.objects.get_or_create(unique_number=f"VOICE-{batch.batch_number}", defaults={"object_type": "finished_product", "product_name": batch.product.name, "quantity": 1, "department": dept, "created_by": user})
+    # unique_number держится за технический номер - он и должен быть уникальным
+    # навсегда, а видимый повторяется каждый день. Человеку карточка показывает
+    # поле batch_number, туда и кладём номер, которым партию называют в цеху.
+    qobj, _ = QualityObject.objects.get_or_create(unique_number=f"VOICE-{batch.batch_number}", defaults={"object_type": "finished_product", "product_name": batch.product.name, "batch_number": batch.display_batch_label, "quantity": 1, "department": dept, "created_by": user})
     problem = Nonconformity.objects.create(
         quality_object=qobj,
         control_post=post,

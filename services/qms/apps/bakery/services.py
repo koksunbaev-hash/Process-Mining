@@ -17,6 +17,7 @@ from .models import (
     ProductionOrder,
     ProductionOrderItem,
     ProductionStage,
+    ProductionUnit,
     stock_expiration_for,
 )
 from .permissions import can_move_batch
@@ -72,11 +73,20 @@ def assign_batch_card_numbers(order, batches):
         for batch in batches
     ):
         return
-    current = (
+    # Ряд дня общий для карточек и для заказов: номер заказа - это номер его
+    # первой карточки, а на паре (дата, номер) заказа висит уникальный индекс.
+    # Считать максимум только по карточкам мало: заказ, подтверждённый без
+    # позиций, успевает занять номер из assign_daily_batch_number, до которого
+    # карточки ещё не дошли, и следующий же заказ упёрся бы в него.
+    current = max(
         ProductionBatch.objects.select_for_update()
         .filter(card_number_date=production_date)
         .aggregate(value=Max("daily_card_number"))["value"]
-        or 0
+        or 0,
+        ProductionOrder.objects.exclude(pk=order.pk)
+        .filter(batch_number_date=production_date)
+        .aggregate(value=Max("daily_batch_number"))["value"]
+        or 0,
     )
     first_number = None
     if order.kanban_grouped:
@@ -96,6 +106,123 @@ def assign_batch_card_numbers(order, batches):
     order.daily_batch_number = first_number
     order.batch_number_date = production_date
     order.save(update_fields=["daily_batch_number", "batch_number_date", "updated_at"])
+
+
+def block_batches(batch):
+    """Строки, которые едут вместе с этой партией.
+
+    Сгруппированный заказ показан на доске одной карточкой, и устройство он
+    занимает тоже одно - значит и ставить на устройство его надо целиком.
+    Обычная партия отвечает сама за себя.
+    """
+    if not batch.order_item.order.kanban_grouped:
+        return [batch]
+    return list(
+        ProductionBatch.objects.select_related("current_stage", "order_item__order")
+        .filter(order_item__order_id=batch.order_item.order_id, current_stage_id=batch.current_stage_id)
+        .exclude(status__in=[ProductionBatch.Status.COMPLETED, ProductionBatch.Status.CANCELLED])
+        .order_by("pk")
+    )
+
+
+def unit_occupant(unit, exclude_order_id=None):
+    """Карточка, которая сейчас стоит на устройстве, или None.
+
+    Завершённые и отменённые не в счёт: они устройство уже отпустили, а строка
+    с ссылкой остаётся ради истории.
+    """
+    qs = (
+        ProductionBatch.objects.select_related("order_item__order", "product")
+        .filter(production_unit=unit)
+        .exclude(status__in=[ProductionBatch.Status.COMPLETED, ProductionBatch.Status.CANCELLED])
+    )
+    if exclude_order_id is not None:
+        qs = qs.exclude(order_item__order_id=exclude_order_id)
+    return qs.first()
+
+
+@transaction.atomic
+def assign_batch_to_unit(batch, unit, user=None, comment=""):
+    """Поставить партию на устройство. unit=None - снять в «Не распределено».
+
+    Занятость проверяется здесь, а не ограничением базы: сгруппированный блок -
+    это несколько строк ProductionBatch на одном устройстве, и уникальный
+    индекс по колонке запретил бы ровно тот случай, ради которого группировка
+    и сделана. select_for_update закрывает гонку двух операторов, потянувшихся
+    к одной печи.
+    """
+    order_id = batch.order_item.order_id
+    # Снять партию с устройства - такое же распоряжение её судьбой, как
+    # поставить: проверка прав общая для обоих направлений, иначе печь мог бы
+    # освободить кто угодно.
+    if not can_move_batch(user, batch.current_stage.code):
+        raise PermissionDenied("Нет права распределять партии на этом этапе.")
+    if unit is not None:
+        if unit.stage_id != batch.current_stage_id:
+            raise ValidationError(
+                f"«{unit.name}» стоит на этапе {unit.stage.name}, а партия на этапе {batch.current_stage.name}."
+            )
+        if not unit.is_available:
+            raise ValidationError(f"«{unit.name}» сейчас недоступно: {unit.get_status_display()}.")
+        # Блокируем устройство, а не партию: спор идёт за место, и второй
+        # оператор должен дождаться первого именно здесь.
+        ProductionUnit.objects.select_for_update().filter(pk=unit.pk).first()
+        taken = unit_occupant(unit, exclude_order_id=order_id)
+        if taken is not None:
+            raise ValidationError(f"«{unit.name}» занято: партия {taken.display_batch_number}.")
+
+    rows = block_batches(batch)
+    previous = next((row.production_unit for row in rows if row.production_unit_id), None)
+    if previous is not None and unit is not None and previous.pk == unit.pk:
+        return unit
+    for row in rows:
+        row.production_unit = unit
+        row.save(update_fields=["production_unit", "updated_at"])
+    batch.production_unit = unit
+
+    order = batch.order_item.order
+    if unit is None:
+        message = f"Партия {batch.display_batch_label} снята с «{previous.name}»." if previous else None
+    elif previous is not None:
+        message = f"Партия {batch.display_batch_label}: «{previous.name}» -> «{unit.name}»."
+    else:
+        message = f"Партия {batch.display_batch_label} поставлена на «{unit.name}»."
+    if message:
+        log_order_event(order, f"{message} {comment}".strip(), "unit_assigned", user=user, batch=batch)
+        safe_record_process_event(
+            case_id=batch.batch_number,
+            case_type="batch",
+            activity="Распределение на устройство",
+            batch=batch,
+            user=user,
+            from_stage=batch.current_stage.code,
+            to_stage=batch.current_stage.code,
+            status=batch.status,
+            quantity=batch.actual_quantity or batch.planned_quantity,
+            unit=batch.unit,
+            # Ресурс - то, чем событие ценно для аналитики: без него в логе
+            # видно «партия побывала на этапе Печь», но не видно, что печей
+            # пять и загружены они неравномерно.
+            resource=unit.name if unit else "",
+            event_data={"unit": unit.name if unit else "", "previous_unit": previous.name if previous else ""},
+        )
+    return unit
+
+
+def free_units_for_stage(stage):
+    """Свободные устройства этапа, в порядке их номеров."""
+    busy = set(
+        ProductionBatch.objects.filter(production_unit__stage=stage)
+        .exclude(status__in=[ProductionBatch.Status.COMPLETED, ProductionBatch.Status.CANCELLED])
+        .values_list("production_unit_id", flat=True)
+    )
+    return [
+        unit
+        for unit in ProductionUnit.objects.filter(stage=stage, is_active=True, status=ProductionUnit.Status.AVAILABLE)
+        if unit.pk not in busy
+    ]
+
+
 @transaction.atomic
 def repeat_order_for_next_week(source_order, quantities, user):
     source_items = list(
@@ -182,6 +309,7 @@ def confirm_order(order, user=None, assignee=None):
         event_data={"order_number": order.order_number},
     )
     batches = []
+    created_batches = []
     for item in order.items.select_related("product", "recipe"):
         recipe = item.recipe or item.product.recipes.filter(is_active=True).first()
         batch, created = ProductionBatch.objects.get_or_create(
@@ -197,35 +325,42 @@ def confirm_order(order, user=None, assignee=None):
                 "actual_start": timezone.now(),
             },
         )
-        if created:
-            BatchStageHistory.objects.create(batch=batch, to_stage=queue, changed_by=user, comment="Партия поступила в очередь.")
-            log_order_event(order, f"Партия {batch.batch_number} поступила в очередь.", "batch_queued", user=user, batch=batch)
-            safe_record_process_event(
-                case_id=batch.batch_number,
-                case_type="batch",
-                activity="Создание производственной партии",
-                batch=batch,
-                user=user,
-                to_stage=queue.code,
-                status=batch.status,
-                quantity=batch.planned_quantity,
-                unit=batch.unit,
-            )
-            safe_record_process_event(
-                case_id=batch.batch_number,
-                case_type="batch",
-                activity="Партия поступила в очередь",
-                batch=batch,
-                user=user,
-                to_stage=queue.code,
-                status=batch.status,
-                quantity=batch.planned_quantity,
-                unit=batch.unit,
-            )
-            if batch.assigned_to and not batch.is_demo:
-                notify(batch.assigned_to, "Партия поступила в очередь", batch.batch_number, "batch_queued", reverse("bakery:batch_detail", args=[batch.pk]))
         batches.append(batch)
+        if created:
+            created_batches.append(batch)
+
+    # Номера раздаются до первой записи в историю и до уведомлений: и то и
+    # другое называет партию так, как её называют в цеху, а до этой строки
+    # видимого номера у партии ещё нет.
     assign_batch_card_numbers(order, batches)
+
+    for batch in created_batches:
+        BatchStageHistory.objects.create(batch=batch, to_stage=queue, changed_by=user, comment="Партия поступила в очередь.")
+        log_order_event(order, f"Партия {batch.display_batch_label} поступила в очередь.", "batch_queued", user=user, batch=batch)
+        safe_record_process_event(
+            case_id=batch.batch_number,
+            case_type="batch",
+            activity="Создание производственной партии",
+            batch=batch,
+            user=user,
+            to_stage=queue.code,
+            status=batch.status,
+            quantity=batch.planned_quantity,
+            unit=batch.unit,
+        )
+        safe_record_process_event(
+            case_id=batch.batch_number,
+            case_type="batch",
+            activity="Партия поступила в очередь",
+            batch=batch,
+            user=user,
+            to_stage=queue.code,
+            status=batch.status,
+            quantity=batch.planned_quantity,
+            unit=batch.unit,
+        )
+        if batch.assigned_to and not batch.is_demo:
+            notify(batch.assigned_to, "Партия поступила в очередь", f"Партия {batch.display_batch_label}", "batch_queued", reverse("bakery:batch_detail", args=[batch.pk]))
     return batches
 
 
@@ -300,6 +435,11 @@ def move_batch(batch, to_stage, user, comment="", require_comment=False, allow_s
         comment=comment,
     )
     batch.current_stage = to_stage
+    # Устройство принадлежит этапу, поэтому уходя с этапа партия его
+    # освобождает - иначе печь осталась бы занятой партией, которая уже на
+    # складе, и следующую было бы некуда поставить. На новом этапе партия
+    # встаёт в «Не распределено» и ждёт, пока её туда поставят.
+    batch.production_unit = None
     batch.status = ProductionBatch.Status.COMPLETED if to_stage.code == "done" else ProductionBatch.Status.IN_PROGRESS
     if to_stage.code == "queue":
         batch.status = ProductionBatch.Status.QUEUED
@@ -307,7 +447,7 @@ def move_batch(batch, to_stage, user, comment="", require_comment=False, allow_s
         batch.actual_finish = now
     if not batch.actual_start:
         batch.actual_start = now
-    batch.save(update_fields=["current_stage", "status", "actual_start", "actual_finish", "updated_at"])
+    batch.save(update_fields=["current_stage", "production_unit", "status", "actual_start", "actual_finish", "updated_at"])
     order = batch.order_item.order
     if to_stage.code == "done":
         # An order can carry several batches - confirm_order makes one per order
@@ -324,7 +464,7 @@ def move_batch(batch, to_stage, user, comment="", require_comment=False, allow_s
     else:
         order.status = ProductionOrder.Status.IN_PRODUCTION
     order.save(update_fields=["status", "updated_at"])
-    log_order_event(order, f"Партия {batch.batch_number}: {from_stage.name} -> {to_stage.name}.", "stage_changed", user=user, batch=batch)
+    log_order_event(order, f"Партия {batch.display_batch_label}: {from_stage.name} -> {to_stage.name}.", "stage_changed", user=user, batch=batch)
     if to_stage.code == "warehouse":
         stock, stock_created = FinishedGoodsStock.objects.get_or_create(
             batch=batch,
@@ -356,7 +496,7 @@ def move_batch(batch, to_stage, user, comment="", require_comment=False, allow_s
             )
     process_event_for_batch_transition(batch, from_stage, to_stage, user, occurred_at=now, comment=comment)
     if batch.assigned_to and not batch.is_demo:
-        notify(batch.assigned_to, "Партия перешла на новый этап", f"{batch.batch_number}: {to_stage.name}", "stage_changed", reverse("bakery:batch_detail", args=[batch.pk]))
+        notify(batch.assigned_to, "Партия перешла на новый этап", f"Партия {batch.display_batch_label}: {to_stage.name}", "stage_changed", reverse("bakery:batch_detail", args=[batch.pk]))
     return batch
 
 
@@ -367,7 +507,7 @@ def pause_batch(batch, user, comment=""):
         raise PermissionDenied("Нет права останавливать эту партию.")
     batch.status = ProductionBatch.Status.PAUSED
     batch.save(update_fields=["status", "updated_at"])
-    log_order_event(batch.order_item.order, f"Партия {batch.batch_number} остановлена. {comment}", "batch_paused", user=user, batch=batch)
+    log_order_event(batch.order_item.order, f"Партия {batch.display_batch_label} остановлена. {comment}", "batch_paused", user=user, batch=batch)
     safe_record_process_event(
         case_id=batch.batch_number,
         case_type="batch",
@@ -390,7 +530,7 @@ def resume_batch(batch, user, comment=""):
         raise PermissionDenied("Нет права возобновлять эту партию.")
     batch.status = ProductionBatch.Status.IN_PROGRESS
     batch.save(update_fields=["status", "updated_at"])
-    log_order_event(batch.order_item.order, f"Партия {batch.batch_number} возобновлена. {comment}", "batch_resumed", user=user, batch=batch)
+    log_order_event(batch.order_item.order, f"Партия {batch.display_batch_label} возобновлена. {comment}", "batch_resumed", user=user, batch=batch)
     safe_record_process_event(
         case_id=batch.batch_number,
         case_type="batch",

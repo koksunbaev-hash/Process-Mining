@@ -28,7 +28,7 @@ from .models import (
     Unit,
 )
 from .permissions import role
-from .services import move_batch, next_stage_for
+from .services import assign_batch_to_unit, free_units_for_stage, move_batch, next_stage_for
 
 
 WORKFLOW_CODES = ["queue", "mixing", "forming", "proofing", "oven", "warehouse", "done"]
@@ -288,6 +288,13 @@ def tick_demo(run, user):
         try:
             move_batch(batch, target, user, f"DEMO: переход на этап {target.name}")
             batch.refresh_from_db()
+            # Демо показывают людям, и доска на нём должна выглядеть как в
+            # работе: партия не висит в «Не распределено», а встаёт на первое
+            # свободное устройство. Свободного нет - значит и в демо она ждёт,
+            # ровно как ждала бы в цеху.
+            free = free_units_for_stage(batch.current_stage)
+            if free:
+                assign_batch_to_unit(batch, free[0], user)
             changed.append({"id": batch.pk, "batch_number": batch.batch_number, "stage": batch.current_stage.code})
         except (PermissionDenied, ValidationError) as exc:
             errors.append({"batch": batch.batch_number, "error": str(exc)})

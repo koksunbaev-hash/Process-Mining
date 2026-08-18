@@ -1,7 +1,11 @@
 {% comment %}
-Board view: only what a person needs to decide "what do I touch next".
-Everything else lives one click away on the batch page - eight fields in a grid
-made every card look identical at a glance.
+Доска: этап отвечает на вопрос «что с партией делают», устройство - «на чём
+именно». Колонка «Печь» с пятью карточками раньше читалась как «пять печей
+заняты» независимо от того, сколько печей в цеху; теперь у каждой печи своё
+место, и пустое место видно так же ясно, как занятое.
+
+На дорожке устройства помещается одна карточка. Всё, что не поставлено,
+ждёт в «Не распределено» - первой дорожке колонки, а не где-то внизу.
 {% endcomment %}
 <section class="kanban-board kanban-board-large" data-kanban-board>
   {% for column in columns %}
@@ -9,103 +13,149 @@ made every card look identical at a glance.
     <div class="kanban-head">
       <span class="kanban-head__dot" aria-hidden="true"></span>
       <strong>{{ column.stage.name }}</strong>
+      {% if column.has_units %}
+        <span class="kanban-head__load{% if column.busy == column.capacity %} is-full{% endif %}"
+              title="Занято устройств из {{ column.capacity }}">{{ column.busy }}/{{ column.capacity }}</span>
+      {% endif %}
       <span class="badge" data-kanban-count="{{ column.stage.code }}">{{ column.count }}</span>
     </div>
     <form class="kanban-column-search">
       <input name="stage_q_{{ column.stage.code }}" value="{{ column.query }}" placeholder="Поиск в колонке">
     </form>
-    <div class="kanban-cards">
-    {% for batch in column.batches %}
-      <article class="kanban-card{% if batch.is_demo %} kanban-card-demo{% endif %}{% if batch.has_blocking_problem %} is-blocked{% endif %}"
-               {% comment %}
-               draggable убран намеренно: перенос сделан на указателях, а
-               встроенный механизм браузера перехватывал бы нажатие и рисовал
-               поверх свой снимок карточки.
-               {% endcomment %}
-               data-batch="{{ batch.pk }}"
-               {% if batch.is_group %}
-               data-order="{{ batch.order.pk }}"
-               data-move-url="{% url 'bakery:move_order_group' batch.order.pk %}"
-               data-batch-number="{{ batch.first_batch.display_batch_number }}"
-               {% else %}
-               data-order="{{ batch.order_item.order.pk }}"
-               data-move-url="{% url 'bakery:move_batch' batch.pk %}"
-               data-batch-number="{{ batch.display_batch_number }}"
-               data-full-batch-number="{{ batch.batch_number }}"
-               {% endif %}
-               {% comment %}
-               Порядок карточек в колонке задаёт Meta.ordering модели:
-               planned_finish, затем id. Без этих двух значений скрипт кладёт
-               перенесённую карточку в конец, и она прыгает на своё место при
-               следующем обновлении доски.
-               {% endcomment %}
-               data-finish="{{ batch.planned_finish|date:'YmdHis'|default:'' }}"
-               style="--card-index: {{ forloop.counter0 }}">
 
-        <header class="kanban-card__top">
-          {% if batch.is_group %}
-            <span class="kanban-card__id">Партия {{ batch.first_batch.display_batch_number }}</span>
-            <span class="kanban-card__batch-ref">Заказ №{{ batch.order.order_number }} · {{ batch.batches|length }} поз.</span>
+    <div class="kanban-lanes">
+    {% for lane in column.lanes %}
+      <section class="kanban-lane{% if lane.is_pool %} is-pool{% endif %}{% if lane.cards %} is-busy{% endif %}{% if not lane.available %} is-blocked{% endif %}"
+               data-stage="{{ column.stage.pk }}"
+               data-unit="{{ lane.key }}"
+               data-lane-name="{{ lane.name }}">
+        {% if column.has_units %}
+        <header class="kanban-lane__head">
+          <span class="kanban-lane__name">{{ lane.name }}</span>
+          {% if lane.is_pool %}
+            <span class="kanban-lane__count">{{ lane.cards|length }}</span>
+          {% elif not lane.available %}
+            <span class="kanban-lane__state is-blocked">ремонт</span>
+          {% elif lane.cards %}
+            <span class="kanban-lane__state is-busy">занято</span>
           {% else %}
-            <span class="kanban-card__id" title="Технический номер: {{ batch.batch_number }}">
-              Партия {{ batch.display_batch_number }}
-            </span>
-            <span class="kanban-card__batch-ref">Заказ №{{ batch.order_item.order.order_number }}</span>
-          {% endif %}
-          {% if batch.has_blocking_problem %}
-            <span class="kanban-card__flag is-critical" title="Есть блокирующая проблема">проблема</span>
+            <span class="kanban-lane__state">свободно</span>
           {% endif %}
         </header>
-
-        {% if batch.is_group %}
-          <div class="kanban-card__products">
-            {% for item in batch.batches %}
-              <div><span>{{ item.product.name }}</span><strong>{{ item.planned_quantity|floatformat:"-2" }} {{ item.unit }}</strong></div>
-            {% endfor %}
-          </div>
-        {% else %}
-          <h3 class="kanban-card__product">{{ batch.product.name }}</h3>
-          <p class="kanban-card__meta">
-            <strong>{{ batch.planned_quantity|floatformat:"-2" }} {{ batch.unit }}</strong>
-          </p>
         {% endif %}
 
-        <footer class="kanban-card__foot">
-          {% if batch.is_group %}
-          <span class="kanban-card__who">Общий производственный блок</span>
+        <div class="kanban-cards">
+        {% for batch in lane.cards %}
+          <article class="kanban-card{% if batch.is_demo %} kanban-card-demo{% endif %}{% if batch.has_blocking_problem %} is-blocked{% endif %}"
+                   {% comment %}
+                   draggable убран намеренно: перенос сделан на указателях, а
+                   встроенный механизм браузера перехватывал бы нажатие и рисовал
+                   поверх свой снимок карточки.
+                   {% endcomment %}
+                   data-batch="{{ batch.pk }}"
+                   {% if batch.is_group %}
+                   data-order="{{ batch.order.pk }}"
+                   data-move-url="{% url 'bakery:move_order_group' batch.order.pk %}"
+                   data-batch-number="{{ batch.first_batch.display_batch_number }}"
+                   {% else %}
+                   data-order="{{ batch.order_item.order.pk }}"
+                   data-move-url="{% url 'bakery:move_batch' batch.pk %}"
+                   data-batch-number="{{ batch.display_batch_number }}"
+                   data-full-batch-number="{{ batch.batch_number }}"
+                   {% endif %}
+                   {% comment %}
+                   Порядок карточек в колонке задаёт Meta.ordering модели:
+                   planned_finish, затем id. Без этих двух значений скрипт кладёт
+                   перенесённую карточку в конец, и она прыгает на своё место при
+                   следующем обновлении доски.
+                   {% endcomment %}
+                   data-finish="{{ batch.planned_finish|date:'YmdHis'|default:'' }}"
+                   style="--card-index: {{ forloop.counter0 }}">
+
+            <header class="kanban-card__top">
+              {% comment %}
+              Дата рядом с номером не украшение: нумерация начинается заново
+              каждый производственный день, и «05» без неё называет столько
+              партий, сколько дней на доске. Год опущен - на доске лежит
+              текущая неделя.
+              {% endcomment %}
+              {% if batch.is_group %}
+                <span class="kanban-card__id" title="Технический номер: {{ batch.first_batch.batch_number }}">
+                  <b>{{ batch.first_batch.display_batch_number }}</b>
+                  <i>{{ batch.first_batch.display_batch_date|date:"d.m" }}</i>
+                </span>
+                <span class="kanban-card__batch-ref">Заказ №{{ batch.order.order_number }} · {{ batch.batches|length }} поз.</span>
+              {% else %}
+                <span class="kanban-card__id" title="Технический номер: {{ batch.batch_number }}">
+                  <b>{{ batch.display_batch_number }}</b>
+                  <i>{{ batch.display_batch_date|date:"d.m" }}</i>
+                </span>
+                <span class="kanban-card__batch-ref">Заказ №{{ batch.order_item.order.order_number }}</span>
+              {% endif %}
+            </header>
+
+            {% if batch.flags %}
+            <div class="kanban-card__flags">
+              {% for flag in batch.flags %}<span class="kanban-card__flag is-{{ flag.kind }}">{{ flag.text }}</span>{% endfor %}
+            </div>
+            {% endif %}
+
+            {% if batch.is_group %}
+              <div class="kanban-card__products">
+                {% for item in batch.batches %}
+                  <div><span>{{ item.product.name }}</span><strong>{{ item.planned_quantity|floatformat:"-2" }} {{ item.unit }}</strong></div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <h3 class="kanban-card__product">{{ batch.product.name }}</h3>
+              <p class="kanban-card__meta">
+                <strong>{{ batch.planned_quantity|floatformat:"-2" }} {{ batch.unit }}</strong>
+                <span>{{ batch.order_item.order.customer.name }}</span>
+              </p>
+            {% endif %}
+
+            <footer class="kanban-card__foot">
+              {% if batch.is_group %}
+              <span class="kanban-card__who">Общий производственный блок</span>
+              {% else %}
+              <span class="kanban-card__who" title="Ответственный">
+                {{ batch.assigned_to.get_full_name|default:batch.assigned_to.username|default:"не назначен" }}
+              </span>
+              {% endif %}
+              {% if batch.planned_finish %}<span class="kanban-card__due">{{ batch.planned_finish|date:"d.m H:i" }}</span>{% endif %}
+            </footer>
+
+            <div class="kanban-card-actions">
+              {% if column.prev_stage %}
+              <form method="post" action="{% if batch.is_group %}{% url 'bakery:move_order_group' batch.order.pk %}{% else %}{% url 'bakery:move_batch' batch.pk %}{% endif %}">
+                {% csrf_token %}
+                <input type="hidden" name="stage" value="{{ column.prev_stage.pk }}">
+                <input type="hidden" name="from_stage" value="{{ column.stage.pk }}">
+                <input type="hidden" name="comment" value="Возврат на Kanban-доске">
+                <input type="hidden" name="next" value="{{ board_url }}">
+                <button class="secondary kanban-card-back" title="Вернуть на этап «{{ column.prev_stage.name }}»">← Назад</button>
+              </form>
+              {% endif %}
+              {% if column.has_next %}
+              <form method="post" action="{% if batch.is_group %}{% url 'bakery:move_order_group' batch.order.pk %}{% else %}{% url 'bakery:move_batch' batch.pk %}{% endif %}">
+                {% csrf_token %}
+                <input type="hidden" name="from_stage" value="{{ column.stage.pk }}">
+                <input type="hidden" name="next" value="{{ board_url }}">
+                <button class="primary">Дальше →</button>
+              </form>
+              {% endif %}
+              <a class="secondary" href="{% if batch.is_group %}{% url 'bakery:order_detail' batch.order.pk %}{% else %}{% url 'bakery:batch_detail' batch.pk %}{% endif %}">Открыть</a>
+            </div>
+          </article>
+        {% empty %}
+          {% if column.has_units %}
+            <p class="kanban-lane__empty">{% if lane.is_pool %}Все распределены{% elif lane.available %}Свободно{% else %}Недоступно{% endif %}</p>
           {% else %}
-          <span class="kanban-card__who" title="Ответственный">
-            {{ batch.assigned_to.get_full_name|default:batch.assigned_to.username|default:"не назначен" }}
-          </span>
+            <p class="muted kanban-empty">Пусто</p>
           {% endif %}
-        </footer>
-
-        <div class="kanban-card-actions">
-          {% if column.prev_stage %}
-          <form method="post" action="{% if batch.is_group %}{% url 'bakery:move_order_group' batch.order.pk %}{% else %}{% url 'bakery:move_batch' batch.pk %}{% endif %}">
-            {% csrf_token %}
-            <input type="hidden" name="stage" value="{{ column.prev_stage.pk }}">
-            <input type="hidden" name="from_stage" value="{{ column.stage.pk }}">
-            <input type="hidden" name="comment" value="Возврат на Kanban-доске">
-            <input type="hidden" name="next" value="{{ board_url }}">
-            <button class="secondary kanban-card-back" title="Вернуть на этап «{{ column.prev_stage.name }}»">← Назад</button>
-          </form>
-          {% endif %}
-          {% if column.has_next %}
-          <form method="post" action="{% if batch.is_group %}{% url 'bakery:move_order_group' batch.order.pk %}{% else %}{% url 'bakery:move_batch' batch.pk %}{% endif %}">
-            {% csrf_token %}
-            <input type="hidden" name="from_stage" value="{{ column.stage.pk }}">
-            <input type="hidden" name="next" value="{{ board_url }}">
-            <button class="primary">Дальше →</button>
-          </form>
-          {% endif %}
-          <a class="secondary" href="{% if batch.is_group %}{% url 'bakery:order_detail' batch.order.pk %}{% else %}{% url 'bakery:batch_detail' batch.pk %}{% endif %}">Открыть</a>
+        {% endfor %}
         </div>
-
-        {% if batch.is_demo %}<span class="kanban-card__demo" title="Демонстрационная партия">demo</span>{% endif %}
-      </article>
-    {% empty %}
-      <p class="muted kanban-empty">Пусто</p>
+      </section>
     {% endfor %}
     </div>
   </div>

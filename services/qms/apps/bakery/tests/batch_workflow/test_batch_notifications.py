@@ -13,7 +13,19 @@ class BatchNotificationTests(TestCase):
 
     def test_queue_notification_created_on_confirm(self):
         batch = create_batch_at_stage("queue", self.user)
-        self.assertTrue(Notification.objects.filter(recipient=self.user, notification_type="batch_queued", message__icontains=batch.batch_number).exists())
+        self.assertTrue(Notification.objects.filter(recipient=self.user, notification_type="batch_queued", message__icontains=batch.display_batch_label).exists())
+
+    def test_queue_notification_does_not_name_the_technical_number(self):
+        """Уведомление называет партию так же, как карточка на доске.
+
+        Технический B-1000 остаётся идентификатором кейса в process mining, но
+        человеку он ничего не говорит: в цеху эту партию зовут двузначным
+        номером дня, и уведомление должно совпадать с тем, что видно на доске.
+        """
+        batch = create_batch_at_stage("queue", self.user)
+        message = Notification.objects.filter(notification_type="batch_queued").latest("id").message
+        self.assertIn(batch.display_batch_number, message)
+        self.assertNotIn(batch.batch_number, message)
 
     def test_notification_has_unread_default(self):
         create_batch_at_stage("queue", self.user)
@@ -43,7 +55,7 @@ def make_notification_transition_test(from_code, to_code):
         before = Notification.objects.filter(notification_type="stage_changed").count()
         move_batch(batch, to_code, self.user, to_code)
         self.assertEqual(Notification.objects.filter(notification_type="stage_changed").count(), before + 1)
-        self.assertIn(batch.batch_number, Notification.objects.latest("id").message)
+        self.assertIn(batch.display_batch_label, Notification.objects.latest("id").message)
     return test
 
 

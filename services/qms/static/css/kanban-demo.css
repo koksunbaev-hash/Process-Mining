@@ -161,11 +161,6 @@ body.kanban-dragging .kanban-card { cursor: grabbing; }
 [data-stage-code="done"]      .kanban-head__dot { background: #2f9e55; }
 
 .kanban-column { transition: background .18s ease, box-shadow .18s ease; }
-.kanban-column.drop-target {
-  background: #eef4ff;
-  box-shadow: inset 0 0 0 2px #7aa7f0;
-  border-radius: 10px;
-}
 
 /* a card that just arrived gets one flash, so a move is visible across the room */
 .kanban-card.just-moved { animation: kanban-flash .9s ease-out; }
@@ -255,3 +250,98 @@ body.kanban-dragging .kanban-card { cursor: grabbing; }
 }
 .kanban-card:hover .kanban-card-actions .primary { background: #2f5bd8; color: #fff; }
 .kanban-card-actions .secondary:hover { border-color: #b9c8e6; color: #2f5bd8; }
+
+
+/* ---- места оборудования -------------------------------------------------
+   Колонка отвечает за этап, дорожка - за устройство. Пустое место должно
+   читаться так же быстро, как занятое: на доску смотрят через цех, и вопрос у
+   смотрящего один - «куда поставить следующую».
+
+   Поэтому свободное устройство нарисовано пунктирным контуром без заливки
+   (место есть, предмета нет), занятое - обычной карточкой на светлом фоне, а
+   недоступное приглушено целиком: на него не поставить, и предлагать его
+   взгляду незачем.
+   -------------------------------------------------------------------------*/
+.kanban-lanes {
+  display: flex; flex-direction: column; gap: 8px;
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding-right: 3px;
+}
+.kanban-cards { flex: none; overflow: visible; padding-right: 0; }
+
+.kanban-lane {
+  border-radius: 11px;
+  padding: 7px 8px 8px;
+  border: 1px dashed #d7dfee;
+  background: transparent;
+  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.kanban-lane.is-busy { border-style: solid; border-color: #e3e9f5; background: #fbfcfe; }
+.kanban-lane.is-blocked { opacity: .55; }
+
+/* «Не распределено» - не устройство, а очередь к ним. Сплошная подложка
+   отделяет её от мест: карточки в ней лежат стопкой, а не стоят на чём-то. */
+.kanban-lane.is-pool {
+  border-style: solid;
+  border-color: transparent;
+  background: rgba(20, 40, 80, .045);
+}
+
+.kanban-lane__head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 2px 6px;
+  font-size: 11px; letter-spacing: .02em;
+}
+.kanban-lane__name {
+  flex: 1; min-width: 0; font-weight: 600; color: #46536b;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.kanban-lane.is-pool .kanban-lane__name { text-transform: uppercase; font-size: 10.5px; color: #61708c; }
+.kanban-lane__state { color: #98a5bd; font-size: 10.5px; white-space: nowrap; }
+.kanban-lane__state.is-busy { color: #2f5bd8; font-weight: 600; }
+.kanban-lane__state.is-blocked { color: #a3182a; font-weight: 600; }
+.kanban-lane__count {
+  min-width: 20px; text-align: center;
+  background: #fff; border: 1px solid #dde4f0; border-radius: 999px;
+  color: #46536b; font-size: 11px; font-weight: 700; padding: 0 6px;
+}
+.kanban-lane__empty {
+  margin: 0; padding: 9px 2px; text-align: center;
+  font-size: 11.5px; color: #a3adc2;
+}
+
+/* Цель броска подсвечивается на дорожке, а не на колонке: колонок семь, а мест
+   в них до шести, и «сюда» должно значить конкретное устройство. Занятое место
+   отвечает отказом сразу - узнать об этом лучше до броска, чем после. */
+.kanban-lane.drop-target {
+  border-style: solid; border-color: #7aa7f0;
+  background: #eef4ff;
+  box-shadow: 0 0 0 3px rgba(122, 167, 240, .22);
+}
+.kanban-lane.drop-refused {
+  border-style: solid; border-color: #e79aa3;
+  background: #fdf1f2;
+  box-shadow: 0 0 0 3px rgba(217, 47, 60, .14);
+}
+body.kanban-dragging .kanban-lane.drop-refused { cursor: not-allowed; }
+
+/* Загрузка этапа в шапке колонки: «3/5» отвечает на вопрос «есть ли куда
+   ставить» без пересчёта дорожек глазами. */
+.kanban-head__load {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px; font-weight: 700; letter-spacing: 0;
+  color: #46536b; background: #fff;
+  border: 1px solid #dde4f0; border-radius: 999px; padding: 1px 7px;
+}
+.kanban-head__load.is-full { color: #a3182a; border-color: #f0c9ce; background: #fdf1f2; }
+
+/* Номер партии и её день - одним блоком: день читается тише номера, но стоит
+   вплотную к нему, потому что порознь они партию не называют. */
+.kanban-card__id { display: inline-flex; align-items: baseline; gap: 5px; }
+.kanban-card__id b { font-weight: 700; }
+.kanban-card__id i {
+  font-style: normal; font-weight: 600; font-size: 10.5px; color: #8592ab;
+  font-variant-numeric: tabular-nums;
+}
+.kanban-card__flags { display: flex; flex-wrap: wrap; gap: 4px; }
+.kanban-card__flag.is-demo { background: #eef1f8; color: #8a95ab; font-weight: 500; }

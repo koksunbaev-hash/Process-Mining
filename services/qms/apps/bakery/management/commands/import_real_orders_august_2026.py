@@ -362,6 +362,13 @@ class Command(BaseCommand):
                 notes="Реальные количества с производственного листа. Время этапов восстановлено приблизительно.",
                 created_by=actor,
                 is_demo=False,
+                # Видимая нумерация начинается заново каждый производственный
+                # день, и на день приходится ровно один лист - значит номера
+                # карточек совпадают с порядком строк листа, а заказ забирает
+                # первый. Без этого импорт вернул бы в интерфейс технические
+                # REAL-20260804-001 рядом с двузначными номерами доски.
+                daily_batch_number=1,
+                batch_number_date=production_date,
             )
             ProductionOrder.objects.filter(pk=order.pk).update(created_at=order_created, updated_at=required_date)
 
@@ -404,6 +411,8 @@ class Command(BaseCommand):
                 moments = self._stage_moments(production_date, index)
                 batch = ProductionBatch.objects.create(
                     batch_number=f"REAL-{production_date:%Y%m%d}-{index:03d}",
+                    daily_card_number=index,
+                    card_number_date=production_date,
                     order_item=item,
                     product=product,
                     recipe=recipe,
