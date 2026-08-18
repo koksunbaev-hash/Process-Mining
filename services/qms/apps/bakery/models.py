@@ -224,6 +224,11 @@ class ProductionOrder(TimestampedModel):
     status = models.CharField("статус", max_length=24, choices=Status.choices, default=Status.DRAFT, db_index=True)
     notes = models.TextField("примечания", blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="создал", on_delete=models.SET_NULL, null=True, blank=True)
+    kanban_grouped = models.BooleanField(
+        "единый блок на канбане",
+        default=False,
+        help_text="Показывать партии этого заказа одним блоком и перемещать их вместе.",
+    )
     is_demo = models.BooleanField("демо", default=False, db_index=True)
     demo_run = models.ForeignKey(KanbanDemoRun, verbose_name="демо-запуск", on_delete=models.SET_NULL, null=True, blank=True, related_name="orders")
 

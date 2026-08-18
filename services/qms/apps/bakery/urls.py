@@ -9,6 +9,7 @@ urlpatterns = [
     path("board/partial/", views.kanban_partial, name="kanban_partial"),
     path("board/events/", views.kanban_events, name="kanban_events"),
     path("batches/<int:pk>/move/", views.move_batch_view, name="move_batch"),
+    path("order-groups/<int:pk>/move/", views.move_order_group_view, name="move_order_group"),
     path("batches/<int:pk>/<str:action>/", views.batch_action, name="batch_action"),
     path("products/", views.product_list, name="products"),
     path("products/new/", views.product_form, name="product_new"),

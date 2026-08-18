@@ -576,3 +576,43 @@ tbody tr { transition: background-color .15s var(--ease); }
      оно тоже нужно - иначе в них не попасть. */
   .stages__move button { width: 40px; min-height: 44px; }
 }
+
+/* Заказ на производство: выбранные строки уходят на доску одним заказом. */
+.sheet__queue-check { width: 68px; text-align: center; }
+.sheet__queue-check input { width: 20px; height: 20px; margin: 0; accent-color: var(--primary); cursor: pointer; }
+.sheet__queued { color: var(--primary); font-weight: 600; }
+.sheet__queue-create { min-width: 220px; }
+.sheet__queue-create input { width: 112px; min-width: 112px; padding: 7px 8px; text-align: right; }
+.sheet__queue-create .secondary { margin: 0 0 0 6px; padding: 7px 11px; min-height: 36px; }
+.sheet-actions .secondary { margin-top: 0; }
+.sheet__pick { width: 42px; min-width: 42px; text-align: center; }
+.sheet__pick input { width: 19px; height: 19px; margin: 0; accent-color: var(--primary, #1769e0); cursor: pointer; }
+
+/* История заказов — карточки времени и выполнения вместо служебной таблицы. */
+.order-history-toolbar { padding-block: 14px; }
+.order-history-filters { grid-template-columns: minmax(240px, 2fr) minmax(180px, 1fr) auto auto; align-items: center; margin: 0; }
+.order-filter-reset { margin-top: 0; }
+.order-history-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; }
+.order-history-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; display: grid; gap: 17px; transition: transform .16s var(--ease), box-shadow .16s var(--ease); }
+.order-history-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+.order-history-card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.order-history-card__head > div { display: grid; gap: 1px; }
+.order-history-card__head strong { font-size: 22px; color: var(--primary); }
+.order-history-card__eyebrow { color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.order-time-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.order-time-grid > div { background: var(--bg); border-radius: var(--radius-sm); padding: 10px; display: grid; gap: 2px; }
+.order-time-grid span,.order-time-grid small { color: var(--muted); font-size: 12px; }
+.order-time-grid strong { font-size: 14px; }
+.order-progress { display: grid; gap: 8px; }
+.order-progress__labels { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.order-progress__labels span { color: var(--muted); }
+.order-progress__track { height: 8px; overflow: hidden; border-radius: 999px; background: #e8edf5; }
+.order-progress__track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--primary), #36a881); }
+.order-products-preview { display: flex; flex-wrap: wrap; gap: 7px; }
+.order-products-preview > span { padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; background: var(--bg); }
+.order-products-preview b { margin-left: 4px; }
+.order-empty { grid-column: 1 / -1; display: grid; place-items: center; gap: 6px; min-height: 180px; }
+
+@media (max-width: 720px) {
+  .order-history-list,.order-history-filters,.order-time-grid { grid-template-columns: 1fr; }
+}

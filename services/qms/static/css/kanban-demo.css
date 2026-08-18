@@ -210,27 +210,41 @@ body.kanban-dragging .kanban-card { cursor: grabbing; }
   padding: 7px 10px; font-size: 12.5px; background: #fff;
 }
 .kanban-column-search input:focus { outline: 2px solid #a9c4f5; outline-offset: -1px; }
-.kanban-cards { display: flex; flex-direction: column; gap: 10px; }
+.kanban-cards { display: flex; flex-direction: column; gap: 8px; }
 
 .kanban-card {
   background: #fff;
   border: 1px solid #e4e9f4;
-  border-radius: 12px;
-  padding: 12px;
+  border-radius: 10px;
+  padding: 9px 10px;
+  gap: 6px;
   box-shadow: 0 1px 2px rgba(16,32,64,.05);
 }
-.kanban-card__id { color: #16233d; }
-.kanban-card__product { color: #24314c; }
+.kanban-card__id { color: #16233d; font-size: 13px; }
+.kanban-card__batch-ref { margin-left: auto; color: #71809b; font-size: 10.5px; white-space: nowrap; }
+.kanban-card h3.kanban-card__product { color: #24314c; font-size: 15px; line-height: 1.25; }
+.kanban-card__meta { font-size: 11.5px; }
+.kanban-card__foot { padding-top: 4px; font-size: 11.5px; }
 .kanban-card__meta strong { color: #16233d; font-weight: 700; }
+.kanban-card__products { display: grid; gap: 4px; }
+.kanban-card__products > div {
+  display: flex; justify-content: space-between; gap: 8px;
+  padding: 4px 0; border-bottom: 1px solid #edf0f6;
+  font-size: 12px; line-height: 1.25;
+}
+.kanban-card__products > div:last-child { border-bottom: 0; }
+.kanban-card__products span { min-width: 0; }
+.kanban-card__products strong { flex: none; color: #16233d; white-space: nowrap; }
 
 /* Actions are secondary to reading the board: quiet until the card is hovered,
    so a column of cards reads as information rather than a wall of buttons. */
-.kanban-card-actions { display: flex; gap: 6px; margin-top: 2px; }
-.kanban-card-actions form { flex: 1; margin: 0; }
+.kanban-card-actions { display: flex; flex-wrap: nowrap; gap: 5px; margin-top: 0; }
+.kanban-card-actions form,
+.kanban-card-actions > .secondary { flex: 1 1 0; min-width: 0; margin: 0; }
 .kanban-card-actions .primary,
 .kanban-card-actions .secondary {
-  width: 100%; padding: 7px 10px; border-radius: 9px;
-  font-size: 12.5px; font-weight: 600; text-align: center;
+  width: 100%; min-height: 36px; padding: 5px 6px; border-radius: 8px;
+  font-size: 12px; font-weight: 600; text-align: center;
   border: 1px solid transparent; cursor: pointer;
   transition: background .15s ease, border-color .15s ease, color .15s ease;
 }

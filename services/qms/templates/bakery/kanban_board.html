@@ -23,8 +23,16 @@ made every card look identical at a glance.
                поверх свой снимок карточки.
                {% endcomment %}
                data-batch="{{ batch.pk }}"
+               {% if batch.is_group %}
+               data-order="{{ batch.order.pk }}"
+               data-move-url="{% url 'bakery:move_order_group' batch.order.pk %}"
+               data-batch-number="{{ batch.order.order_number }}"
+               {% else %}
+               data-order="{{ batch.order_item.order.pk }}"
+               data-move-url="{% url 'bakery:move_batch' batch.pk %}"
                data-batch-number="{{ batch.short_batch_number }}"
                data-full-batch-number="{{ batch.batch_number }}"
+               {% endif %}
                {% comment %}
                Порядок карточек в колонке задаёт Meta.ordering модели:
                planned_finish, затем id. Без этих двух значений скрипт кладёт
@@ -35,42 +43,61 @@ made every card look identical at a glance.
                style="--card-index: {{ forloop.counter0 }}">
 
         <header class="kanban-card__top">
-          <span class="kanban-card__id" title="{{ batch.batch_number }}">{{ batch.short_batch_number }}</span>
+          {% if batch.is_group %}
+            <span class="kanban-card__id">Заказ №{{ batch.order.order_number }}</span>
+            <span class="kanban-card__batch-ref">{{ batch.batches|length }} поз.</span>
+          {% else %}
+            <span class="kanban-card__id">Заказ №{{ batch.order_item.order.order_number }}</span>
+            <span class="kanban-card__batch-ref" title="{{ batch.batch_number }}">Партия {{ batch.short_batch_number }}</span>
+          {% endif %}
           {% if batch.has_blocking_problem %}
             <span class="kanban-card__flag is-critical" title="Есть блокирующая проблема">проблема</span>
           {% endif %}
         </header>
 
-        <h3 class="kanban-card__product">{{ batch.product.name }}</h3>
-
-        <p class="kanban-card__meta">
-          <strong>{{ batch.planned_quantity|floatformat:"-2" }} {{ batch.unit }}</strong>
-        </p>
+        {% if batch.is_group %}
+          <div class="kanban-card__products">
+            {% for item in batch.batches %}
+              <div><span>{{ item.product.name }}</span><strong>{{ item.planned_quantity|floatformat:"-2" }} {{ item.unit }}</strong></div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <h3 class="kanban-card__product">{{ batch.product.name }}</h3>
+          <p class="kanban-card__meta">
+            <strong>{{ batch.planned_quantity|floatformat:"-2" }} {{ batch.unit }}</strong>
+          </p>
+        {% endif %}
 
         <footer class="kanban-card__foot">
+          {% if batch.is_group %}
+          <span class="kanban-card__who">Общий производственный блок</span>
+          {% else %}
           <span class="kanban-card__who" title="Ответственный">
             {{ batch.assigned_to.get_full_name|default:batch.assigned_to.username|default:"не назначен" }}
           </span>
+          {% endif %}
         </footer>
 
         <div class="kanban-card-actions">
           {% if column.prev_stage %}
-          <form method="post" action="{% url 'bakery:move_batch' batch.pk %}">
+          <form method="post" action="{% if batch.is_group %}{% url 'bakery:move_order_group' batch.order.pk %}{% else %}{% url 'bakery:move_batch' batch.pk %}{% endif %}">
             {% csrf_token %}
             <input type="hidden" name="stage" value="{{ column.prev_stage.pk }}">
+            <input type="hidden" name="from_stage" value="{{ column.stage.pk }}">
             <input type="hidden" name="comment" value="Возврат на Kanban-доске">
             <input type="hidden" name="next" value="{{ board_url }}">
             <button class="secondary kanban-card-back" title="Вернуть на этап «{{ column.prev_stage.name }}»">← Назад</button>
           </form>
           {% endif %}
           {% if column.has_next %}
-          <form method="post" action="{% url 'bakery:move_batch' batch.pk %}">
+          <form method="post" action="{% if batch.is_group %}{% url 'bakery:move_order_group' batch.order.pk %}{% else %}{% url 'bakery:move_batch' batch.pk %}{% endif %}">
             {% csrf_token %}
+            <input type="hidden" name="from_stage" value="{{ column.stage.pk }}">
             <input type="hidden" name="next" value="{{ board_url }}">
             <button class="primary">Дальше →</button>
           </form>
           {% endif %}
-          <a class="secondary" href="{% url 'bakery:batch_detail' batch.pk %}">Открыть</a>
+          <a class="secondary" href="{% if batch.is_group %}{% url 'bakery:order_detail' batch.order.pk %}{% else %}{% url 'bakery:batch_detail' batch.pk %}{% endif %}">Открыть</a>
         </div>
 
         {% if batch.is_demo %}<span class="kanban-card__demo" title="Демонстрационная партия">demo</span>{% endif %}

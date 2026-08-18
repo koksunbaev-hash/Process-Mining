@@ -53,11 +53,14 @@
     <table class="sheet">
       <thead>
         <tr>
+          <th rowspan="2" class="no-print sheet__pick" title="Выбрать в общий блок">✓</th>
           <th class="sheet__name" rowspan="2">Наименование</th>
           <th rowspan="2">Остаток</th>
           <th colspan="{{ shifts|length }}">Смены</th>
-          <th rowspan="2">Итог</th>
+          <th rowspan="2">Готово</th>
           <th rowspan="2">Количество</th>
+          <th rowspan="2">Уже в канбан</th>
+          <th rowspan="2" class="no-print">Новая партия</th>
           <th rowspan="2">Остаток</th>
         </tr>
         <tr>
@@ -69,6 +72,10 @@
       <tbody>
         {% for row in rows %}
         <tr class="{% if row.is_short %}is-short{% elif row.is_done %}is-done{% endif %}">
+          <td class="no-print sheet__pick">
+            <input type="checkbox" name="selected_products" value="{{ row.product_id }}"
+                   aria-label="Выбрать {{ row.product_name }} в общий блок">
+          </td>
           <td class="sheet__name">{{ row.product_name }}</td>
           <td class="num muted">{{ row.opening|floatformat:"-2" }}</td>
           {% for value in row.by_shift %}
@@ -81,11 +88,19 @@
                    value="{{ row.planned|floatformat:"-2" }}"
                    aria-label="План: {{ row.product_name }}">
           </td>
+          <td class="num sheet__queued">{{ row.queued|floatformat:"-2" }}</td>
+          <td class="sheet__queue-create no-print">
+            <input type="number" min="0.001" step="0.001"
+                   name="queue_quantity_{{ row.product_id }}"
+                   placeholder="Количество"
+                   aria-label="Количество в канбан: {{ row.product_name }}">
+            <button class="secondary" type="submit" name="queue_product" value="{{ row.product_id }}">Добавить</button>
+          </td>
           <td class="num sheet__rest">{{ row.closing|floatformat:"-2" }}</td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="{{ shifts|length|add:5 }}" class="muted sheet__empty">
+          <td colspan="{{ shifts|length|add:8 }}" class="muted sheet__empty">
             На эту дату заказов нет.
           </td>
         </tr>
@@ -94,6 +109,7 @@
       {% if rows %}
       <tfoot>
         <tr>
+          <td class="no-print"></td>
           <td class="sheet__name">Итого</td>
           <td class="num">{{ totals.opening|floatformat:"-2" }}</td>
           {% for value in totals.by_shift %}
@@ -101,6 +117,8 @@
           {% endfor %}
           <td class="num sheet__total">{{ totals.produced|floatformat:"-2" }}</td>
           <td class="num sheet__plan">{{ totals.planned|floatformat:"-2" }}</td>
+          <td class="num sheet__queued">{{ totals.queued|floatformat:"-2" }}</td>
+          <td class="no-print"></td>
           <td class="num sheet__rest">{{ totals.closing|floatformat:"-2" }}</td>
         </tr>
       </tfoot>
@@ -109,8 +127,9 @@
   </div>
 
   <div class="sheet-actions no-print">
-    <button class="primary" type="submit">Сохранить количество</button>
-    <span class="muted">Пустое поле возвращает строку к сумме заказов на эту дату.</span>
+    <button class="primary" type="submit" name="queue_selected" value="1">Выбранные → одной партией</button>
+    <button class="secondary" type="submit" name="action" value="save">Сохранить количество</button>
+    <span class="muted">Отметьте позиции галочками. Если «Новая партия» пустая, будет взято значение из «Количество».</span>
   </div>
   </form>
 

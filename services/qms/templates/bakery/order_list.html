@@ -1,10 +1,41 @@
 {% extends "base.html" %}
-{% block title %}Заказы{% endblock %}
-{% block page_title %}Заказы{% endblock %}
-{% block top_action %}<a class="primary" href="{% url 'bakery:order_new' %}">Новый заказ</a>{% endblock %}
+{% block title %}История заказов{% endblock %}
+{% block page_title %}История заказов{% endblock %}
+{% block page_subtitle %}Архив производства с количеством и временем выполнения{% endblock %}
+{% block top_action %}<a class="primary" href="{% url 'bakery:production_sheet' %}">Добавить заказ</a>{% endblock %}
 {% block content %}
-<section class="panel"><form class="filters"><select name="status"><option value="">Все статусы</option>{% for v,l in statuses %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select><button class="primary">Фильтр</button></form>
-<div class="table-wrap"><table><tr><th>Номер</th><th>Статус</th><th>Продукты</th></tr>
-{% for item in items %}<tr><td><a href="{% url 'bakery:order_detail' item.pk %}">№{{ item.order_number }}</a></td><td>{{ item.get_status_display }}</td><td>{% for line in item.items.all %}{{ line.product.name }} — {{ line.quantity|floatformat:"-3" }} {{ line.unit }}<br>{% endfor %}</td></tr>{% empty %}<tr><td colspan="3" class="muted">Заказов нет.</td></tr>{% endfor %}
-</table></div></section>
+<section class="panel order-history-toolbar">
+  <form class="filters order-history-filters">
+    <input name="q" value="{{ request.GET.q }}" placeholder="Номер заказа или продукт">
+    <select name="status">
+      <option value="">Все статусы</option>
+      {% for value,label in statuses %}<option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <button class="primary">Показать</button>
+    {% if request.GET.q or request.GET.status %}<a class="secondary order-filter-reset" href="{% url 'bakery:orders' %}">Сбросить</a>{% endif %}
+  </form>
+</section>
+
+<section class="order-history-list">
+  {% for order in items %}
+  <article class="order-history-card">
+    <a class="order-history-card__head" href="{% url 'bakery:order_detail' order.pk %}">
+      <div><span class="order-history-card__eyebrow">Заказ</span><strong>№{{ order.order_number }}</strong></div>
+      <span class="status {% if order.status == 'ready' or order.status == 'shipped' %}done{% elif order.status == 'in_production' or order.status == 'queued' %}active{% else %}waiting{% endif %}">{{ order.get_status_display }}</span>
+    </a>
+    <div class="order-time-grid">
+      <div><span>Создан</span><strong>{{ order.created_at|date:"d.m.Y" }}</strong><small>{{ order.created_at|date:"H:i" }}</small></div>
+      <div><span>Запущен</span>{% if order.production_started_at %}<strong>{{ order.production_started_at|date:"d.m.Y" }}</strong><small>{{ order.production_started_at|date:"H:i" }}</small>{% else %}<strong>—</strong>{% endif %}</div>
+      <div><span>Завершён</span>{% if order.production_completed_at %}<strong>{{ order.production_completed_at|date:"d.m.Y" }}</strong><small>{{ order.production_completed_at|date:"H:i" }}</small>{% else %}<strong>—</strong>{% endif %}</div>
+    </div>
+    <div class="order-progress" aria-label="Готово {{ order.progress_percent }}%">
+      <div class="order-progress__labels"><span>Выполнение</span><strong>{{ order.ready_quantity|floatformat:"-3" }} / {{ order.planned_quantity|floatformat:"-3" }} шт</strong></div>
+      <div class="order-progress__track"><span style="width: {{ order.progress_percent }}%"></span></div>
+    </div>
+    <div class="order-products-preview">
+      {% for line in order.items.all %}<span>{{ line.product.name }} <b>{{ line.quantity|floatformat:"-3" }} {{ line.unit }}</b></span>{% empty %}<span class="muted">Нет позиций</span>{% endfor %}
+    </div>
+  </article>
+  {% empty %}<section class="panel order-empty"><strong>Заказов не найдено</strong><span class="muted">Измените параметры поиска.</span></section>{% endfor %}
+</section>
 {% endblock %}

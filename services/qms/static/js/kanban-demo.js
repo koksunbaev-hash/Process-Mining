@@ -186,12 +186,13 @@
 
     const form = new FormData();
     form.append("stage", column.dataset.stage);
+    form.append("from_stage", home.closest(".kanban-column").dataset.stage);
     form.append("comment", "Перенос на Kanban-доске");
     let result = {};
     let ok = false;
     movesInFlight += 1;
     try {
-      const response = await fetch(`/bakery/batches/${card.dataset.batch}/move/`, {
+      const response = await fetch(card.dataset.moveUrl || `/bakery/batches/${card.dataset.batch}/move/`, {
         method: "POST",
         headers: { "X-CSRFToken": csrfToken(), "X-Requested-With": "XMLHttpRequest" },
         body: form,

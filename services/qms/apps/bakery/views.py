@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 import mimetypes
 import os
 import time
+from types import SimpleNamespace
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -106,13 +107,41 @@ def kanban_context(request):
         items = batches.filter(current_stage=stage)
         if column_search[stage.code]:
             items = items.filter(Q(product__name__icontains=column_search[stage.code]) | batch_number_query(column_search[stage.code]))
+        items = list(items)
+        cards = []
+        grouped = {}
+        for batch in items:
+            order = batch.order_item.order
+            if order.kanban_grouped:
+                grouped.setdefault(order.pk, []).append(batch)
+            else:
+                cards.append(batch)
+        for order_batches in grouped.values():
+            first = order_batches[0]
+            cards.append(SimpleNamespace(
+                is_group=True,
+                pk=first.pk,
+                order=first.order_item.order,
+                batches=order_batches,
+                first_batch=first,
+                planned_finish=min(
+                    (batch.planned_finish for batch in order_batches if batch.planned_finish),
+                    default=None,
+                ),
+                has_blocking_problem=any(batch.has_blocking_problem for batch in order_batches),
+                is_demo=any(batch.is_demo for batch in order_batches),
+            ))
+        cards.sort(key=lambda card: (
+            card.planned_finish or datetime.max.replace(tzinfo=timezone.get_current_timezone()),
+            card.pk,
+        ))
         # prev_stage feeds the "← Назад" button, which exists because HTML5 drag
         # and drop fires no events from touch: on a phone or tablet the buttons
         # are the only way to move a batch at all.
         columns.append({
             "stage": stage,
-            "batches": items,
-            "count": items.count(),
+            "batches": cards,
+            "count": len(cards),
             "query": column_search[stage.code],
             "has_next": index + 1 < len(stages),
             "prev_stage": stages[index - 1] if index else None,
@@ -213,6 +242,59 @@ def move_batch_view(request, pk):
         messages.error(request, error)
     else:
         messages.success(request, f"Партия {batch.batch_number} передана на этап {stage.name}.")
+    return redirect(request.POST.get("next") or "bakery:kanban")
+
+
+@login_required
+def move_order_group_view(request, pk):
+    """Move every batch in one visible grouped card to the same stage."""
+    order = get_object_or_404(ProductionOrder, pk=pk, kanban_grouped=True)
+    if request.method != "POST":
+        return redirect("bakery:kanban")
+
+    try:
+        source_stage_id = int(request.POST.get("from_stage", ""))
+    except (TypeError, ValueError):
+        source_stage_id = 0
+    batches = list(
+        ProductionBatch.objects
+        .select_related("current_stage", "order_item__order")
+        .filter(order_item__order=order, current_stage_id=source_stage_id)
+        .exclude(status=ProductionBatch.Status.CANCELLED)
+        .order_by("pk")
+    )
+    error = ""
+    stage = None
+    if not batches:
+        error = "В этом блоке больше нет партий на выбранном этапе."
+    else:
+        stage = ProductionStage.objects.filter(pk=request.POST.get("stage")).first()
+        stage = stage or next_stage_for(batches[0])
+        if stage is None:
+            error = f"Заказ №{order.order_number} уже на последнем этапе."
+
+    if not error:
+        try:
+            with transaction.atomic():
+                for batch in batches:
+                    going_back = stage.sequence < batch.current_stage.sequence
+                    move_batch(
+                        batch,
+                        stage,
+                        request.user,
+                        request.POST.get("comment", ""),
+                        require_comment=going_back,
+                        allow_skip=True,
+                    )
+        except (PermissionDenied, ValidationError) as exc:
+            error = " ".join(exc.messages) if isinstance(exc, ValidationError) else str(exc)
+
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse({"ok": not error, "error": error})
+    if error:
+        messages.error(request, error)
+    else:
+        messages.success(request, f"Заказ №{order.order_number} передан на этап {stage.name} одним блоком.")
     return redirect(request.POST.get("next") or "bakery:kanban")
 
 
@@ -345,10 +427,51 @@ def recipe_form(request, pk=None):
 
 @login_required
 def order_list(request):
-    items = ProductionOrder.objects.select_related("customer", "created_by").prefetch_related("items__product")
+    items = ProductionOrder.objects.select_related("customer", "created_by").prefetch_related(
+        "items__product",
+        "items__batches__current_stage",
+    )
     if request.GET.get("status"):
         items = items.filter(status=request.GET["status"])
+    if request.GET.get("q"):
+        query = request.GET["q"].strip()
+        items = items.filter(
+            Q(order_number__icontains=query)
+            | Q(items__product__name__icontains=query)
+        ).distinct()
+    items = list(items)
+    _add_order_quantity_metrics(items)
     return render(request, "bakery/order_list.html", {"items": items, "statuses": ProductionOrder.Status.choices})
+
+
+def _add_order_quantity_metrics(orders):
+    """Display totals for the archive; product and stage names stay untouched."""
+    for order in orders:
+        planned = Decimal("0")
+        ready = Decimal("0")
+        started_at = None
+        completed_at = None
+
+        for line in order.items.all():
+            planned += line.quantity or Decimal("0")
+            for batch in line.batches.all():
+                if batch.status == ProductionBatch.Status.CANCELLED:
+                    continue
+                if batch.actual_start and (started_at is None or batch.actual_start < started_at):
+                    started_at = batch.actual_start
+                if batch.actual_finish and (completed_at is None or batch.actual_finish > completed_at):
+                    completed_at = batch.actual_finish
+                if batch.status == ProductionBatch.Status.COMPLETED or (
+                    batch.current_stage_id and batch.current_stage.code == "done"
+                ):
+                    ready += batch.actual_quantity if batch.actual_quantity is not None else batch.planned_quantity
+
+        order.planned_quantity = planned
+        order.ready_quantity = ready
+        order.production_started_at = started_at
+        order.production_completed_at = completed_at
+        order.progress_percent = min(100, int((ready / planned) * 100)) if planned else 0
+    return orders
 
 
 @login_required
@@ -627,7 +750,24 @@ def production_sheet(request):
 
     if request.method == "POST":
         saved = _save_production_plan(request, order_date)
-        messages.success(request, f"Сохранено позиций: {saved}.")
+        if request.POST.get("queue_product") or request.POST.get("queue_selected"):
+            if not can_manage_orders(request.user):
+                raise PermissionDenied
+            try:
+                order, item_count = _queue_production_plan(
+                    request,
+                    order_date,
+                    grouped=bool(request.POST.get("queue_selected")),
+                )
+            except ValidationError as exc:
+                messages.error(request, " ".join(exc.messages))
+            else:
+                messages.success(
+                    request,
+                    f"Заказ №{order.order_number} создан: {item_count} позиций отправлено в очередь.",
+                )
+        else:
+            messages.success(request, f"Сохранено позиций: {saved}.")
         return redirect(f"{reverse('bakery:production_sheet')}?date={order_date.isoformat()}")
 
     shifts = shifts_for(order_date, timezone.get_current_timezone())
@@ -675,13 +815,24 @@ def production_sheet(request):
         opening[record.product_id] = opening.get(record.product_id, Decimal(0)) + record.quantity
 
     rows = build_rows(products, planned, produced, opening, len(shifts))
+    queued = {}
+    for batch in (
+        ProductionBatch.objects.filter(order_item__order__required_date__date=order_date)
+        .exclude(status=ProductionBatch.Status.CANCELLED)
+        .exclude(is_demo=True)
+    ):
+        queued[batch.product_id] = queued.get(batch.product_id, Decimal("0")) + batch.planned_quantity
+    for row in rows:
+        row.queued = queued.get(row.product_id, Decimal("0"))
+    sheet_totals = totals(rows, len(shifts))
+    sheet_totals["queued"] = sum(queued.values(), Decimal("0"))
     context = {
         "order_date": order_date,
         "previous_date": (order_date - timedelta(days=1)).isoformat(),
         "next_date": (order_date + timedelta(days=1)).isoformat(),
         "shifts": shifts,
         "rows": rows,
-        "totals": totals(rows, len(shifts)),
+        "totals": sheet_totals,
         "generated_at": timezone.localtime(),
         "ordered_totals": ordered,
     }
@@ -719,6 +870,82 @@ def _save_production_plan(request, order_date):
         )
         saved += 1
     return saved
+
+
+@transaction.atomic
+def _queue_production_plan(request, order_date, grouped=False):
+    if grouped:
+        raw_ids = request.POST.getlist("selected_products")
+        if not raw_ids:
+            raise ValidationError("Отметьте галочками хотя бы одну позицию.")
+    else:
+        raw_ids = [request.POST.get("queue_product", "")]
+
+    selections = []
+    seen = set()
+    for raw_id in raw_ids:
+        try:
+            product_id = int(raw_id)
+        except (TypeError, ValueError):
+            raise ValidationError("Некорректно выбрана позиция.")
+        if product_id in seen:
+            continue
+        seen.add(product_id)
+
+        raw_quantity = request.POST.get(f"queue_quantity_{product_id}", "").strip()
+        if grouped and not raw_quantity:
+            # Галочка должна быть достаточна для быстрого запуска: если отдельный
+            # объём партии не задан, берём видимое значение из «Количество».
+            raw_quantity = request.POST.get(f"plan_{product_id}", "").strip()
+        try:
+            quantity = Decimal(raw_quantity.replace(",", "."))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValidationError("Укажите количество для каждой выбранной позиции.")
+        if quantity <= 0:
+            raise ValidationError("Количество новой партии должно быть больше нуля.")
+
+        product = Product.objects.filter(pk=product_id, is_active=True).first()
+        if product is None:
+            raise ValidationError("Один из выбранных продуктов не найден.")
+        selections.append((product, quantity))
+
+    customer, _ = Customer.objects.get_or_create(
+        name="Производство",
+        defaults={"notes": "Системная запись для заказов без клиента."},
+    )
+    required_date = timezone.make_aware(
+        datetime.combine(order_date, datetime.max.time()),
+        timezone.get_current_timezone(),
+    )
+    order = ProductionOrder.objects.create(
+        customer=customer,
+        order_date=timezone.now(),
+        required_date=required_date,
+        priority=ProductionOrder.Priority.NORMAL,
+        status=ProductionOrder.Status.DRAFT,
+        notes=f"Создан из заказа на производство за {order_date:%d.%m.%Y}.",
+        created_by=request.user,
+        kanban_grouped=grouped,
+    )
+    for product, quantity in selections:
+        ProductionOrderItem.objects.create(
+            order=order,
+            product=product,
+            quantity=quantity,
+            unit=product.unit,
+            recipe=product.recipes.filter(is_active=True).first(),
+        )
+    safe_record_process_event(
+        case_id=f"ORDER-{order.order_number}",
+        case_type="order",
+        activity="Создание заказа на производство",
+        order=order,
+        user=request.user,
+        status=order.status,
+        event_data={"production_date": order_date.isoformat()},
+    )
+    confirm_order(order, user=request.user)
+    return order, len(selections)
 
 
 @login_required
