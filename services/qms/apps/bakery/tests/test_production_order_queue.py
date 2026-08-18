@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -13,6 +14,7 @@ from apps.bakery.models import (
     ProductionPlan,
     ProductionStage,
 )
+from apps.bakery.voice_process_mining import resolve_batch
 
 
 class ProductionOrderQueueTests(TestCase):
@@ -74,14 +76,20 @@ class ProductionOrderQueueTests(TestCase):
         self.assertRedirects(response, f"{reverse('bakery:production_sheet')}?date={today.isoformat()}")
         order = ProductionOrder.objects.get()
         self.assertTrue(order.kanban_grouped)
+        self.assertEqual(order.display_batch_number, "01")
         self.assertEqual(order.items.count(), 2)
         self.assertEqual(ProductionBatch.objects.filter(order_item__order=order).count(), 2)
+        self.assertEqual(
+            set(ProductionBatch.objects.filter(order_item__order=order).values_list("daily_card_number", flat=True)),
+            {1},
+        )
 
         board = self.client.get(reverse("bakery:kanban"))
         self.assertEqual(board.context["columns"][0]["count"], 1)
         self.assertContains(board, f"Заказ №{order.order_number}")
         self.assertContains(board, self.product.name)
         self.assertContains(board, self.second_product.name)
+        self.assertEqual(resolve_batch({"batch_number": "01"}).order_item.order, order)
 
     def test_grouped_kanban_block_moves_all_batches_together(self):
         mixing = ProductionStage.objects.create(code="mixing", name="Замес", sequence=2)
@@ -107,6 +115,24 @@ class ProductionOrderQueueTests(TestCase):
         self.assertFalse(
             ProductionBatch.objects.filter(order_item__order=order).exclude(current_stage=mixing).exists()
         )
+
+    def test_visible_batch_number_restarts_for_each_production_day(self):
+        today = timezone.localdate()
+        tomorrow = today + timedelta(days=1)
+        for production_date in (today, tomorrow):
+            self.client.post(
+                reverse("bakery:production_sheet"),
+                {
+                    "date": production_date.isoformat(),
+                    f"plan_{self.product.pk}": "20",
+                    f"queue_quantity_{self.product.pk}": "20",
+                    "queue_product": str(self.product.pk),
+                },
+            )
+
+        orders = list(ProductionOrder.objects.order_by("batch_number_date"))
+        self.assertEqual([order.display_batch_number for order in orders], ["01", "01"])
+        self.assertNotEqual(orders[0].batch_number_date, orders[1].batch_number_date)
 
     def test_orders_page_has_history_and_add_fallback(self):
         response = self.client.get(reverse("bakery:orders"))

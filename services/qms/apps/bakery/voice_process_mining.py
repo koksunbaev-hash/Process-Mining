@@ -143,9 +143,16 @@ def callback_url():
 
 def process_mining_context():
     recent_batches = list(ProductionBatch.objects.order_by("-id")[:50])
+    visible_numbers = list(dict.fromkeys(
+        ProductionBatch.objects
+        .filter(daily_card_number__isnull=False)
+        .exclude(status__in=[ProductionBatch.Status.COMPLETED, ProductionBatch.Status.CANCELLED])
+        .order_by("-card_number_date", "-daily_card_number")
+        .values_list("daily_card_number", flat=True)[:100]
+    ))
     return {
         "stages": ["Очередь", "Замес", "Формовка", "Расстойка", "Печь", "Склад", "Готово"],
-        "batch_numbers": [batch.batch_number for batch in recent_batches],
+        "batch_numbers": [f"{number:02d}" for number in visible_numbers] + [batch.batch_number for batch in recent_batches],
         "batch_aliases": [batch.short_batch_number for batch in recent_batches],
     }
 
@@ -259,6 +266,21 @@ def resolve_batch(data):
     """
     number = (data.get("batch_number") or "").strip()
     if number:
+        wanted_digits = _squash(number)
+        if wanted_digits.isdigit():
+            # The number printed on the Kanban card is scoped to a production
+            # day and shared by all product rows in a grouped party. Prefer the
+            # newest active day, then return one representative row; command
+            # execution expands it back to the whole grouped party.
+            visible = (
+                ProductionBatch.objects.select_related("current_stage", "order_item__order")
+                .filter(daily_card_number=int(wanted_digits))
+                .exclude(status__in=["completed", "cancelled"])
+                .order_by("-card_number_date", "id")
+                .first()
+            )
+            if visible:
+                return visible
         batch = ProductionBatch.objects.select_related("current_stage").filter(
             batch_number__iexact=number
         ).first()
@@ -584,14 +606,27 @@ def confirm_voice_command(command, user):
         # закончил замес, отправить в склад" is a legitimate thing to say, and
         # refusing it because Склад is four stages away helps nobody. The jump is
         # recorded as such, and move_batch still demands a comment for it.
-        move_batch(
-            batch,
-            target,
-            user,
-            data.get("comment", ""),
-            require_comment=target.sequence < batch.current_stage.sequence,
-            allow_skip=True,
-        )
+        movement_batches = [batch]
+        if batch.order_item.order.kanban_grouped:
+            movement_batches = list(
+                ProductionBatch.objects.select_for_update()
+                .select_related("current_stage", "order_item__order")
+                .filter(
+                    order_item__order=batch.order_item.order,
+                    current_stage_id=batch.current_stage_id,
+                )
+                .exclude(status__in=[ProductionBatch.Status.COMPLETED, ProductionBatch.Status.CANCELLED])
+                .order_by("pk")
+            )
+        for movement_batch in movement_batches:
+            move_batch(
+                movement_batch,
+                target,
+                user,
+                data.get("comment", ""),
+                require_comment=target.sequence < movement_batch.current_stage.sequence,
+                allow_skip=True,
+            )
         # Остальные партии из той же фразы. Первая уже переведена выше; здесь
         # идут те, что были названы следом. Каждая своим переходом - если одна
         # из них заблокирована, остальные всё равно доедут, а отказ вернётся

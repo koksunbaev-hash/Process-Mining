@@ -26,11 +26,11 @@ made every card look identical at a glance.
                {% if batch.is_group %}
                data-order="{{ batch.order.pk }}"
                data-move-url="{% url 'bakery:move_order_group' batch.order.pk %}"
-               data-batch-number="{{ batch.order.order_number }}"
+               data-batch-number="{{ batch.first_batch.display_batch_number }}"
                {% else %}
                data-order="{{ batch.order_item.order.pk }}"
                data-move-url="{% url 'bakery:move_batch' batch.pk %}"
-               data-batch-number="{{ batch.short_batch_number }}"
+               data-batch-number="{{ batch.display_batch_number }}"
                data-full-batch-number="{{ batch.batch_number }}"
                {% endif %}
                {% comment %}
@@ -44,11 +44,13 @@ made every card look identical at a glance.
 
         <header class="kanban-card__top">
           {% if batch.is_group %}
-            <span class="kanban-card__id">Заказ №{{ batch.order.order_number }}</span>
-            <span class="kanban-card__batch-ref">{{ batch.batches|length }} поз.</span>
+            <span class="kanban-card__id">Партия {{ batch.first_batch.display_batch_number }}</span>
+            <span class="kanban-card__batch-ref">Заказ №{{ batch.order.order_number }} · {{ batch.batches|length }} поз.</span>
           {% else %}
-            <span class="kanban-card__id">Заказ №{{ batch.order_item.order.order_number }}</span>
-            <span class="kanban-card__batch-ref" title="{{ batch.batch_number }}">Партия {{ batch.short_batch_number }}</span>
+            <span class="kanban-card__id" title="Технический номер: {{ batch.batch_number }}">
+              Партия {{ batch.display_batch_number }}
+            </span>
+            <span class="kanban-card__batch-ref">Заказ №{{ batch.order_item.order.order_number }}</span>
           {% endif %}
           {% if batch.has_blocking_problem %}
             <span class="kanban-card__flag is-critical" title="Есть блокирующая проблема">проблема</span>

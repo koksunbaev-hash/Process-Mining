@@ -70,6 +70,13 @@ def batch_number_query(value):
     return query
 
 
+def visible_batch_number_query(value):
+    normalized = (value or "").strip()
+    if normalized.isdigit():
+        return Q(daily_card_number=int(normalized))
+    return Q(pk__isnull=True)
+
+
 def filter_batches(request):
     qs = ProductionBatch.objects.select_related(
         "order_item__order__customer", "product", "current_stage", "assigned_to"
@@ -78,6 +85,7 @@ def filter_batches(request):
     if q:
         qs = qs.filter(
             batch_number_query(q)
+            | visible_batch_number_query(q)
             | Q(product__name__icontains=q)
             | Q(order_item__order__order_number__icontains=q)
         )
@@ -106,7 +114,11 @@ def kanban_context(request):
     for index, stage in enumerate(stages):
         items = batches.filter(current_stage=stage)
         if column_search[stage.code]:
-            items = items.filter(Q(product__name__icontains=column_search[stage.code]) | batch_number_query(column_search[stage.code]))
+            items = items.filter(
+                Q(product__name__icontains=column_search[stage.code])
+                | batch_number_query(column_search[stage.code])
+                | visible_batch_number_query(column_search[stage.code])
+            )
         items = list(items)
         cards = []
         grouped = {}
@@ -764,7 +776,7 @@ def production_sheet(request):
             else:
                 messages.success(
                     request,
-                    f"Заказ №{order.order_number} создан: {item_count} позиций отправлено в очередь.",
+                    f"Партия {order.display_batch_number} создана: {item_count} позиций отправлено в очередь одним блоком.",
                 )
         else:
             messages.success(request, f"Сохранено позиций: {saved}.")

@@ -229,11 +229,20 @@ class ProductionOrder(TimestampedModel):
         default=False,
         help_text="Показывать партии этого заказа одним блоком и перемещать их вместе.",
     )
+    daily_batch_number = models.PositiveIntegerField("номер партии за день", null=True, blank=True)
+    batch_number_date = models.DateField("дата номера партии", null=True, blank=True, db_index=True)
     is_demo = models.BooleanField("демо", default=False, db_index=True)
     demo_run = models.ForeignKey(KanbanDemoRun, verbose_name="демо-запуск", on_delete=models.SET_NULL, null=True, blank=True, related_name="orders")
 
     class Meta:
         ordering = ["-order_date"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["batch_number_date", "daily_batch_number"],
+                condition=models.Q(batch_number_date__isnull=False, daily_batch_number__isnull=False),
+                name="unique_daily_production_batch_number",
+            ),
+        ]
         verbose_name = "заказ"
         verbose_name_plural = "заказы"
 
@@ -245,6 +254,12 @@ class ProductionOrder(TimestampedModel):
 
     def __str__(self):
         return f"Заказ №{self.order_number}"
+
+    @property
+    def display_batch_number(self):
+        if self.daily_batch_number is not None:
+            return f"{self.daily_batch_number:02d}"
+        return "—"
 
 
 class ProductionOrderItem(models.Model):
@@ -333,6 +348,8 @@ class ProductionBatch(TimestampedModel):
         CANCELLED = "cancelled", "отменена"
 
     batch_number = models.CharField("номер партии", max_length=60, unique=True, blank=True)
+    daily_card_number = models.PositiveIntegerField("номер блока за день", null=True, blank=True, db_index=True)
+    card_number_date = models.DateField("дата номера блока", null=True, blank=True, db_index=True)
     order_item = models.ForeignKey(ProductionOrderItem, verbose_name="товар заказа", on_delete=models.PROTECT, related_name="batches")
     product = models.ForeignKey(Product, verbose_name="продукт", on_delete=models.PROTECT, related_name="batches")
     recipe = models.ForeignKey(Recipe, verbose_name="рецептура", on_delete=models.PROTECT, null=True, blank=True, related_name="batches")
@@ -379,6 +396,12 @@ class ProductionBatch(TimestampedModel):
     @property
     def short_batch_number(self):
         return self.short_number_for(self.batch_number)
+
+    @property
+    def display_batch_number(self):
+        if self.daily_card_number is not None:
+            return f"{self.daily_card_number:02d}"
+        return self.short_batch_number
 
     def save(self, *args, **kwargs):
         if not self.batch_number:

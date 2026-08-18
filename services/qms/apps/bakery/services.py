@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.db.models import Max
 from django.urls import reverse
 from django.utils import timezone
 
@@ -23,6 +24,78 @@ from .permissions import can_move_batch
 
 def log_order_event(order, message, event_type="info", user=None, batch=None):
     return OrderEvent.objects.create(order=order, batch=batch, event_type=event_type, message=message, created_by=user)
+
+
+def assign_daily_batch_number(order):
+    """Give one visible production-party number to the whole order block.
+
+    The technical ProductionBatch rows remain unique process-mining cases, but
+    operators see one short number shared by every product in the block.
+    Numbering restarts for each production date.
+    """
+    if order.is_demo:
+        return None
+    production_date = timezone.localtime(order.required_date).date()
+    if order.batch_number_date == production_date and order.daily_batch_number is not None:
+        return order.daily_batch_number
+
+    current = (
+        ProductionOrder.objects.select_for_update()
+        .filter(batch_number_date=production_date)
+        .aggregate(value=Max("daily_batch_number"))["value"]
+        or 0
+    )
+    candidate = current + 1
+    while ProductionOrder.objects.filter(
+        batch_number_date=production_date,
+        daily_batch_number=candidate,
+    ).exists():
+        candidate += 1
+    order.batch_number_date = production_date
+    order.daily_batch_number = candidate
+    order.save(update_fields=["batch_number_date", "daily_batch_number", "updated_at"])
+    return candidate
+
+
+def assign_batch_card_numbers(order, batches):
+    """Assign visible daily numbers to Kanban cards.
+
+    A grouped production party shares one number across its technical product
+    rows. Ordinary batches receive separate numbers even if they happen to
+    belong to the same historical order.
+    """
+    if order.is_demo or not batches:
+        return
+    production_date = timezone.localtime(order.required_date).date()
+    if all(
+        batch.card_number_date == production_date and batch.daily_card_number is not None
+        for batch in batches
+    ):
+        return
+    current = (
+        ProductionBatch.objects.select_for_update()
+        .filter(card_number_date=production_date)
+        .aggregate(value=Max("daily_card_number"))["value"]
+        or 0
+    )
+    first_number = None
+    if order.kanban_grouped:
+        current += 1
+        for batch in batches:
+            batch.daily_card_number = current
+            batch.card_number_date = production_date
+            batch.save(update_fields=["daily_card_number", "card_number_date", "updated_at"])
+        first_number = current
+    else:
+        for batch in batches:
+            current += 1
+            batch.daily_card_number = current
+            batch.card_number_date = production_date
+            batch.save(update_fields=["daily_card_number", "card_number_date", "updated_at"])
+            first_number = first_number or current
+    order.daily_batch_number = first_number
+    order.batch_number_date = production_date
+    order.save(update_fields=["daily_batch_number", "batch_number_date", "updated_at"])
 @transaction.atomic
 def repeat_order_for_next_week(source_order, quantities, user):
     source_items = list(
@@ -95,6 +168,7 @@ def repeat_order_for_next_week(source_order, quantities, user):
 @transaction.atomic
 def confirm_order(order, user=None, assignee=None):
     queue = ProductionStage.objects.get(code="queue")
+    assign_daily_batch_number(order)
     order.status = ProductionOrder.Status.QUEUED
     order.save(update_fields=["status", "updated_at"])
     log_order_event(order, "Заказ подтверждён, партии созданы.", "order_confirmed", user=user)
@@ -151,6 +225,7 @@ def confirm_order(order, user=None, assignee=None):
             if batch.assigned_to and not batch.is_demo:
                 notify(batch.assigned_to, "Партия поступила в очередь", batch.batch_number, "batch_queued", reverse("bakery:batch_detail", args=[batch.pk]))
         batches.append(batch)
+    assign_batch_card_numbers(order, batches)
     return batches
 
 
