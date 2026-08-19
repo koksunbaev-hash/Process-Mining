@@ -592,8 +592,14 @@ tbody tr { transition: background-color .15s var(--ease); }
 .order-history-toolbar { padding-block: 14px; }
 .order-history-filters { grid-template-columns: minmax(240px, 2fr) minmax(180px, 1fr) auto auto; align-items: center; margin: 0; }
 .order-filter-reset { margin-top: 0; }
-.order-history-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; }
-.order-history-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; display: grid; gap: 17px; transition: transform .16s var(--ease), box-shadow .16s var(--ease); }
+/* align-items: start - иначе grid растягивает каждую карточку под самую
+   высокую в ряду. Один заказ на шесть десятков позиций вытягивал соседние
+   карточки на весь экран. */
+.order-history-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; align-items: start; }
+/* align-content: start - к тому же: растянутая карточка раскидывала свои
+   ряды по всей высоте, и заголовок оказывался вверху, даты посередине, а
+   товары у самого низа, разделённые пустотой. */
+.order-history-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; display: grid; gap: 17px; align-content: start; transition: transform .16s var(--ease), box-shadow .16s var(--ease); }
 .order-history-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
 .order-history-card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .order-history-card__head > div { display: grid; gap: 1px; }
@@ -611,6 +617,9 @@ tbody tr { transition: background-color .15s var(--ease); }
 .order-products-preview { display: flex; flex-wrap: wrap; gap: 7px; }
 .order-products-preview > span { padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; background: var(--bg); }
 .order-products-preview b { margin-left: 4px; }
+/* Сколько позиций не поместилось. Заметно, но не как товар: это счёт, а не
+   ещё одна строка заказа. */
+.order-products-preview__more { border-style: dashed; color: var(--muted); }
 .order-empty { grid-column: 1 / -1; display: grid; place-items: center; gap: 6px; min-height: 180px; }
 
 @media (max-width: 720px) {
