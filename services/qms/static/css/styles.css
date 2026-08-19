@@ -592,14 +592,8 @@ tbody tr { transition: background-color .15s var(--ease); }
 .order-history-toolbar { padding-block: 14px; }
 .order-history-filters { grid-template-columns: minmax(240px, 2fr) minmax(180px, 1fr) auto auto; align-items: center; margin: 0; }
 .order-filter-reset { margin-top: 0; }
-/* align-items: start - иначе grid растягивает каждую карточку под самую
-   высокую в ряду. Один заказ на шесть десятков позиций вытягивал соседние
-   карточки на весь экран. */
-.order-history-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; align-items: start; }
-/* align-content: start - к тому же: растянутая карточка раскидывала свои
-   ряды по всей высоте, и заголовок оказывался вверху, даты посередине, а
-   товары у самого низа, разделённые пустотой. */
-.order-history-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; display: grid; gap: 17px; align-content: start; transition: transform .16s var(--ease), box-shadow .16s var(--ease); }
+.order-history-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; }
+.order-history-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; display: grid; gap: 17px; transition: transform .16s var(--ease), box-shadow .16s var(--ease); }
 .order-history-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
 .order-history-card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .order-history-card__head > div { display: grid; gap: 1px; }
@@ -617,122 +611,8 @@ tbody tr { transition: background-color .15s var(--ease); }
 .order-products-preview { display: flex; flex-wrap: wrap; gap: 7px; }
 .order-products-preview > span { padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; background: var(--bg); }
 .order-products-preview b { margin-left: 4px; }
-/* Сколько позиций не поместилось. Заметно, но не как товар: это счёт, а не
-   ещё одна строка заказа. */
-.order-products-preview__more { border-style: dashed; color: var(--muted); }
 .order-empty { grid-column: 1 / -1; display: grid; place-items: center; gap: 6px; min-height: 180px; }
 
 @media (max-width: 720px) {
   .order-history-list,.order-history-filters,.order-time-grid { grid-template-columns: 1fr; }
-}
-
-/* ==========================================================================
-   Карточка заказа
-
-   Заказ читают, чтобы ответить на два вопроса: где он сейчас и что с ним не
-   так. Полоса состояния отвечает на первый, бейджи у позиций - на второй.
-   Всё остальное здесь молчит: цветом отмечено только то, что требует решения.
-   ========================================================================== */
-
-.crumbs { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 14px; }
-.crumbs a:hover { color: var(--primary); }
-.crumbs__here { color: var(--text); font-weight: 600; }
-
-.order-status { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
-.order-status__main { flex: 1 1 380px; min-width: 0; }
-.order-status__side { flex: 0 1 280px; display: flex; flex-direction: column; gap: 16px; }
-.order-status__label { margin: 0; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
-.order-status__value { margin: 2px 0 20px; font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-
-/* Полоса состояния. Линия между делениями рисуется на самом делении, а не
-   отдельным элементом: так она не разъезжается с точками при любой ширине. */
-.steps { display: flex; list-style: none; margin: 0; padding: 0; }
-.steps__item { flex: 1; position: relative; padding-top: 22px; text-align: center; font-size: 12.5px; color: var(--muted); }
-.steps__item::before {
-  content: ""; position: absolute; top: 6px; left: -50%; width: 100%; height: 2px;
-  background: var(--border);
-}
-.steps__item:first-child::before { display: none; }
-.steps__dot {
-  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-  width: 14px; height: 14px; border-radius: 50%;
-  background: var(--surface); border: 2px solid var(--border);
-}
-.steps__item.is-done { color: var(--text); }
-.steps__item.is-done::before,
-.steps__item.is-current::before { background: var(--success); }
-.steps__item.is-done .steps__dot { background: var(--success); border-color: var(--success); }
-.steps__item.is-current { color: var(--text); font-weight: 700; }
-.steps__item.is-current .steps__dot {
-  background: var(--primary); border-color: var(--primary);
-  /* Кольцо, а не увеличенная точка: размер деления задаёт линию, и менять его
-     значило бы сдвигать полосу. */
-  box-shadow: 0 0 0 4px var(--primary-soft);
-}
-
-.order-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin: 0; }
-.order-facts dt { font-size: 12px; color: var(--muted); }
-.order-facts dd { margin: 2px 0 0; font-weight: 600; font-size: 14px; }
-
-.order-actions { display: flex; flex-direction: column; gap: 8px; }
-.order-actions .inline-form { margin: 0; }
-.order-actions button { width: 100%; }
-button.danger { background: transparent; color: var(--danger); border: 1px solid rgba(208, 2, 27, .35); }
-button.danger:hover { background: rgba(208, 2, 27, .06); }
-.order-actions button[disabled] { opacity: .55; cursor: default; }
-
-.panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 4px; }
-.panel-head h3 { margin: 0; }
-.panel-head .muted { margin: 2px 0 0; font-size: 13px; }
-
-.chip {
-  display: inline-block; padding: 2px 9px; border-radius: 999px;
-  font-size: 11.5px; font-weight: 700; white-space: nowrap;
-  background: var(--primary-soft); color: var(--primary);
-}
-.chip.is-ok { background: rgba(29, 138, 78, .12); color: var(--success); }
-.chip.is-warn { background: rgba(178, 80, 0, .12); color: var(--warning); }
-
-/* Позиция заказа. Раскрыта по умолчанию - расчёт сырья и есть то, за чем сюда
-   заходят; прятать его за лишним щелчком было бы вредно. */
-.order-line { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-top: 12px; background: var(--surface); }
-.order-line__head {
-  display: grid; grid-template-columns: 34px 1fr auto auto; gap: 12px; align-items: center;
-  padding: 12px 14px; cursor: pointer; list-style: none;
-}
-.order-line__head::-webkit-details-marker { display: none; }
-.order-line__head:hover { background: rgba(0, 0, 0, .015); border-radius: var(--radius-sm); }
-.order-line__no { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--muted); font-size: 13px; }
-.order-line__name { font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.order-line__qty { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.order-line__batches { text-align: right; font-size: 12.5px; white-space: nowrap; }
-.order-line__batches a { color: var(--primary); font-weight: 600; }
-.order-line__batches small { display: block; color: var(--muted); }
-.order-line__body { padding: 0 14px 14px; border-top: 1px solid var(--border); }
-.order-line__caption { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; margin: 12px 0 8px; }
-.order-line__caption .muted { font-weight: 500; text-transform: none; letter-spacing: 0; }
-
-/* Три колонки: полтора десятка ингредиентов в один столбец уводят кнопку
-   «добавить» за пределы экрана, а читают их как справку, а не построчно. */
-.ingredients { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 2px 24px; }
-.ingredients li { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: 13px; }
-.ingredients__name { color: var(--muted); }
-/* Точки от названия к числу: без них глаз теряет строку на широкой колонке. */
-.ingredients li::after { content: ""; flex: 1; border-bottom: 1px dotted var(--border); }
-.ingredients__value { order: 3; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-
-.notice { padding: 12px 14px; border-radius: var(--radius-sm); font-size: 13px; margin: 12px 0 0; }
-.notice.is-warn { background: rgba(178, 80, 0, .08); color: var(--warning); }
-.notice strong { display: block; }
-
-.order-bottom { display: grid; grid-template-columns: minmax(320px, 420px) 1fr; gap: 16px; align-items: start; }
-.panel.hint { background: var(--primary-soft); }
-.panel.hint p { margin: 8px 0 0; font-size: 13px; line-height: 1.5; }
-.order-event { margin: 6px 0; font-size: 13px; }
-
-@media (max-width: 900px) {
-  .order-bottom { grid-template-columns: 1fr; }
-  .order-line__head { grid-template-columns: 28px 1fr; }
-  .order-line__qty, .order-line__batches { grid-column: 2; text-align: left; }
-  .steps__item { font-size: 11.5px; }
 }

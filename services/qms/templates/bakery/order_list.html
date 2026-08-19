@@ -33,13 +33,7 @@
       <div class="order-progress__track"><span style="width: {{ order.progress_percent }}%"></span></div>
     </div>
     <div class="order-products-preview">
-      {% comment %}
-        Первые восемь позиций, остальные счётом. В крупном заказе их шесть
-        десятков, и карточка вырастала на весь экран - список читают не здесь,
-        а на странице заказа; здесь нужно узнать заказ, а не изучить его.
-      {% endcomment %}
-      {% for line in order.items.all|slice:":8" %}<span>{{ line.product.name }} <b>{{ line.quantity|floatformat:"-3" }} {{ line.unit }}</b></span>{% empty %}<span class="muted">Нет позиций</span>{% endfor %}
-      {% with hidden=order.items.all|slice:"8:"|length %}{% if hidden %}<span class="order-products-preview__more">ещё {{ hidden }}</span>{% endif %}{% endwith %}
+      {% for line in order.items.all %}<span>{{ line.product.name }} <b>{{ line.quantity|floatformat:"-3" }} {{ line.unit }}</b></span>{% empty %}<span class="muted">Нет позиций</span>{% endfor %}
     </div>
   </article>
   {% empty %}<section class="panel order-empty"><strong>Заказов не найдено</strong><span class="muted">Измените параметры поиска.</span></section>{% endfor %}
