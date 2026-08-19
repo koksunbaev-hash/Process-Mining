@@ -26,30 +26,34 @@ class FormatTests(TestCase):
         self.assertEqual(format_daily_number(42), "42")
         self.assertEqual(format_daily_number(99), "99")
 
-    def test_past_the_hundred_a_letter_takes_over(self):
-        """Так это и произносят: сотый - «а один», сто девятый - «б один»."""
+    def test_past_the_hundred_the_letter_takes_over(self):
+        """Так это и произносят: сотый - «а один», сто девятый - «а десять»."""
         self.assertEqual(format_daily_number(100), "А1")
         self.assertEqual(format_daily_number(101), "А2")
         self.assertEqual(format_daily_number(108), "А9")
-        self.assertEqual(format_daily_number(109), "Б1")
-        self.assertEqual(format_daily_number(110), "Б2")
 
-    def test_it_stays_two_characters(self):
-        """Ради этого всё и затевалось: три цифры на тележке не помещаются."""
-        for value in range(1, 325):
+    def test_the_count_goes_on_past_nine(self):
+        """После А9 идёт А10, а не вторая буква: помнить порядок алфавита от
+        смены требовать не за что, а «а десять» она прочтёт без запинки."""
+        self.assertEqual(format_daily_number(109), "А10")
+        self.assertEqual(format_daily_number(110), "А11")
+        self.assertEqual(format_daily_number(199), "А100")
+
+    def test_only_the_letter_a_is_used(self):
+        labels = {format_daily_number(value)[0] for value in range(100, 300)}
+        self.assertEqual(labels, {"А"})
+
+    def test_an_ordinary_day_is_still_two_digits(self):
+        """Ради этого всё и затевалось: на тележке места на два знака."""
+        for value in range(1, 100):
             with self.subTest(value=value):
                 self.assertEqual(len(format_daily_number(value)), 2)
 
     def test_every_number_is_its_own(self):
         """Два заказа с одним номером в один день - худшее, что тут может
         случиться: партии перепутают в цеху, а не на экране."""
-        seen = [format_daily_number(value) for value in range(1, 325)]
+        seen = [format_daily_number(value) for value in range(1, 301)]
         self.assertEqual(len(seen), len(set(seen)))
-
-    def test_beyond_the_alphabet_it_shows_the_raw_number(self):
-        """Больше трёхсот партий за день не бывало ни разу. Если случится -
-        длинный номер честнее, чем начать алфавит заново и выдать двойника."""
-        self.assertEqual(format_daily_number(1000), "1000")
 
     def test_no_number_means_no_label(self):
         self.assertEqual(format_daily_number(None), "")
@@ -60,7 +64,8 @@ class ParseTests(TestCase):
 
     def test_letters_come_back_as_numbers(self):
         self.assertEqual(parse_daily_number("А1"), 100)
-        self.assertEqual(parse_daily_number("Б1"), 109)
+        self.assertEqual(parse_daily_number("А9"), 108)
+        self.assertEqual(parse_daily_number("А10"), 109)
 
     def test_case_and_spaces_do_not_matter(self):
         self.assertEqual(parse_daily_number("а1"), 100)
@@ -76,12 +81,12 @@ class ParseTests(TestCase):
 
     def test_nonsense_is_refused(self):
         """Лучше переспросить, чем перевести не ту партию."""
-        for text in ["", None, "мусор", "А0", "Ъ1", "АА", "1А"]:
+        for text in ["", None, "мусор", "А0", "Б1", "Ъ1", "АА", "1А"]:
             with self.subTest(text=text):
                 self.assertIsNone(parse_daily_number(text))
 
     def test_it_survives_the_round_trip(self):
-        for value in range(1, 325):
+        for value in range(1, 301):
             with self.subTest(value=value):
                 self.assertEqual(parse_daily_number(format_daily_number(value)), value)
 
