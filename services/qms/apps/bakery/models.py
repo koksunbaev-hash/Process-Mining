@@ -10,6 +10,61 @@ from django.db import models, transaction
 from django.utils import timezone
 
 
+# --------------------------------------------------------- номер партии за день
+#
+# Номер двузначный: смена называет его вслух и пишет мелом на тележке, и три
+# цифры там уже не помещаются. За день заказов обычно меньше сотни, но день на
+# день не приходится, и упереться в 99 всё-таки можно.
+#
+# Сверх сотни номер получает букву: 100 - «А1», 108 - «А9», 109 - «Б1». Знака
+# по-прежнему два, вслух читается так же просто («а один»), и от чисел такой
+# номер отличается сразу - спутать «А1» с «41» труднее, чем «100» с «10».
+
+# Ё, Й, Ъ, Ы, Ь не начинают слов и на слух неразличимы; З и О выброшены потому,
+# что от руки их не отличить от 3 и 0, а номер пишут мелом.
+_NUMBER_LETTERS = "АБВГДЕЖИКЛМНПРСТУФХЦЧШЩЭЮЯ"
+_LETTER_CAPACITY = 9  # цифры 1..9, нуля нет: «А0» читается как опечатка
+
+# Латинские двойники кириллических букв. На вид неотличимы, и приходят они то
+# из раскладки, то из распознавателя; отказывать из-за этого - злить смену.
+_LOOKALIKE = str.maketrans("ABEKMHOPCTXY", "АВЕКМНОРСТХУ")
+
+
+def format_daily_number(value):
+    """Номер за день в том виде, в каком его называют в цеху."""
+    if value is None:
+        return ""
+    if value < 100:
+        return f"{value:02d}"
+    offset = value - 100
+    letter, digit = divmod(offset, _LETTER_CAPACITY)
+    if letter >= len(_NUMBER_LETTERS):
+        # Больше трёхсот партий за день - такого не бывало ни разу. Если всё же
+        # случится, честнее показать сырое число, чем начать нумерацию заново
+        # и выдать два одинаковых номера разным заказам.
+        return str(value)
+    return f"{_NUMBER_LETTERS[letter]}{digit + 1}"
+
+
+def parse_daily_number(text):
+    """Обратно: «А1» - 100. Ничего не узнали - None.
+
+    Нужно голосовым командам и поиску: смена говорит «а один», а в базе лежит
+    число, и без разбора такую партию было бы не найти.
+    """
+    if not text:
+        return None
+    cleaned = str(text).strip().upper().replace(" ", "").translate(_LOOKALIKE)
+    if cleaned.isdigit():
+        return int(cleaned)
+    if len(cleaned) != 2:
+        return None
+    letter, digit = cleaned[0], cleaned[1]
+    if letter not in _NUMBER_LETTERS or digit not in "123456789":
+        return None
+    return 100 + _NUMBER_LETTERS.index(letter) * _LETTER_CAPACITY + int(digit) - 1
+
+
 class TimestampedModel(models.Model):
     created_at = models.DateTimeField("создано", auto_now_add=True)
     updated_at = models.DateTimeField("обновлено", auto_now=True)
@@ -258,7 +313,7 @@ class ProductionOrder(TimestampedModel):
     @property
     def display_batch_number(self):
         if self.daily_batch_number is not None:
-            return f"{self.daily_batch_number:02d}"
+            return format_daily_number(self.daily_batch_number)
         return "—"
 
     @property
@@ -459,7 +514,7 @@ class ProductionBatch(TimestampedModel):
     @property
     def display_batch_number(self):
         if self.daily_card_number is not None:
-            return f"{self.daily_card_number:02d}"
+            return format_daily_number(self.daily_card_number)
         return self.short_batch_number
 
     @property

@@ -19,7 +19,15 @@ from apps.notifications.services import notify
 from apps.quality.models import ControlPost, ControlType, Department, QualityObject
 
 from . import speech_kk
-from .models import ProductionBatch, ProductionStage, ProductionUnit, VoiceCommand, VoiceMessage
+from .models import (
+    ProductionBatch,
+    ProductionStage,
+    ProductionUnit,
+    VoiceCommand,
+    VoiceMessage,
+    format_daily_number,
+    parse_daily_number,
+)
 from .permissions import can_view_voice
 from .services import assign_batch_to_unit, log_order_event, move_batch, pause_batch, resume_batch
 
@@ -169,7 +177,7 @@ def process_mining_context():
         "units": list(
             ProductionUnit.objects.filter(is_active=True).order_by("stage__sequence", "sequence").values_list("name", flat=True)
         ),
-        "batch_numbers": [f"{number:02d}" for number in visible_numbers] + [batch.batch_number for batch in recent_batches],
+        "batch_numbers": [format_daily_number(number) for number in visible_numbers] + [batch.batch_number for batch in recent_batches],
         "batch_aliases": [batch.short_batch_number for batch in recent_batches],
     }
 
@@ -383,6 +391,23 @@ def resolve_batch(data):
     """
     number = (data.get("batch_number") or "").strip()
     if number:
+        # Номер сверх сотни выглядит как «А1», а в базе лежит числом. Пробуем
+        # его первым и только для значений от ста: _squash оставляет от «А1»
+        # одну единицу - кириллица в нём не выживает, - и поиск уходил к
+        # партии номер 01. Ниже сотни разбирать нечего, а «Б1» рискует быть
+        # техническим номером партии, поэтому там всё идёт прежним путём.
+        lettered = parse_daily_number(number)
+        if lettered is not None and lettered >= 100:
+            visible = (
+                ProductionBatch.objects.select_related("current_stage", "order_item__order")
+                .filter(daily_card_number=lettered)
+                .exclude(status__in=["completed", "cancelled"])
+                .order_by("-card_number_date", "id")
+                .first()
+            )
+            if visible:
+                return visible
+
         wanted_digits = _squash(number)
         if wanted_digits.isdigit():
             # The number printed on the Kanban card is scoped to a production
