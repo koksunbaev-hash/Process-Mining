@@ -3,7 +3,9 @@
 {% block page_title %}История заказов{% endblock %}
 {% block page_subtitle %}Архив производства с количеством и временем выполнения{% endblock %}
 {% block top_action %}<a class="primary" href="{% url 'bakery:production_sheet' %}">Добавить заказ</a>{% endblock %}
+{% load static %}
 {% block content %}
+<script src="{% static 'js/order-list.js' %}" defer></script>
 <section class="panel order-history-toolbar">
   <form class="filters order-history-filters">
     <input name="q" value="{{ request.GET.q }}" placeholder="Номер заказа или продукт">
@@ -32,8 +34,21 @@
       <div class="order-progress__labels"><span>Выполнение</span><strong>{{ order.ready_quantity|floatformat:"-3" }} / {{ order.planned_quantity|floatformat:"-3" }} шт</strong></div>
       <div class="order-progress__track"><span style="width: {{ order.progress_percent }}%"></span></div>
     </div>
-    <div class="order-products-preview">
-      {% for line in order.items.all %}<span>{{ line.product.name }} <b>{{ line.quantity|floatformat:"-3" }} {{ line.unit }}</b></span>{% empty %}<span class="muted">Нет позиций</span>{% endfor %}
+    {% comment %}
+      Товары под общей крышкой: в заводском заказе их три десятка, и карточка
+      вырастала на высоту экрана, растягивая за собой весь ряд. Высота теперь
+      ограничена, нижний ряд уходит в фон - видно, что список продолжается.
+    {% endcomment %}
+    <div>
+      <div class="order-products-clip{% if order.items.all|length < 7 %} is-whole{% endif %}">
+        <div class="order-products-preview">
+          {% for line in order.items.all %}<span>{{ line.product.name }} <b>{{ line.quantity|floatformat:"-3" }} {{ line.unit }}</b></span>{% empty %}<span class="muted">Нет позиций</span>{% endfor %}
+        </div>
+      </div>
+      {% if order.items.all|length > 6 %}
+      <button type="button" class="order-products-toggle" data-products-toggle
+              aria-expanded="false">Все позиции ({{ order.items.all|length }})</button>
+      {% endif %}
     </div>
   </article>
   {% empty %}<section class="panel order-empty"><strong>Заказов не найдено</strong><span class="muted">Измените параметры поиска.</span></section>{% endfor %}

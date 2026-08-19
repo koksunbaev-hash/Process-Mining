@@ -1,24 +1,154 @@
 {% extends "base.html" %}
+{% comment %}
+Карточка заказа. Всё, что здесь есть, отвечает на один вопрос: что с заказом
+сейчас и что по нему осталось сделать. Отсюда полоса состояния сверху и
+позиции карточками - раньше это был плоский список, по которому нельзя было
+понять, у какой позиции нет рецептуры, не читая её целиком.
+{% endcomment %}
 {% block title %}Заказ №{{ order.order_number }}{% endblock %}
 {% block page_title %}Заказ №{{ order.order_number }}{% endblock %}
 {% block top_action %}<a class="primary" href="{% url 'bakery:order_edit' order.pk %}">Редактировать</a>{% endblock %}
 {% block content %}
-<section class="panel">
-  <div class="meta-grid"><div><span class="muted">Статус</span><strong>{{ order.get_status_display }}</strong></div><div><span class="muted">Партия</span><strong>{{ order.display_batch_label }}</strong></div></div>
-  <form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="confirm"><button class="primary">Подтвердить и создать партии</button></form>
-  <form method="post" class="inline-form" onsubmit="return confirm('Удалить заказ №{{ order.order_number }}? Это действие нельзя отменить.');">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="delete">
-    <button class="secondary" type="submit">Удалить заказ</button>
-  </form>
+
+<nav class="crumbs" aria-label="Хлебные крошки">
+  <a href="{% url 'bakery:kanban' %}">Производство</a>
+  <span aria-hidden="true">/</span>
+  <a href="{% url 'bakery:orders' %}">Заказы</a>
+  <span aria-hidden="true">/</span>
+  <span class="crumbs__here">№{{ order.order_number }}</span>
+</nav>
+
+<section class="panel order-status">
+  <div class="order-status__main">
+    <p class="order-status__label">Статус заказа</p>
+    <p class="order-status__value">
+      {{ order.get_status_display|capfirst }}
+      {% if batches_created %}<span class="chip is-ok">Партии созданы</span>{% endif %}
+    </p>
+
+    <ol class="steps">
+      {% for step in steps %}
+      <li class="steps__item{% if step.done %} is-done{% endif %}{% if step.current %} is-current{% endif %}">
+        <span class="steps__dot" aria-hidden="true"></span>
+        <span class="steps__title">{{ step.title }}</span>
+      </li>
+      {% endfor %}
+    </ol>
+  </div>
+
+  <div class="order-status__side">
+    <dl class="order-facts">
+      <div><dt>Готовность</dt><dd>{{ order.required_date|date:"d.m.Y" }}</dd></div>
+      <div><dt>Приоритет</dt><dd>{{ order.get_priority_display|capfirst }}</dd></div>
+      <div><dt>Партия</dt><dd>{{ order.display_batch_label }}</dd></div>
+      <div><dt>Клиент</dt><dd>{{ order.customer.name }}</dd></div>
+    </dl>
+
+    <div class="order-actions">
+      {% if batches_created %}
+        {% comment %}
+          Партии уже в цеху. Кнопка не исчезает, а гаснет: пропади она вовсе,
+          и было бы непонятно, подтверждали заказ или про него забыли.
+        {% endcomment %}
+        <button class="primary" type="button" disabled title="Партии по этому заказу уже созданы">Партии созданы</button>
+      {% else %}
+        <form method="post" class="inline-form">{% csrf_token %}
+          <input type="hidden" name="action" value="confirm">
+          <button class="primary">Подтвердить и создать партии</button>
+        </form>
+      {% endif %}
+      <form method="post" class="inline-form" onsubmit="return confirm('Удалить заказ №{{ order.order_number }}? Это действие нельзя отменить.');">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="delete">
+        <button class="danger" type="submit">Удалить заказ</button>
+      </form>
+    </div>
+  </div>
 </section>
-<section class="panel"><h3>Товары и расчёт ингредиентов</h3>
+
+<section class="panel">
+  <header class="panel-head">
+    <div>
+      <h3>Товары и расчёт ингредиентов</h3>
+      <p class="muted">Состав заказа с автоматически рассчитанным сырьём</p>
+    </div>
+    <span class="chip">Позиций: {{ order.items.all|length }}</span>
+  </header>
+
   {% for line in order.items.all %}
-    <h4>{{ line.product.name }} - {{ line.quantity }} {{ line.unit }}</h4>
-    <ul>{% for req in line.requirements %}<li>{{ req.ingredient.name }}: {{ req.quantity }} {{ req.unit }}</li>{% empty %}<li>Нет активной рецептуры.</li>{% endfor %}</ul>
-    {% for batch in line.batches.all %}<p>Партия: <a href="{% url 'bakery:batch_detail' batch.pk %}" title="Технический номер: {{ batch.batch_number }}">{{ batch.display_batch_label }}</a> - {{ batch.current_stage.name }}</p>{% endfor %}
+  {% comment %}
+    details, а не свои скрипты: в заказе бывает полтора десятка позиций, и
+    сворачивание должно работать до того, как страница дочитает javascript.
+  {% endcomment %}
+  <details class="order-line" open>
+    <summary class="order-line__head">
+      <span class="order-line__no">{{ forloop.counter|stringformat:"02d" }}</span>
+      <span class="order-line__name">
+        {{ line.product.name }}
+        {% if line.requirements %}
+          <span class="chip is-ok">Рецептура активна</span>
+        {% else %}
+          <span class="chip is-warn">Нет рецептуры</span>
+        {% endif %}
+      </span>
+      <span class="order-line__qty">{{ line.quantity|floatformat:"-3" }} {{ line.unit }}</span>
+      <span class="order-line__batches">
+        {% for batch in line.batches.all %}
+          <a href="{% url 'bakery:batch_detail' batch.pk %}" title="Технический номер: {{ batch.batch_number }}">{{ batch.display_batch_label }}</a>
+          <small>{{ batch.current_stage.name }}</small>
+        {% empty %}
+          <small class="muted">К производству</small>
+        {% endfor %}
+      </span>
+    </summary>
+
+    <div class="order-line__body">
+      {% if line.requirements %}
+      <p class="order-line__caption">
+        Расчёт ингредиентов
+        <span class="muted">Компонентов: {{ line.requirements|length }}</span>
+      </p>
+      <ul class="ingredients">
+        {% for req in line.requirements %}
+        <li><span class="ingredients__name">{{ req.ingredient.name }}</span><span class="ingredients__value">{{ req.quantity }} {{ req.unit }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="notice is-warn">
+        <strong>Для товара не назначена активная рецептура.</strong>
+        Расчёт ингредиентов станет доступен после выбора рецептуры.
+      </p>
+      {% endif %}
+    </div>
+  </details>
+  {% empty %}
+  <p class="muted">В заказе пока нет позиций.</p>
   {% endfor %}
 </section>
-<section class="panel narrow"><h3>Добавить товар</h3><form method="post" class="form-grid">{% csrf_token %}{{ item_form.as_p }}<button class="primary">Добавить</button></form></section>
-<section class="panel"><h3>История</h3>{% for event in order.events.all %}<p>{{ event.created_at }} - {{ event.message }}</p>{% empty %}<p class="muted">История пуста.</p>{% endfor %}</section>
+
+<div class="order-bottom">
+  <section class="panel">
+    <h3>Добавить товар</h3>
+    <p class="muted">Новая позиция в текущем заказе</p>
+    <form method="post" class="form-grid">{% csrf_token %}{{ item_form.as_p }}<button class="primary">Добавить товар</button></form>
+  </section>
+
+  <section class="panel hint">
+    <h3>Автоматический расчёт сырья</h3>
+    <p>
+      После выбора рецептуры система пересчитает ингредиенты с учётом количества
+      товара. Перед запуском заказа проверьте доступность сырья и активность
+      технологических карт.
+    </p>
+  </section>
+</div>
+
+<section class="panel">
+  <h3>История</h3>
+  {% for event in order.events.all %}
+  <p class="order-event"><span class="muted">{{ event.created_at|date:"d.m.Y H:i" }}</span> {{ event.message }}</p>
+  {% empty %}
+  <p class="muted">История пуста.</p>
+  {% endfor %}
+</section>
 {% endblock %}

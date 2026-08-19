@@ -631,6 +631,44 @@ def _add_order_quantity_metrics(orders):
     return orders
 
 
+# Полоса состояния заказа. Четыре шага, а статусов у заказа семь: часть из них
+# для человека, читающего заказ, означает одно и то же. «Подтверждён» и «в
+# очереди» - это «ждёт цеха», и рисовать их разными делениями значило бы
+# показывать движение там, где ничего не сдвинулось.
+ORDER_STEPS = [
+    ("Заказ оформлен", ["draft"]),
+    ("В очереди", ["confirmed", "queued"]),
+    ("Производство", ["in_production"]),
+    ("Готов к выдаче", ["ready", "shipped"]),
+]
+
+
+def order_progress(order):
+    """Шаги полосы с отметкой, где заказ стоит сейчас.
+
+    Отменённый заказ не «откатывается» на шаг назад: он остановлен там, где
+    его застали, и полоса это показывает - дальше пройденного ничего не горит.
+    """
+    status = order.status
+    if status == ProductionOrder.Status.CANCELLED:
+        # Куда он дошёл до отмены, отсюда уже не узнать: статус затёрт. Честнее
+        # показать только первый шаг, чем выдумать пройденный путь.
+        current = 0
+    else:
+        current = next(
+            (index for index, (_, codes) in enumerate(ORDER_STEPS) if status in codes),
+            len(ORDER_STEPS) - 1,
+        )
+    return [
+        {
+            "title": title,
+            "done": index < current,
+            "current": index == current,
+        }
+        for index, (title, _) in enumerate(ORDER_STEPS)
+    ]
+
+
 @login_required
 def order_detail(request, pk):
     order = get_object_or_404(
@@ -732,6 +770,8 @@ def order_detail(request, pk):
         {
             "order": order,
             "item_form": item_form,
+            "steps": order_progress(order),
+            "batches_created": order.items.filter(batches__isnull=False).exists(),
         },
     )
 

@@ -10,6 +10,57 @@ from django.db import models, transaction
 from django.utils import timezone
 
 
+# --------------------------------------------------------- номер партии за день
+#
+# Номер за день короткий: смена называет его вслух и пишет мелом на тележке.
+# Заказов обычно меньше сотни, и тогда это две цифры - 01, 42, 99.
+#
+# Дальше счёт продолжается с буквой: 100 - «А1», 108 - «А9», 109 - «А10».
+# Буква говорит «вторая сотня», цифра после неё - какой это заказ внутри неё.
+# «А1» от «41» отличить легко, а вот «100» от «10» - уже нет, и в этом весь
+# смысл: спутанный номер означает спутанную партию в цеху.
+#
+# Буква одна. За 99 заходят редко, и городить Б, В и дальше по алфавиту ради
+# случая, которого почти не случается, значит требовать от смены помнить
+# порядок букв. «А10» она прочтёт без запинки.
+
+_LETTER = "А"
+_LETTER_FIRST = 100  # с какого номера начинается буквенный ряд
+
+# Латинские двойники кириллических букв. На вид неотличимы, и приходят они то
+# из раскладки, то из распознавателя; отказывать из-за этого - злить смену.
+_LOOKALIKE = str.maketrans("ABEKMHOPCTXY", "АВЕКМНОРСТХУ")
+
+
+def format_daily_number(value):
+    """Номер за день в том виде, в каком его называют в цеху."""
+    if value is None:
+        return ""
+    if value < _LETTER_FIRST:
+        return f"{value:02d}"
+    return f"{_LETTER}{value - _LETTER_FIRST + 1}"
+
+
+def parse_daily_number(text):
+    """Обратно: «А1» - 100, «А10» - 109. Ничего не узнали - None.
+
+    Нужно голосовым командам и поиску: смена говорит «а десять», а в базе
+    лежит число, и без разбора такую партию было бы не найти.
+    """
+    if not text:
+        return None
+    cleaned = str(text).strip().upper().replace(" ", "").translate(_LOOKALIKE)
+    if cleaned.isdigit():
+        return int(cleaned)
+    if len(cleaned) < 2 or cleaned[0] != _LETTER:
+        return None
+    tail = cleaned[1:]
+    # Нуля нет: «А0» - это описка, а не сотый заказ, и принимать её опасно.
+    if not tail.isdigit() or tail.startswith("0"):
+        return None
+    return _LETTER_FIRST + int(tail) - 1
+
+
 class TimestampedModel(models.Model):
     created_at = models.DateTimeField("создано", auto_now_add=True)
     updated_at = models.DateTimeField("обновлено", auto_now=True)
@@ -258,7 +309,7 @@ class ProductionOrder(TimestampedModel):
     @property
     def display_batch_number(self):
         if self.daily_batch_number is not None:
-            return f"{self.daily_batch_number:02d}"
+            return format_daily_number(self.daily_batch_number)
         return "—"
 
     @property
@@ -459,7 +510,7 @@ class ProductionBatch(TimestampedModel):
     @property
     def display_batch_number(self):
         if self.daily_card_number is not None:
-            return f"{self.daily_card_number:02d}"
+            return format_daily_number(self.daily_card_number)
         return self.short_batch_number
 
     @property
