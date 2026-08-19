@@ -13,14 +13,16 @@ from django.db.models import Count, Max, Prefetch, Q
 from django.db.models.deletion import ProtectedError
 from django.http import FileResponse, Http404, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.defaultfilters import floatformat
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from apps.notifications.services import notify
 from apps.process_mining.services import safe_record_process_event
 
 from .kanban_demo import can_manage_kanban_demo
-from .forecast import WEEKS_BACK, daily_totals, predict_week
+from .forecast import WEEKS_BACK, predict_week
 from .production_sheet import build_rows, shifts_for, totals
 from .forms import (
     CustomerForm,
@@ -36,6 +38,7 @@ from .forms import (
 from .models import (
     Customer,
     FinishedGoodsStock,
+    ForecastOverride,
     Ingredient,
     ProductionBatch,
     ProductionOrder,
@@ -1145,34 +1148,33 @@ def _queue_production_plan(request, order_date, grouped=False):
     return order, len(selections)
 
 
-@login_required
-def forecast(request):
-    """Сколько печь на следующей неделе, по каждому дню.
-
-    Считается по тому же дню недели за последние недели: суббота предсказывается
-    по субботам. Для хлебозавода это не упрощение, а суть - спрос живёт неделей,
-    и общая средняя размазала бы выходные по будням.
-
-    За историю берётся факт выпуска - партии, доведённые до "Готово". Не заказы:
-    заказать могли и то, что не испекли, а печь по прогнозу придётся столько,
-    сколько цех реально способен и обычно делает.
-    """
+def parse_forecast_params(source):
+    """Начало недели и глубина истории из query или POST - одинаково для обоих."""
     start = timezone.localdate() + timedelta(days=1)
-    raw_start = request.GET.get("from", "")
+    raw_start = source.get("from", "")
     if raw_start:
         try:
             start = datetime.strptime(raw_start, "%Y-%m-%d").date()
         except ValueError:
             pass
-
     weeks = WEEKS_BACK
     try:
-        weeks = max(1, min(12, int(request.GET.get("weeks", WEEKS_BACK))))
+        weeks = max(1, min(12, int(source.get("weeks", WEEKS_BACK))))
     except (TypeError, ValueError):
         pass
+    return start, weeks
 
+
+def build_forecast(start, weeks):
+    """Прогноз недели с учётом ручных правок.
+
+    Общий для страницы и для сохранения правки: после правки клиенту нужны те
+    же итоги, что нарисовала бы страница, и считать их дважды по-разному -
+    прямой путь к расхождению.
+    """
     since = start - timedelta(weeks=weeks + 1)
     history = {}
+    product_ids = {}
     for record in (
         BatchStageHistory.objects.filter(to_stage__code="done", created_at__date__gte=since)
         .exclude(batch__is_demo=True)
@@ -1184,26 +1186,137 @@ def forecast(request):
         day = timezone.localtime(record.created_at).date()
         per_product = history.setdefault(record.batch.product.name, {})
         per_product[day] = per_product.get(day, Decimal(0)) + quantity
+        product_ids[record.batch.product.name] = record.batch.product_id
 
     days = [start + timedelta(days=step) for step in range(7)]
     prediction = predict_week(history, start, len(days), weeks)
-    rows = [
-        {"product": product, "points": points, "total": sum((p.quantity for p in points), Decimal(0))}
-        for product, points in prediction.items()
-    ]
-    # Продукты, по которым за все недели ничего не выпускали, засоряли бы лист
-    # нулями - показываем только те, где прогноз есть о чём делать.
-    rows = [row for row in rows if row["total"] > 0]
+    overrides = {
+        (override.product_id, override.date): override.quantity
+        for override in ForecastOverride.objects.filter(
+            date__range=(days[0], days[-1]), product_id__in=set(product_ids.values())
+        )
+    }
+    rows = []
+    for product, points in prediction.items():
+        product_id = product_ids[product]
+        cells = []
+        for point in points:
+            override = overrides.get((product_id, point.date))
+            cells.append(
+                {
+                    "date": point.date,
+                    "quantity": override if override is not None else point.quantity,
+                    "computed": point.quantity,
+                    "samples": point.samples,
+                    "confidence": point.confidence,
+                    "overridden": override is not None,
+                }
+            )
+        total = sum((cell["quantity"] for cell in cells), Decimal(0))
+        # Продукты, по которым за все недели ничего не выпускали, засоряли бы
+        # лист нулями - показываем те, где прогноз есть о чём делать, и те,
+        # которые человек правил: обнулённая вручную строка не должна исчезать
+        # с экрана вместе с возможностью вернуть её как было.
+        if total > 0 or any(cell["overridden"] for cell in cells):
+            rows.append({"product": product, "product_id": product_id, "points": cells, "total": total})
 
-    context = {
+    return {
         "days": days,
         "rows": rows,
-        "daily": daily_totals({row["product"]: row["points"] for row in rows}, len(days)),
+        "daily": [
+            sum((row["points"][index]["quantity"] for row in rows), Decimal(0)) for index in range(len(days))
+        ],
         "grand_total": sum((row["total"] for row in rows), Decimal(0)),
-        "weeks": weeks,
-        "start": start,
-        "previous_week": (start - timedelta(days=7)).isoformat(),
-        "next_week": (start + timedelta(days=7)).isoformat(),
         "history_days": len(history),
     }
+
+
+@login_required
+def forecast(request):
+    """Сколько печь на следующей неделе, по каждому дню.
+
+    Считается по тому же дню недели за последние недели: суббота предсказывается
+    по субботам. Для хлебозавода это не упрощение, а суть - спрос живёт неделей,
+    и общая средняя размазала бы выходные по будням.
+
+    За историю берётся факт выпуска - партии, доведённые до "Готово". Не заказы:
+    заказать могли и то, что не испекли, а печь по прогнозу придётся столько,
+    сколько цех реально способен и обычно делает.
+
+    Поверх расчёта - ручные правки (ForecastOverride): цифру, с которой человек
+    не согласен, можно исправить прямо в клетке, и лист покажет исправленное.
+    """
+    start, weeks = parse_forecast_params(request.GET)
+    context = build_forecast(start, weeks)
+    context.update(
+        {
+            "weeks": weeks,
+            "start": start,
+            "previous_week": (start - timedelta(days=7)).isoformat(),
+            "next_week": (start + timedelta(days=7)).isoformat(),
+            "can_edit": can_manage_orders(request.user),
+        }
+    )
     return render(request, "bakery/forecast.html", context)
+
+
+@login_required
+@require_POST
+def forecast_override(request):
+    """Сохранить или снять ручную правку одной клетки прогноза.
+
+    Пустое количество - это «верни как считалось»: правка удаляется, клетка
+    снова живёт расчётом. Ответ несёт пересчитанные итоги той же недели, чтобы
+    страница обновила строку и подвал без перезагрузки.
+    """
+    if not can_manage_orders(request.user):
+        return JsonResponse({"ok": False, "error": "Править прогноз может менеджер."}, status=403)
+    product = get_object_or_404(Product, pk=request.POST.get("product"))
+    try:
+        day = datetime.strptime(request.POST.get("date", ""), "%Y-%m-%d").date()
+    except ValueError:
+        return JsonResponse({"ok": False, "error": "Непонятная дата."}, status=400)
+
+    raw = (request.POST.get("quantity") or "").strip().replace(",", ".")
+    if raw == "":
+        ForecastOverride.objects.filter(product=product, date=day).delete()
+    else:
+        try:
+            quantity = Decimal(raw)
+        except InvalidOperation:
+            return JsonResponse({"ok": False, "error": "Непонятное число."}, status=400)
+        if quantity < 0:
+            return JsonResponse({"ok": False, "error": "Количество не бывает отрицательным."}, status=400)
+        ForecastOverride.objects.update_or_create(
+            product=product, date=day, defaults={"quantity": quantity, "updated_by": request.user}
+        )
+
+    start, weeks = parse_forecast_params(request.POST)
+    data = build_forecast(start, weeks)
+    row = next((r for r in data["rows"] if r["product_id"] == product.pk), None)
+    cell = None
+    if row is not None:
+        cell = next((c for c in row["points"] if c["date"] == day), None)
+
+    def show(value):
+        return floatformat(value, "-2")
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "cell": (
+                {
+                    "quantity": show(cell["quantity"]),
+                    "computed": show(cell["computed"]),
+                    "samples": cell["samples"],
+                    "confidence": cell["confidence"],
+                    "overridden": cell["overridden"],
+                }
+                if cell
+                else None
+            ),
+            "row_total": show(row["total"]) if row else None,
+            "daily": [show(value) for value in data["daily"]],
+            "grand_total": show(data["grand_total"]),
+        }
+    )

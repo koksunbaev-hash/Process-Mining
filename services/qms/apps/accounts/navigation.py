@@ -69,7 +69,10 @@ SECTIONS = [
                 "bakery:move_order_group"),
     ),
     Section("production_sheet", "Заказ на производство", "bakery:production_sheet", "Производство", OFFICE),
-    Section("forecast", "Прогноз на неделю", "bakery:forecast", "Производство", OFFICE),
+    # Правка значения - тот же раздел, что и сам прогноз: адрес вне разделов
+    # виден любой роли, потому что раздел задаёт и проверку посредника.
+    Section("forecast", "Прогноз на неделю", "bakery:forecast", "Производство", OFFICE,
+            routes=("bakery:forecast_override",)),
     Section(
         "orders", "Заказы", "bakery:orders", "Производство", OFFICE,
         routes=("bakery:order_new", "bakery:order_detail", "bakery:order_edit"),

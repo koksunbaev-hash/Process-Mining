@@ -4,6 +4,7 @@ from .models import (
     BatchStageHistory,
     Customer,
     FinishedGoodsStock,
+    ForecastOverride,
     Ingredient,
     KanbanDemoRun,
     OrderEvent,
@@ -70,10 +71,10 @@ class ProductionOrderAdmin(admin.ModelAdmin):
 class ProductionUnitAdmin(admin.ModelAdmin):
     """Оборудование цеха. Купленную шестую печь заводят здесь, не в коде."""
 
-    list_display = ("name", "stage", "sequence", "status", "is_active")
+    list_display = ("name", "stage", "sequence", "status", "is_active", "twin_id")
     list_filter = ("stage", "status", "is_active")
     list_editable = ("sequence", "status", "is_active")
-    search_fields = ("name",)
+    search_fields = ("name", "twin_id")
 
 
 @admin.register(ProductionBatch)
@@ -91,6 +92,15 @@ class KanbanDemoRunAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "status", "mode", "total_batches", "completed_batches", "speed_seconds", "created_by", "is_active")
     list_filter = ("status", "mode", "is_active")
     search_fields = ("name", "client_request_id")
+
+
+@admin.register(ForecastOverride)
+class ForecastOverrideAdmin(admin.ModelAdmin):
+    """Ручные правки прогноза. Снять правку - удалить строку."""
+
+    list_display = ("product", "date", "quantity", "updated_by", "updated_at")
+    list_filter = ("date",)
+    search_fields = ("product__name",)
 
 
 admin.site.register(ProductionStage)

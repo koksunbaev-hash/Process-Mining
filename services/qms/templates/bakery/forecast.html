@@ -32,7 +32,7 @@
       </select>
     </form>
     <a class="secondary" href="?from={{ next_week }}&weeks={{ weeks }}" title="Неделя вперёд">→</a>
-    <span class="sheet-dates__hint">всего за неделю <strong>{{ grand_total|floatformat:"-2" }}</strong></span>
+    <span class="sheet-dates__hint">всего за неделю <strong data-role="grand-total-hint">{{ grand_total|floatformat:"-2" }}</strong></span>
   </nav>
 
   <header class="sheet-head">
@@ -60,11 +60,15 @@
         <tr>
           <td class="sheet__name">{{ row.product }}</td>
           {% for point in row.points %}
-            <td class="num is-{{ point.confidence }}" title="по {{ point.samples }} наблюдениям">
+            <td class="num is-{{ point.confidence }}{% if point.overridden %} is-override{% endif %}{% if can_edit %} is-editable{% endif %}"
+                data-product="{{ row.product_id }}"
+                data-date="{{ point.date|date:'Y-m-d' }}"
+                data-computed="{{ point.computed|floatformat:'-2' }}"
+                title="{% if point.overridden %}исправлено вручную · расчёт: {{ point.computed|floatformat:'-2' }}{% else %}по {{ point.samples }} наблюдениям{% endif %}">
               {{ point.quantity|floatformat:"-2" }}
             </td>
           {% endfor %}
-          <td class="num sheet__total">{{ row.total|floatformat:"-2" }}</td>
+          <td class="num sheet__total" data-role="row-total">{{ row.total|floatformat:"-2" }}</td>
         </tr>
         {% empty %}
         <tr>
@@ -80,9 +84,9 @@
         <tr>
           <td class="sheet__name">Итого в день</td>
           {% for value in daily %}
-            <td class="num">{{ value|floatformat:"-2" }}</td>
+            <td class="num" data-day="{{ forloop.counter0 }}">{{ value|floatformat:"-2" }}</td>
           {% endfor %}
-          <td class="num sheet__total">{{ grand_total|floatformat:"-2" }}</td>
+          <td class="num sheet__total" data-role="grand-total">{{ grand_total|floatformat:"-2" }}</td>
         </tr>
       </tfoot>
       {% endif %}
@@ -94,6 +98,115 @@
     построены на одном-двух наблюдениях, обычные — на трёх и более. Прогноз
     считается по факту выпуска, а не по заказам: заказать могли и то, что не
     испекли.
+    {% if can_edit %}
+    Щёлкните по клетке, чтобы исправить количество; пустое значение возвращает
+    расчёт. Исправленные клетки помечены точкой.
+    {% endif %}
   </p>
 </div>
+
+<style>
+  .sheet td.is-editable { cursor: pointer; }
+  .sheet td.is-editable:hover { background: rgba(37, 99, 235, 0.07); }
+  .sheet td.is-override { position: relative; font-weight: 600; }
+  .sheet td.is-override::after {
+    content: ""; position: absolute; top: 4px; right: 4px;
+    width: 6px; height: 6px; border-radius: 50%; background: #2563eb;
+  }
+  .sheet td input.forecast-edit {
+    width: 4.5em; font: inherit; text-align: right;
+    border: 1px solid #2563eb; border-radius: 4px; padding: 1px 3px;
+  }
+</style>
+{% if can_edit %}
+<script>
+(function () {
+  "use strict";
+  const table = document.querySelector(".sheet");
+  if (!table) return;
+
+  function updateTotals(data, cellRow) {
+    if (data.row_total !== null) {
+      cellRow.querySelector('[data-role="row-total"]').textContent = data.row_total;
+    }
+    document.querySelectorAll("[data-day]").forEach(function (td) {
+      td.textContent = data.daily[Number(td.dataset.day)];
+    });
+    const grand = document.querySelector('[data-role="grand-total"]');
+    if (grand) grand.textContent = data.grand_total;
+    const hint = document.querySelector('[data-role="grand-total-hint"]');
+    if (hint) hint.textContent = data.grand_total;
+  }
+
+  function applyCell(td, cell) {
+    td.textContent = cell.quantity;
+    td.classList.toggle("is-override", cell.overridden);
+    td.classList.remove("is-high", "is-low", "is-none");
+    td.classList.add("is-" + cell.confidence);
+    td.dataset.computed = cell.computed;
+    td.title = cell.overridden
+      ? "исправлено вручную · расчёт: " + cell.computed
+      : "по " + cell.samples + " наблюдениям";
+  }
+
+  function save(td, raw) {
+    const body = new FormData();
+    body.append("product", td.dataset.product);
+    body.append("date", td.dataset.date);
+    body.append("quantity", raw);
+    body.append("from", "{{ start|date:'Y-m-d' }}");
+    body.append("weeks", "{{ weeks }}");
+    fetch("{% url 'bakery:forecast_override' %}", {
+      method: "POST",
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      body: body,
+    })
+      .then(function (response) { return response.json(); })
+      .then(function (data) {
+        if (!data.ok) { alert(data.error || "Не удалось сохранить."); location.reload(); return; }
+        // Строка могла исчезнуть (сняли правку с нулевой строки) - тогда
+        // честнее перерисовать страницу целиком, чем оставить призрака.
+        if (data.cell === null) { location.reload(); return; }
+        applyCell(td, data.cell);
+        updateTotals(data, td.parentElement);
+      })
+      .catch(function () { alert("Сервер недоступен, правка не сохранена."); location.reload(); });
+  }
+
+  table.addEventListener("click", function (event) {
+    const td = event.target.closest("td.is-editable");
+    if (!td || td.querySelector("input")) return;
+    const current = td.textContent.trim();
+    const input = document.createElement("input");
+    input.className = "forecast-edit";
+    input.type = "text";
+    input.inputMode = "decimal";
+    input.value = td.classList.contains("is-override") ? current : "";
+    input.placeholder = current;
+    td.textContent = "";
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    let finished = false;
+    function finish(commit) {
+      if (finished) return;
+      finished = true;
+      const raw = input.value.trim();
+      td.removeChild(input);
+      td.textContent = current;
+      if (!commit) return;
+      // Пусто у расчётной клетки - человек передумал, а не обнулил.
+      if (raw === "" && !td.classList.contains("is-override")) return;
+      save(td, raw);
+    }
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") { event.preventDefault(); finish(true); }
+      if (event.key === "Escape") { finish(false); }
+    });
+    input.addEventListener("blur", function () { finish(true); });
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

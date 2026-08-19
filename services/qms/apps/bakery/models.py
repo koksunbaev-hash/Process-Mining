@@ -422,6 +422,10 @@ class ProductionUnit(models.Model):
     sequence = models.PositiveIntegerField("порядок", default=1)
     status = models.CharField("состояние", max_length=16, choices=Status.choices, default=Status.AVAILABLE)
     is_active = models.BooleanField("активно", default=True, db_index=True)
+    # Полный thingId двойника в OpenTwins/Ditto (например,
+    # digitalegiz:ESP32_Dala_Meter_001994). Пустое поле - у устройства нет
+    # двойника, и синхронизация его не трогает. См. apps/bakery/twins.py.
+    twin_id = models.CharField("цифровой двойник (thingId)", max_length=120, blank=True, default="")
 
     class Meta:
         ordering = ["stage__sequence", "sequence", "id"]
@@ -721,6 +725,33 @@ class OrderEvent(models.Model):
         ordering = ["-created_at"]
         verbose_name = "событие заказа"
         verbose_name_plural = "история движения заказов"
+
+
+class ForecastOverride(TimestampedModel):
+    """Ручная правка одной клетки прогноза: продукт, день, сколько на самом деле.
+
+    Прогноз считается на лету и нигде не хранится - хранится только несогласие
+    человека с ним. Поэтому правка переживает любые пересчёты: история выпуска
+    пополняется, среднее меняется, а исправленная клетка держит то, что в неё
+    вписали. Удалили запись - клетка вернулась к расчёту.
+    """
+
+    product = models.ForeignKey(Product, verbose_name="продукт", on_delete=models.CASCADE, related_name="forecast_overrides")
+    date = models.DateField("день", db_index=True)
+    quantity = models.DecimalField("количество", max_digits=12, decimal_places=3)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="кто исправил", on_delete=models.SET_NULL, null=True, blank=True
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["product", "date"], name="unique_forecast_override_per_product_day"),
+        ]
+        verbose_name = "правка прогноза"
+        verbose_name_plural = "правки прогноза"
+
+    def __str__(self):
+        return f"{self.product}: {self.date} -> {self.quantity}"
 
 
 def stock_expiration_for(batch):

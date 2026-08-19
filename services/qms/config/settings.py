@@ -24,6 +24,8 @@ env = environ.Env(
     PROCESS_MINING_CONNECT_TIMEOUT=(int, 3),
     PROCESS_MINING_READ_TIMEOUT=(int, 15),
     PUSHTOTALK_COMMAND_CONFIDENCE=(float, 0.90),
+    DITTO_ENABLED=(bool, False),
+    DITTO_TIMEOUT_SECONDS=(int, 5),
     SECURE_HSTS_SECONDS=(int, 0),
     SECURE_SSL_REDIRECT=(bool, False),
 )
@@ -222,6 +224,14 @@ PROCESS_MINING_EXPORT_INTERVAL_SECONDS = env("PROCESS_MINING_EXPORT_INTERVAL_SEC
 PROCESS_MINING_MAX_RETRIES = env("PROCESS_MINING_MAX_RETRIES")
 PROCESS_MINING_CONNECT_TIMEOUT = env("PROCESS_MINING_CONNECT_TIMEOUT")
 PROCESS_MINING_READ_TIMEOUT = env("PROCESS_MINING_READ_TIMEOUT")
+# Цифровые двойники оборудования (OpenTwins / Eclipse Ditto). Выключено по
+# умолчанию: стенд с двойниками есть не на каждом развёртывании, и без него
+# доска обязана работать как ни в чём не бывало. См. apps/bakery/twins.py.
+DITTO_ENABLED = env("DITTO_ENABLED")
+DITTO_BASE_URL = env("DITTO_BASE_URL", default="")
+DITTO_USERNAME = env("DITTO_USERNAME", default="ditto")
+DITTO_PASSWORD = env("DITTO_PASSWORD", default="ditto")
+DITTO_TIMEOUT_SECONDS = env("DITTO_TIMEOUT_SECONDS")
 PUSHTOTALK_API_TOKEN = env("PUSHTOTALK_API_TOKEN", default="")
 PUSHTOTALK_DEFAULT_USERNAME = env("PUSHTOTALK_DEFAULT_USERNAME", default="")
 PUSHTOTALK_COMMAND_CONFIDENCE = env("PUSHTOTALK_COMMAND_CONFIDENCE")
