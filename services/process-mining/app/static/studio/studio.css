@@ -643,3 +643,16 @@ table.tbl .empty { color: var(--muted); text-align: center; padding: 26px 19px; 
   background: transparent; border-left: 0; border-right: 0; border-bottom: 0; width: 100%; text-align: left;
 }
 .findings .foot:hover { color: var(--ink); }
+
+/* ------------------------------------------------------------- аналитик
+   Сводка читается как текст, а не как интерфейс: колонка нормальной ширины,
+   крупный межстрочный интервал, первый абзац - лид. */
+.digest { max-width: 74ch; display: grid; gap: 13px; }
+.digest p { margin: 0; font-size: 14.5px; line-height: 1.62; color: var(--ink); }
+.digest p:first-child { font-size: 16px; font-weight: 500; }
+.digest .empty { color: var(--muted); font-size: 14px; }
+
+/* Тон карточки говорит, тревожная цифра или спокойная: цвет здесь несёт
+   смысл, поэтому подкрашена сама цифра, а не подложка. */
+.kpi.is-warn .kpi-value { color: var(--rose-ink); }
+.kpi.is-ok .kpi-value { color: var(--green-ink); }

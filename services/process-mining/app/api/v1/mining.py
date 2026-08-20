@@ -232,6 +232,25 @@ async def bottlenecks(
     )
 
 
+@router.get(
+    "/logs/{log_id}/analyst",
+    summary="Выводы и сводка по-русски: узкие места, аномалии, тренд",
+)
+async def analyst(
+    log_id: str,
+    logs: LogServiceDep,
+    mining: MiningServiceDep,
+    jobs: JobManagerDep,
+    _: ApiKeyDep,
+    filters: FiltersDep,
+    tenant: str | None = None,
+) -> Any:
+    record = logs.require(log_id, tenant)
+    return await jobs.run_blocking(
+        mining.analyst, record.frame, filters, log_id=log_id, log_version=record.updated_at
+    )
+
+
 @router.post(
     "/logs/{log_id}/conformance",
     response_model=ConformanceResponse,

@@ -15,6 +15,7 @@ import pandas as pd
 
 from app.config import Settings
 from app.core import metrics as metrics_mod
+from app.core import analyst as analyst_mod
 from app.core import mining as mining_core
 from app.core import rendering
 from app.core.cache import TTLCache, fingerprint
@@ -164,6 +165,27 @@ class MiningService:
             return cached
         result = metrics_mod.bottlenecks(apply_filters(frame, filters), top_n=limit)
         result["log_id"] = log_id
+        self.cache.set(key, result)
+        return result
+
+    def analyst(
+        self,
+        frame: pd.DataFrame,
+        filters: LogFilters | None = None,
+        *,
+        log_id: str | None = None,
+        log_version: Any = None,
+    ) -> dict[str, Any]:
+        key = self._key(log_id, log_version, "analyst", _dump(filters))
+        cached = self.cache.get(key)
+        if cached is not None:
+            return cached
+        analysis = analyst_mod.analyze(apply_filters(frame, filters))
+        result = {
+            "log_id": log_id,
+            "digest": analyst_mod.compose_digest(analysis),
+            "analysis": analysis,
+        }
         self.cache.set(key, result)
         return result
 

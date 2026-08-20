@@ -120,6 +120,7 @@
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.6 1.6 0 00-1-1.5 1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-1H3a2 2 0 110-4h.1a1.6 1.6 0 001.5-1 1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H9a1.6 1.6 0 001-1.5V3a2 2 0 114 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V9a1.6 1.6 0 001.5 1H21a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z"/>',
     calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3.5v3M16 3.5v3"/>',
     filter: '<path d="M4 5h16l-6.2 7.3V19l-3.6 1.8v-8.5z"/>',
+    analyst: '<path d="M12 3.5a5.5 5.5 0 013.4 9.8c-.6.5-.9 1.2-.9 2v.7h-5v-.7c0-.8-.3-1.5-.9-2A5.5 5.5 0 0112 3.5z"/><path d="M10 19h4M10.5 21h3"/>',
     chevron: '<path d="M6 9l6 6 6-6"/>',
     expand: '<path d="M8 3.5H4.5V7M16 3.5h3.5V7M8 20.5H4.5V17M16 20.5h3.5V17"/>',
     shuffle: '<path d="M3.5 6.5h4l9 11h4M3.5 17.5h4l3-3.6M15 8.1l1.5-1.6h4"/><path d="M18 3.5l2.5 3-2.5 3M18 14.5l2.5 3-2.5 3"/>',
@@ -192,6 +193,7 @@
     stats: null,
     variants: null,
     necks: null,
+    analyst: null,
     graph: null,
     cases: [],
     events: [],
@@ -296,6 +298,7 @@
       api.get("/api/v1/logs/" + id + "/variants?limit=25" + query),
       api.get("/api/v1/logs/" + id + "/bottlenecks?limit=25" + query),
       api.get("/api/v1/logs/" + id),
+      api.get("/api/v1/logs/" + id + "/analyst" + (query ? "?" + query.slice(1) : "")),
     ]).then(function (results) {
       if (state.logId !== id) return; // пользователь успел переключить журнал
       state.graph = results[0] && results[0].graph;
@@ -303,6 +306,7 @@
       state.variants = results[2];
       state.necks = results[3];
       state.summary = results[4];
+      state.analyst = results[5];
       state.loading = false;
       // События перевыкачиваем только при смене журнала: отбор по периоду,
       // активностям и исполнителям применяется к уже скачанному набору.
@@ -643,6 +647,7 @@
     { id: "map", label: "Карта процесса", icon: "map", render: pageMap },
     { id: "events", label: "Журнал событий", icon: "events", render: pageEvents },
     { id: "analysis", label: "Анализ", icon: "analysis", render: pageAnalysis },
+    { id: "analyst", label: "Аналитик", icon: "analyst", render: pageAnalyst },
     { id: "cases", label: "Кейсы", icon: "cases", render: pageCases },
     { id: "metrics", label: "Показатели", icon: "metrics", render: pageMetrics },
     { id: "predictions", label: "Предсказания", icon: "predictions", render: pagePredictions },
@@ -1355,6 +1360,73 @@
       if (!query) return true;
       return (item.id + " " + item.variant).toLowerCase().indexOf(query) !== -1;
     });
+  }
+
+  /* Аналитик: то же, что видно на других экранах, но словами.
+   *
+   * Считает и пишет сервер - здесь только показ. Смысл экрана в том, чтобы
+   * человек, открывший консоль впервые, за десять секунд понял, что с
+   * процессом не так; таблицы на «Анализе» отвечают на тот же вопрос, но
+   * требуют читать их глазами аналитика. */
+  function pageAnalyst() {
+    if (!hasData()) return skeletonPage();
+
+    var report = state.analyst || {};
+    var digest = report.digest || [];
+    var analysis = report.analysis || {};
+    var anomalies = analysis.anomalies || [];
+    var necks = analysis.bottlenecks || [];
+    var trend = analysis.trend;
+
+    var cards = [
+      { label: "Кейсов в разборе", value: num(analysis.cases || 0) },
+      { label: "Типичный путь", value: dur((analysis.throughput_seconds || {}).median) },
+      { label: "Застрявших", value: num(anomalies.length), tone: anomalies.length ? "warn" : "ok" },
+      // Тон - только на заметном сдвиге: колебание в несколько процентов это
+      // обычная неделя, и красить его тревожным цветом значит звать зря.
+      trend
+        ? { label: "Поток за неделю", value: (trend.change_pct > 0 ? "+" : "") + trend.change_pct + "%",
+            tone: trend.change_pct >= 15 ? "ok" : (trend.change_pct <= -15 ? "warn" : "") }
+        : { label: "Узких мест", value: num(necks.length) },
+    ];
+
+    return (
+      '<section class="surface page">' +
+        '<div class="hero"><div><h1>Аналитик</h1>' +
+        "<p>Что происходит с процессом - человеческим языком, по свежим данным</p></div></div>" +
+
+        '<div class="kpis">' +
+        cards.map(function (card) {
+          return '<div class="kpi' + (card.tone ? " is-" + card.tone : "") + '">' +
+            '<div class="kpi-label">' + esc(card.label) + "</div>" +
+            '<div class="kpi-value">' + card.value + "</div></div>";
+        }).join("") +
+        "</div>" +
+
+        '<div class="card"><div class="card-head"><h3>Сводка</h3>' +
+          '<div class="tools"><span class="tag">обновляется вместе с журналом</span></div></div>' +
+          '<div class="card-body"><div class="digest">' +
+          (digest.length
+            ? digest.map(function (line) { return "<p>" + esc(line) + "</p>"; }).join("")
+            : '<p class="empty">Сводка появится, когда наберётся история.</p>') +
+          "</div></div></div>" +
+
+        '<div class="card"><div class="card-head"><h3>Застрявшие кейсы</h3>' +
+          '<div class="tools"><span class="tag">ждали дольше обычного</span></div></div>' +
+          '<div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
+          "<thead><tr><th>Кейс</th><th>Ждал перед</th><th class=\"num\">Простоял</th>" +
+          "<th class=\"num\">Обычно</th><th class=\"num\">Во сколько раз</th></tr></thead><tbody>" +
+          (anomalies.length ? anomalies.map(function (item) {
+            return '<tr data-case="' + esc(item.case_id) + '">' +
+              "<td>" + esc(item.case_id) + "</td>" +
+              "<td>" + esc(item.target) + "</td>" +
+              '<td class="num strong">' + dur(item.waited_seconds) + "</td>" +
+              '<td class="num">' + dur(item.typical_seconds) + "</td>" +
+              '<td class="num">×' + item.ratio + "</td></tr>";
+          }).join("") : '<tr><td colspan="5" class="empty">Ничего не застряло</td></tr>') +
+          "</tbody></table></div></div></div>" +
+      "</section>"
+    );
   }
 
   function pageCases() {
