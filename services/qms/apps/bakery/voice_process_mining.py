@@ -367,7 +367,69 @@ def extract_unit(text):
         # «Расстойка» вслух не произносят вовсе, и без этого команда упиралась
         # бы в «не понял, на какой этап переводить».
         return unit.name, unit.stage.code, rest, ""
-    return "", "", text, ""
+    return _extract_unit_by_sound(folded, text, vocabulary)
+
+
+# Казахский называет номер машины падежным словом, и распознаватель мнёт его
+# как хочет: «миксер екіге» приходит как «мик сергей», «шкаф үшке» - как
+# «шкаф ішкі». Точный разбор выше такое не берёт - там после слова ждётся
+# цифра. Здесь фраза сравнивается целиком: склеенные соседние слова против
+# склейки «основа + числительное» для каждой машины.
+KK_UNIT_NUMBERS = {
+    1: ("бірге", "бірінші"),
+    2: ("екіге", "екінші"),
+    3: ("үшке", "үшінші"),
+    4: ("төртке", "төртінші"),
+    5: ("беске", "бесінші"),
+}
+
+
+def _extract_unit_by_sound(folded, original, vocabulary):
+    tokens = re.findall(r"[а-яё]+", folded)
+    windows = []
+    for index, token in enumerate(tokens):
+        if len(token) >= 6:
+            windows.append((token, (token,)))
+        if index + 1 < len(tokens):
+            windows.append((token + tokens[index + 1], (token, tokens[index + 1])))
+
+    # Лучшее расстояние на каждую машину. Цели складываются через fold, как и
+    # сама фраза: без этого казахская «і» в «екіге» спорила бы с русской «и»
+    # из расшифровки и раздувала расстояние на ровном месте.
+    per_unit = {}
+    for stem, units in vocabulary.items():
+        for number, unit in units.items():
+            for numword in KK_UNIT_NUMBERS.get(number, ()):
+                target = speech_kk.fold(stem + numword)
+                for joined, used in windows:
+                    if joined == stem:
+                        continue  # голая основа без номера машину не называет
+                    distance = speech_kk._distance(joined, target)
+                    ratio = distance / len(target)
+                    key = unit.pk
+                    if key not in per_unit or distance < per_unit[key][0]:
+                        per_unit[key] = (distance, ratio, unit, used)
+
+    ranked = sorted(per_unit.values(), key=lambda row: (row[0], row[1]))
+    # Порог 0.30 подобран на настоящих записях со стенда: «шкафішкі» до
+    # «шкафүшке» - 0.22, «миксерегілген» до «миксерекіге» - 0.27.
+    if not ranked or ranked[0][1] > 0.30:
+        return "", "", original, ""
+    # Ничья между разными машинами - отказ, а не выбор первой попавшейся:
+    # «формовщики где» одинаково близко к первому и второму формовщику, и
+    # угадывать здесь значит увозить партию не туда. Переспросить дешевле.
+    # Принимаем, когда лучший заметно лучше второго: либо на два шага по
+    # расстоянию, либо второй сам за пределами доверия.
+    if len(ranked) > 1:
+        gap_ok = ranked[1][0] - ranked[0][0] >= 2
+        runner_far = ranked[0][1] <= 0.28 and ranked[1][1] >= 0.35
+        if not (gap_ok or runner_far):
+            return "", "", original, ""
+    _, _, unit, used = ranked[0]
+    rest = folded
+    for token in used:
+        rest = re.sub(r"\b%s\b" % re.escape(token), " ", rest, count=1)
+    return unit.name, unit.stage.code, rest, ""
 
 
 def resolve_unit(name, stage):

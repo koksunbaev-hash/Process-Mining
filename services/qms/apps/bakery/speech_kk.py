@@ -222,14 +222,43 @@ def spoken_letter_prefix(text: str) -> str:
     )
 
 
+# Устойчивые ослышки распознавателя. Не варианты произношения - те ловятся
+# сравнением по написанию, - а слова, которые модель стабильно пишет ВМЕСТО
+# сказанного. Каждая строка здесь появилась из настоящей записи со стенда.
+MISHEARD_WORDS = {
+    "пейдж": "печь",   # «печ төртке» приходит как «пейдж төртке»
+    "пешке": "печке",
+}
+
+# «На печь три» модель слышит как «на пять три». Оставить как есть нельзя:
+# numbers_to_digits склеит «пять три» в 53, и число исчезнет вместе с печью.
+# Замена только в этом окружении: «пять» после «на» и перед числом - никакой
+# другой команды это не задевает, у этапов и машин номеров «пять N» нет.
+_NA_PYAT_RE = None  # собирается при первом использовании
+
+
+def _fix_misheard(text: str) -> str:
+    global _NA_PYAT_RE
+    if _NA_PYAT_RE is None:
+        import re as _re
+        digits = r"\d|один|два|две|три|четыре|пять|шесть|семь|восемь|девять"
+        _NA_PYAT_RE = _re.compile(r"\bна\s+пять\s+(?=(?:%s)\b)" % digits, _re.IGNORECASE)
+    words = []
+    for word in (text or "").split():
+        words.append(MISHEARD_WORDS.get(word.lower(), word))
+    return _NA_PYAT_RE.sub("на печь ", " ".join(words))
+
+
 def prepare(text: str) -> str:
     """Everything the Kazakh path needs, in the order it has to happen.
 
     Numbers first: "б бир бес торт" has to become "б 154" before the letter in
     front of it can be recognised as a batch prefix. A letter said as a word
-    ("бэ") becomes a letter in between.
+    ("бэ") becomes a letter in between. Misheard words are repaired before any
+    of that: "на пять три" must become "на печь три" while «пять» and «три»
+    are still words - digits glue together.
     """
-    return latin_batch_prefix(spoken_letter_prefix(numbers_to_digits(text or "")))
+    return latin_batch_prefix(spoken_letter_prefix(numbers_to_digits(_fix_misheard(text or ""))))
 
 
 # ---------------------------------------------------------------- этап на слух
