@@ -375,6 +375,10 @@ def extract_unit(text):
 # «шкаф ішкі». Точный разбор выше такое не берёт - там после слова ждётся
 # цифра. Здесь фраза сравнивается целиком: склеенные соседние слова против
 # склейки «основа + числительное» для каждой машины.
+# Только падежные и порядковые формы, без голых «бір», «екі», «үш»: голое
+# количественное числительное во фразе почти всегда номер партии, а не машины.
+# «Екі шкаф үшке» - это партия 2 в третий шкаф, и короткая форма превращала
+# её в спор между вторым и третьим шкафом на ровном месте.
 KK_UNIT_NUMBERS = {
     1: ("бірге", "бірінші"),
     2: ("екіге", "екінші"),
@@ -382,6 +386,25 @@ KK_UNIT_NUMBERS = {
     4: ("төртке", "төртінші"),
     5: ("беске", "бесінші"),
 }
+
+
+def _named_stems(tokens, vocabulary):
+    """Основы, названные во фразе прямо, без догадок.
+
+    «Шкаф» в «пес екінші шкаф» произнесён отчётливо, и никакая близость
+    «песекінші» к «печьекінші» не отменяет того, что человек сказал про шкаф.
+    Пока такое слово в фразе есть, машины других типов из выбора выпадают:
+    ошибиться номером неприятно, ошибиться типом - значит увезти партию в
+    другой конец цеха.
+    """
+    named = set()
+    for stem in vocabulary:
+        for token in tokens:
+            # Точное слово или оно же с казахским падежным хвостом: «шкафқа»,
+            # «пешке». Два лишних знака - предел, дальше это уже другое слово.
+            if token == stem or (token.startswith(stem) and len(token) - len(stem) <= 3):
+                named.add(stem)
+    return named
 
 
 def _extract_unit_by_sound(folded, original, vocabulary):
@@ -393,22 +416,30 @@ def _extract_unit_by_sound(folded, original, vocabulary):
         if index + 1 < len(tokens):
             windows.append((token + tokens[index + 1], (token, tokens[index + 1])))
 
+    named = _named_stems(tokens, vocabulary)
+
     # Лучшее расстояние на каждую машину. Цели складываются через fold, как и
     # сама фраза: без этого казахская «і» в «екіге» спорила бы с русской «и»
     # из расшифровки и раздувала расстояние на ровном месте.
     per_unit = {}
     for stem, units in vocabulary.items():
+        if named and stem not in named:
+            continue   # тип назван вслух, и это не он
         for number, unit in units.items():
             for numword in KK_UNIT_NUMBERS.get(number, ()):
-                target = speech_kk.fold(stem + numword)
-                for joined, used in windows:
-                    if joined == stem:
-                        continue  # голая основа без номера машину не называет
-                    distance = speech_kk._distance(joined, target)
-                    ratio = distance / len(target)
-                    key = unit.pk
-                    if key not in per_unit or distance < per_unit[key][0]:
-                        per_unit[key] = (distance, ratio, unit, used)
+                folded_stem = speech_kk.fold(stem)
+                folded_num = speech_kk.fold(numword)
+                # Оба порядка: «шкаф екіге» и «екінші шкафқа» - в казахском
+                # номер стоит и после названия, и перед ним.
+                for target in (folded_stem + folded_num, folded_num + folded_stem):
+                    for joined, used in windows:
+                        if joined == stem:
+                            continue  # голая основа без номера машину не называет
+                        distance = speech_kk._distance(joined, target)
+                        ratio = distance / len(target)
+                        key = unit.pk
+                        if key not in per_unit or distance < per_unit[key][0]:
+                            per_unit[key] = (distance, ratio, unit, used)
 
     ranked = sorted(per_unit.values(), key=lambda row: (row[0], row[1]))
     # Порог 0.30 подобран на настоящих записях со стенда: «шкафішкі» до
@@ -423,7 +454,12 @@ def _extract_unit_by_sound(folded, original, vocabulary):
     if len(ranked) > 1:
         gap_ok = ranked[1][0] - ranked[0][0] >= 2
         runner_far = ranked[0][1] <= 0.28 and ranked[1][1] >= 0.35
-        if not (gap_ok or runner_far):
+        # Уверенное попадание принимается и с отрывом в один шаг: «шкаф егге»
+        # отстоит от «шкаф екіге» на две буквы из девяти, и переспрашивать о
+        # таком - придирка. Порог намеренно ниже прочих: тут мы соглашаемся
+        # на меньший отрыв, значит само совпадение должно быть лучше.
+        confident = ranked[0][1] <= 0.25 and ranked[1][0] > ranked[0][0]
+        if not (gap_ok or runner_far or confident):
             return "", "", original, ""
     _, _, unit, used = ranked[0]
     rest = folded

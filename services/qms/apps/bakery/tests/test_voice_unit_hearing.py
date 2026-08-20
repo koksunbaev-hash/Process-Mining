@@ -59,10 +59,40 @@ class UnitHearingTests(TestCase):
         self.assertEqual(hear("бес формовщики где"), "")
         self.assertEqual(hear("он жеті миксер пішкен"), "")
 
+    def test_a_named_type_wins_over_a_similar_sounding_one(self):
+        """«Пес екінші шкаф»: «песекінші» звучит почти как «печьекінші», но
+        слово «шкаф» произнесено отчётливо. Ошибиться номером неприятно,
+        ошибиться типом - значит увезти партию в другой конец цеха."""
+        self.assertEqual(hear("пес екінші шкаф"), "Шкаф 2")
+
+    def test_the_number_may_come_first(self):
+        """В казахском номер стоит и после названия, и перед ним:
+        «екінші шкафқа» - это «во второй шкаф»."""
+        self.assertEqual(hear("бесінші заказ екінші шкафқа"), "Шкаф 2")
+
+    def test_a_bare_numeral_is_a_batch_not_a_machine(self):
+        """«Екі шкаф үшке» - партия 2 в третий шкаф. Считать «екі» номером
+        шкафа значит спорить с самим собой на ровном месте."""
+        self.assertEqual(hear("екі шкаф үшке"), "Шкаф 3")
+        self.assertEqual(hear("екі шкаф ішкі"), "Шкаф 3")
+
+    def test_mangled_cabinet_numbers(self):
+        """«Егге» - это «екіге», расслышанное на ходу: две буквы из девяти.
+
+        А вот «егде» отстоит уже на три и стоит почти вровень с «үшке». Между
+        вторым и третьим шкафом тут не угадать, и разбор переспрашивает - на
+        расстойке партия простоит сорок минут не в том шкафу, прежде чем это
+        заметят.
+        """
+        self.assertEqual(hear("бес шкаф егге"), "Шкаф 2")
+        self.assertEqual(hear("жиырма шкаф егде"), "")
+
     def test_clean_commands_are_untouched(self):
         self.assertEqual(hear("жиырма үш миксер үшке"), "Миксер 3")
         self.assertEqual(hear("екі шкаф үшке"), "Шкаф 3")
         self.assertEqual(hear("пять наформовщик два"), "Формовщик 2")
+        self.assertEqual(hear("восемнадцать на шкаф один"), "Шкаф 1")
+        self.assertEqual(hear("он сегіз шкап екіге"), "Шкаф 2")
 
     def test_stage_words_do_not_become_machines(self):
         """«на формовку», «складқа», «замеске» - этапы, не устройства.
