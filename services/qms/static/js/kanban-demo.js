@@ -208,6 +208,8 @@
       const box = drag.card.getBoundingClientRect();
       drag.offsetX = drag.startX - box.left;
       drag.offsetY = drag.startY - box.top;
+      drag.originX = box.left;
+      drag.originY = box.top;
       drag.width = box.width;
 
       // Место карточки занимает пустышка тех же размеров: без неё колонка
@@ -219,14 +221,38 @@
 
       drag.card.classList.add("dragging");
       drag.card.style.width = box.width + "px";
+      // Точка отсчёта задаётся один раз координатами, дальше карточка едет
+      // трансформацией: left/top пересчитывают раскладку всей доски каждый
+      // кадр, translate3d - только слой самой карточки. На доске из трёх
+      // сотен элементов это разница в семь раз, и видна она именно на
+      // планшете, где запаса по скорости нет.
+      drag.card.style.left = box.left + "px";
+      drag.card.style.top = box.top + "px";
+      drag.card.style.willChange = "transform";
       document.body.classList.add("kanban-dragging");
     }
 
     event.preventDefault();
-    drag.card.style.left = event.clientX - drag.offsetX + "px";
-    drag.card.style.top = event.clientY - drag.offsetY + "px";
+    // Палец шлёт события чаще, чем экран рисует кадры, а иногда и пачками.
+    // Считать подсветку и прокрутку на каждое - работа впустую: до экрана
+    // доедет только последнее. Копим и применяем раз в кадр.
+    drag.pendingX = event.clientX;
+    drag.pendingY = event.clientY;
+    if (drag.frame) return;
+    drag.frame = requestAnimationFrame(applyDragFrame);
+  }
 
-    const lane = laneAt(event.clientX, event.clientY);
+  function applyDragFrame() {
+    if (!drag || !drag.active) return;
+    drag.frame = 0;
+    const x = drag.pendingX;
+    const y = drag.pendingY;
+
+    drag.card.style.transform =
+      "translate3d(" + (x - drag.offsetX - drag.originX) + "px," +
+      (y - drag.offsetY - drag.originY) + "px,0)";
+
+    const lane = laneAt(x, y);
     clearDropTargets(lane);
     if (lane && lane !== drag.home.closest(".kanban-lane")) {
       // Занятое устройство подсвечивается отказом, а не приглашением: на нём
@@ -234,7 +260,7 @@
       lane.classList.add(laneRefusal(lane) ? "drop-refused" : "drop-target");
     }
     drag.target = lane;
-    updateAutoScroll(lane, event.clientX, event.clientY);
+    updateAutoScroll(lane, x, y);
   }
 
   /* Прокрутка под курсором во время переноса.
@@ -319,11 +345,11 @@
    * из попадания.
    */
   function laneAt(x, y) {
-    const card = drag && drag.card;
-    const saved = card ? card.style.pointerEvents : null;
-    if (card) card.style.pointerEvents = "none";
+    // Стиль карточки здесь не трогаем: класс .dragging уже держит на ней
+    // pointer-events: none. Прежняя пара записей вокруг каждого замера
+    // сбрасывала стиль дважды за кадр и обходилась в двенадцать раз дороже
+    // самого замера.
     const element = document.elementFromPoint(x, y);
-    if (card) card.style.pointerEvents = saved;
     if (!element) return null;
     const lane = element.closest(".kanban-lane");
     if (lane) return lane;
@@ -335,8 +361,9 @@
 
   async function endDrag(event) {
     if (!drag || event.pointerId !== drag.id) return;
-    const { card, home, next, target, active } = drag;
+    const { card, home, next, target, active, frame } = drag;
     cancelHold();
+    if (frame) cancelAnimationFrame(frame);
     drag = null;
     card.classList.remove("is-armed");
     document.body.classList.remove("kanban-holding");
@@ -345,6 +372,8 @@
 
     card.classList.remove("dragging");
     card.style.left = card.style.top = card.style.width = "";
+    card.style.transform = "";
+    card.style.willChange = "";
     document.body.classList.remove("kanban-dragging");
     clearDropTargets(null);
     stopAutoScroll();
@@ -437,8 +466,11 @@
     if (event.key !== "Escape" || !drag || !drag.active) return;
     const { card, home, next } = drag;
     cancelHold();
+    if (drag.frame) cancelAnimationFrame(drag.frame);
     drag = null;
     card.classList.remove("dragging", "is-armed");
+    card.style.transform = "";
+    card.style.willChange = "";
     document.body.classList.remove("kanban-holding");
     card.style.left = card.style.top = card.style.width = "";
     document.body.classList.remove("kanban-dragging");
