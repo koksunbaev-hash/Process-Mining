@@ -111,6 +111,24 @@
 
   let drag = null;
 
+  /* Сколько палец должен пролежать на карточке, прежде чем она поедет.
+   *
+   * Мышью карточку берут сразу: у курсора нет другого назначения. Пальцем -
+   * есть: доска шире экрана, и тем же движением её прокручивают. Поэтому на
+   * сенсоре решает время: короткий свайп - прокрутка, задержался - перенос.
+   * Так же ведут себя все мобильные доски, и смена этого не заучивает.
+   *
+   * 300 мс - меньше, чем ощущается пауза, но больше, чем длится смахивание. */
+  const HOLD_MS = 300;
+
+  // Сколько палец может сползти за время удержания, не отменяя его. Рука на
+  // весу не стоит неподвижно, а 10 px - это уже намерение прокрутить.
+  const HOLD_SLACK = 10;
+
+  function isTouch(event) {
+    return event.pointerType !== "mouse";
+  }
+
   function startDrag(event, card) {
     if (event.button !== 0 && event.pointerType === "mouse") return;
     // Кнопки внутри карточки должны нажиматься, а не таскать её.
@@ -124,14 +142,61 @@
       home: card.parentElement,
       next: card.nextElementSibling,
       active: false,
+      touch: isTouch(event),
+      // Мышь вооружена сразу, палец - после удержания.
+      armed: !isTouch(event),
+      holdTimer: null,
     };
-    card.setPointerCapture(event.pointerId);
+
+    if (drag.touch) {
+      card.classList.add("is-holding");
+      drag.holdTimer = window.setTimeout(() => armDrag(event.pointerId), HOLD_MS);
+    } else {
+      card.setPointerCapture(event.pointerId);
+    }
+  }
+
+  /* Удержание состоялось: карточка переходит в руки скрипта.
+   *
+   * Захват указателя берётся здесь, а не в pointerdown: до этого момента жест
+   * ещё может оказаться прокруткой, и забирать его у браузера рано. */
+  function armDrag(pointerId) {
+    if (!drag || drag.id !== pointerId || drag.armed) return;
+    drag.armed = true;
+    drag.holdTimer = null;
+    drag.card.classList.remove("is-holding");
+    drag.card.classList.add("is-armed");
+    document.body.classList.add("kanban-holding");
+    try {
+      drag.card.setPointerCapture(pointerId);
+    } catch (error) {
+      // Палец уже отпустили - ловить нечего, отпускание разберётся само.
+    }
+    // Короткий отклик: на стекле его ждут, и он же говорит «карточка твоя».
+    if (navigator.vibrate) navigator.vibrate(15);
+  }
+
+  function cancelHold() {
+    if (!drag) return;
+    if (drag.holdTimer) window.clearTimeout(drag.holdTimer);
+    drag.holdTimer = null;
+    drag.card.classList.remove("is-holding");
   }
 
   function moveDrag(event) {
     if (!drag || event.pointerId !== drag.id) return;
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
+
+    // Палец пошёл раньше, чем истекло удержание - значит человек прокручивает
+    // доску, а не берёт карточку. Отпускаем жест браузеру и забываем о нём.
+    if (!drag.armed) {
+      if (Math.abs(dx) + Math.abs(dy) > HOLD_SLACK) {
+        cancelHold();
+        drag = null;
+      }
+      return;
+    }
 
     if (!drag.active) {
       // Четыре пикселя отделяют нажатие от переноса: дрожание руки в них
@@ -271,7 +336,10 @@
   async function endDrag(event) {
     if (!drag || event.pointerId !== drag.id) return;
     const { card, home, next, target, active } = drag;
+    cancelHold();
     drag = null;
+    card.classList.remove("is-armed");
+    document.body.classList.remove("kanban-holding");
 
     if (!active) return;   // просто нажатие, переноса не было
 
@@ -356,14 +424,22 @@
   // Слушатели на документе, а не на карточках: карточка может уехать из-под
   // курсора, а захват указателя всё равно шлёт события ей - через всплытие они
   // доходят сюда, и перенос не обрывается на полпути.
+  // Долгое нажатие на стекле вызывает контекстное меню и выделение текста -
+  // ровно поверх карточки, которую в этот момент берут в руку.
+  document.addEventListener("contextmenu", (event) => {
+    if (drag && drag.touch && event.target.closest(".kanban-card")) event.preventDefault();
+  });
+
   document.addEventListener("pointermove", moveDrag);
   document.addEventListener("pointerup", endDrag);
   document.addEventListener("pointercancel", endDrag);
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || !drag || !drag.active) return;
     const { card, home, next } = drag;
+    cancelHold();
     drag = null;
-    card.classList.remove("dragging");
+    card.classList.remove("dragging", "is-armed");
+    document.body.classList.remove("kanban-holding");
     card.style.left = card.style.top = card.style.width = "";
     document.body.classList.remove("kanban-dragging");
     clearDropTargets(null);

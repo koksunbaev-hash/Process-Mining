@@ -597,6 +597,38 @@ table.tbl .empty { color: var(--muted); text-align: center; padding: 26px 19px; 
   .kpis, .insights { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* Планшет в цеху: палец вместо курсора.
+ *
+ * Меряем не ширину экрана, а грубость указателя: планшет бывает шире
+ * ноутбука, а попадать по нему всё равно пальцем. Наведения на сенсоре нет
+ * вовсе, поэтому всё, что пряталось до наведения, должно быть видно сразу. */
+@media (pointer: coarse) {
+  /* 44 px - размер подушечки пальца. На 34 промахиваешься через раз, а
+     промах по «уменьшить» на карте стоит потерянного места на экране. */
+  .map-zoom button { width: 44px; height: 44px; }
+  .map-zoom button svg { width: 18px; height: 18px; }
+  .map-zoom .level { font-size: 12px; padding: 8px 0; }
+  /* Ниже к углу: так кисть не накрывает середину карты, когда тянется к
+     кнопкам, и не закрывает то, на что смотрит. */
+  .map-zoom { left: 12px; bottom: 12px; }
+
+  .btn, .sel, select, .tab { min-height: 44px; }
+  /* 16 px - порог, ниже которого Safari сам увеличивает страницу при фокусе
+     на поле ввода, и после этого её приходится возвращать щипком. Селекторы
+     перечислены поимённо: одиночное `input` проигрывает по весу тем, что
+     заданы через класс поля. */
+  input, select, textarea,
+  .select-wrap select,
+  .field input[type="text"], .field input[type="password"], .field input[type="search"],
+  .field input[type="number"], .field select, .field textarea { font-size: 16px; }
+  .icon-btn { width: 44px; height: 44px; }
+  .nav-item { min-height: 44px; }
+
+  /* На стекле карта - главное на экране, и отдавать ей больше высоты стоит:
+     полосы фильтров сверху и так занимают своё. */
+  .map-shell.tall { height: min(78vh, 760px); }
+}
+
 
 /* ------------------------------------------------------------- находки
  * Выноска под колокольчиком. Шторка во весь экран для пяти строк - это

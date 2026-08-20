@@ -487,7 +487,14 @@ window.ProcMap = (function () {
       if (levelOut) levelOut.textContent = Math.round(view.k * 100) + "%";
     }
 
+    // Тронул ли человек карту сам. Пока не тронул, она наша: при изменении
+    // размеров холста её можно вписать заново. Как только подвинул или
+    // приблизил - это его вид, и перерисовывать его под поворот планшета
+    // значит отменять сделанное руками.
+    var touchedByUser = false;
+
     function zoomAt(factor, cx, cy) {
+      touchedByUser = true;
       var next = Math.min(2.6, Math.max(0.25, view.k * factor));
       var ratio = next / view.k;
       view.x = cx - (cx - view.x) * ratio;
@@ -505,15 +512,62 @@ window.ProcMap = (function () {
      * него укладывается, осмысленное перетаскивание - нет. */
     var press = null;
 
+    /* Пальцы, лежащие на холсте прямо сейчас.
+     *
+     * Одного достаточно для протяжки, но со вторым начинается щипок, и тогда
+     * оба нужны разом: масштаб считается по расстоянию между ними. Без этого
+     * учёта второй палец просто перезаписывал точку отсчёта, и карта прыгала
+     * при каждом касании второго пальца. */
+    var touches = new Map();
+    var pinch = null;
+
+    function pinchState() {
+      var points = Array.from(touches.values());
+      var dx = points[0].x - points[1].x;
+      var dy = points[0].y - points[1].y;
+      var box = canvas.getBoundingClientRect();
+      return {
+        distance: Math.hypot(dx, dy) || 1,
+        // Середина между пальцами - в координатах холста: масштабируем вокруг
+        // того места, которое человек держит, а не вокруг угла карты.
+        cx: (points[0].x + points[1].x) / 2 - box.left,
+        cy: (points[0].y + points[1].y) / 2 - box.top,
+      };
+    }
+
     canvas.addEventListener("pointerdown", function (event) {
       if (event.button !== 0) return;
+      touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      if (touches.size === 2) {
+        // Второй палец: протяжка кончилась, начался щипок.
+        press = null;
+        drag = false;
+        canvas.classList.remove("dragging");
+        pinch = pinchState();
+        return;
+      }
+      if (touches.size > 2) return;   // третий палец на карте ничего не значит
       press = { x: event.clientX, y: event.clientY, vx: view.x, vy: view.y, id: event.pointerId };
     });
+
     canvas.addEventListener("pointermove", function (event) {
+      if (touches.has(event.pointerId)) {
+        touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      }
+
+      if (pinch && touches.size >= 2) {
+        var now = pinchState();
+        zoomAt(now.distance / pinch.distance, now.cx, now.cy);
+        pinch = now;
+        return;
+      }
+
       if (!press) return;
       if (!drag) {
         if (Math.abs(event.clientX - press.x) + Math.abs(event.clientY - press.y) < 4) return;
         drag = true;
+        touchedByUser = true;
         canvas.classList.add("dragging");
         canvas.setPointerCapture(press.id);
         // Здесь, а не на нажатии: гасим выделение текста ровно тогда, когда
@@ -524,8 +578,13 @@ window.ProcMap = (function () {
       view.y = press.vy + (event.clientY - press.y);
       apply();
     });
+
     ["pointerup", "pointercancel"].forEach(function (name) {
-      canvas.addEventListener(name, function () {
+      canvas.addEventListener(name, function (event) {
+        touches.delete(event.pointerId);
+        if (touches.size < 2) pinch = null;
+        // Палец, оставшийся после щипка, не должен рывком продолжить протяжку
+        // от старой точки: пусть поднимет и коснётся заново.
         press = null;
         drag = false;
         canvas.classList.remove("dragging");
@@ -537,17 +596,46 @@ window.ProcMap = (function () {
       zoomAt(event.deltaY < 0 ? 1.12 : 1 / 1.12, event.clientX - box.left, event.clientY - box.top);
     }, { passive: false });
 
-    return {
+    var control = {
       zoomIn: function () { var b = canvas.getBoundingClientRect(); zoomAt(1.2, b.width / 2, b.height / 2); },
       zoomOut: function () { var b = canvas.getBoundingClientRect(); zoomAt(1 / 1.2, b.width / 2, b.height / 2); },
       /* Вписать. Масштаб не опускаем ниже 55%: длинный линейный процесс на
        * два десятка шагов ужался бы до нечитаемых подписей. Если после этого
        * граф выше холста - прижимаем к верху и оставляем прокрутку мышью:
        * читать сверху вниз удобнее, чем разглядывать нечитаемую середину. */
+      /* Холст сменил размер - вписать заново.
+       *
+       * Планшет поворачивают, и вместе с ориентацией меняются обе стороны
+       * холста. Вид, посчитанный для прежних размеров, после поворота
+       * оказывается за краем: карта есть, а на экране пусто. Возвращает
+       * функцию отписки - вызывать при уходе с раздела.
+       */
+      watchResize: function (model) {
+        if (typeof ResizeObserver !== "function") return function () {};
+        // Нули, а не текущий размер: наблюдатель срабатывает сразу при
+        // подписке, и это первое срабатывание - единственный момент, когда
+        // размеры холста уже настоящие. Вписывание при монтировании нередко
+        // считает по недосчитанной раскладке, и карта уезжает за край ещё до
+        // всякого поворота - ровно так она и открывалась пустой на планшете.
+        var last = { width: 0, height: 0 };
+        var observer = new ResizeObserver(function () {
+          var box = canvas.getBoundingClientRect();
+          if (!box.width || !box.height) return;
+          // Дрожание в один-два пикселя - это не поворот, а полоса прокрутки
+          // или подгонка раскладки; перерисовывать на неё нечего.
+          if (Math.abs(box.width - last.width) < 24 && Math.abs(box.height - last.height) < 24) return;
+          last = box;
+          if (touchedByUser) return;
+          control.fit(model);
+        });
+        observer.observe(canvas);
+        return function () { observer.disconnect(); };
+      },
       fit: function (model) {
         if (!model) return;
         var box = canvas.getBoundingClientRect();
         if (!box.width || !box.height) return;
+        touchedByUser = false;   // вписали - вид снова наш
         var raw = Math.min(box.width / model.width, box.height / model.height) * 0.94;
         view.k = Math.min(1, Math.max(0.55, raw));
         var scaledH = model.height * view.k;
@@ -555,8 +643,9 @@ window.ProcMap = (function () {
         view.y = scaledH > box.height ? 14 : (box.height - scaledH) / 2;
         apply();
       },
-      reset: function () { view = { x: 0, y: 0, k: 1 }; apply(); },
+      reset: function () { view = { x: 0, y: 0, k: 1 }; touchedByUser = false; apply(); },
     };
+    return control;
   }
 
   return { layout: layout, render: render, attachPanZoom: attachPanZoom };

@@ -73,7 +73,11 @@
 
 .kanban-card {
   position: relative;
-  touch-action: manipulation;   /* палец тащит карточку, а не прокручивает лист */
+  /* Жест остаётся браузеру, пока палец не задержался: доска шире экрана, и
+     тем же движением её прокручивают. Прежнее manipulation обещало обратное,
+     но отключает только двойной тап - прокрутку оно не отдаёт. */
+  touch-action: pan-x pan-y;
+  -webkit-touch-callout: none;  /* удержание не должно звать меню iOS */
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -107,6 +111,32 @@
 }
 /* Пока идёт перенос, выделение текста только мешает. */
 body.kanban-dragging { user-select: none; -webkit-user-select: none; }
+
+/* Карточка взята в руку - с этого мгновения жесты наши, и лист под пальцем
+   стоять должен намертво: иначе доска уезжает вместе с переносимой партией. */
+body.kanban-holding { touch-action: none; overscroll-behavior: none; }
+body.kanban-holding .kanban-card { touch-action: none; }
+
+/* Палец лёг - карточка отзывается сразу, ещё до того, как поедет. Без этого
+   триста миллисекунд удержания читаются как «не нажалось». */
+.kanban-card.is-holding { transform: scale(0.98); transition: transform .12s ease; }
+.kanban-card.is-armed {
+  transform: scale(1.03);
+  box-shadow: 0 10px 24px rgba(16, 32, 64, .22);
+  border-color: #2f5bd8;
+}
+
+/* Палец толще курсора: на стекле цели крупнее, а наведение не работает вовсе,
+   поэтому действия карточки всегда видны, а не проявляются при наведении. */
+@media (pointer: coarse) {
+  .kanban-card-actions .primary,
+  .kanban-card-actions .secondary { min-height: 44px; padding: 8px 10px; font-size: 13px; }
+  .kanban-card { padding: 12px; }
+  .kanban-card__id { font-size: 17px; }
+  .kanban-column-search input { min-height: 40px; font-size: 15px; }
+  /* 16px - порог, ниже которого Safari сам зумит страницу на фокусе поля. */
+  .kanban-filters input, .kanban-filters select { min-height: 44px; font-size: 16px; }
+}
 body.kanban-dragging .kanban-card { cursor: grabbing; }
 /* Пока идёт запрос, карточка уже стоит на новом месте - показываем это
  * приглушением, а не спиннером: движение уже произошло, ждём лишь ответа. */

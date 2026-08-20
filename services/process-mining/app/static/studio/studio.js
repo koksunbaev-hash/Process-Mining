@@ -969,6 +969,7 @@
 
     // Держим свой экземпляр, а не общий mapControl: пока ждём кадра, читатель
     // мог уйти в другой раздел, и общий уже обнулён перерисовкой.
+    if (mapControl && mapControl.stopWatching) mapControl.stopWatching();
     var control = window.ProcMap.attachPanZoom(canvas, stage, $(levelId));
     mapControl = control;
     // Сразу: высота холста задана в CSS, мерить можно уже сейчас. И ещё раз на
@@ -978,6 +979,10 @@
     // выходит сам, пока холст нулевой ширины.
     control.fit(model);
     requestAnimationFrame(function () { control.fit(model); });
+    // Планшет поворачивают - холст меняет обе стороны, и прежний вид уезжает
+    // за край. Отписку держим на самом контроле: следующая перерисовка карты
+    // создаёт новый, а этот вместе с наблюдателем должен уйти.
+    if (control.watchResize) control.stopWatching = control.watchResize(model);
 
     [["zoomIn", "zoomIn"], ["zoomOut", "zoomOut"]].forEach(function (pair) {
       var button = $(pair[0]);
