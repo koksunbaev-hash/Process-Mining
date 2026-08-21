@@ -92,6 +92,14 @@ services:
       # Discovery is CPU-bound and shares 4 cores with Postgres, Django and the
       # speech model. Two keeps a heavy job from starving the rest.
       PM_MAX_CONCURRENT_JOBS: ${PM_MAX_CONCURRENT_JOBS:-2}
+      # The analyst's narrator and the Studio assistant. Off unless an address
+      # is given; the service never runs a model itself - it talks to one over
+      # HTTP. Unreachable means template summaries, not a broken screen.
+      PM_LLM_ENABLED: ${PM_LLM_ENABLED:-False}
+      PM_LLM_BASE_URL: ${PM_LLM_BASE_URL:-}
+      PM_LLM_MODEL: ${PM_LLM_MODEL:-}
+      PM_LLM_API_KEY: ${PM_LLM_API_KEY:-}
+      PM_LLM_TIMEOUT_SECONDS: ${PM_LLM_TIMEOUT_SECONDS:-30}
     ports:
       - "${BIND_ADDR:-127.0.0.1}:${PM_PORT:-8001}:8000"
     volumes:

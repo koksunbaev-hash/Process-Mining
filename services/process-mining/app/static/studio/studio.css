@@ -684,6 +684,56 @@ table.tbl .empty { color: var(--muted); text-align: center; padding: 26px 19px; 
 .digest p:first-child { font-size: 16px; font-weight: 500; }
 .digest .empty { color: var(--muted); font-size: 14px; }
 
+/* Помощник. Разговор, а не лента сообщений: реплик тут единицы, и рисовать
+   ради них мессенджер с аватарками значит спорить с остальной консолью.
+   Вопрос прижат вправо и приглушён, ответ занимает всю ширину - читают
+   всё-таки ответ. */
+.chat { display: grid; gap: 14px; max-width: 74ch; }
+.chat:empty { display: none; }
+
+.chat-turn { display: grid; gap: 8px; }
+.chat-turn p { margin: 0; font-size: 14.5px; line-height: 1.62; color: var(--ink); }
+
+.chat-turn.is-user {
+  justify-self: end; max-width: 85%;
+  padding: 10px 14px; border-radius: var(--radius-xs);
+  border: 1px solid var(--line); background: var(--panel-3);
+}
+.chat-turn.is-user p { color: var(--ink-dim); font-size: 13.5px; }
+
+/* Приглушённый ответ - это не ответ по данным, а сообщение о том, почему
+   его нет: модель выключена, не отозвалась, сеть моргнула. Читаться он
+   должен как сноска, иначе его примут за вывод по журналу. */
+.chat-turn.is-muted p { color: var(--muted); font-size: 13.5px; }
+
+.chat-steps { font-size: 12px; color: var(--faint); }
+
+.chat-hints { display: flex; flex-wrap: wrap; gap: 8px; }
+.chat-hints .chip { height: 34px; padding: 0 13px; font-size: 12.5px; white-space: normal; }
+
+/* Поле ввода по ширине разговора, а не карточки: строка ввода шире текста,
+   который она порождает, выглядит как чужая. */
+.chat-ask { display: flex; gap: 10px; align-items: flex-end; margin-top: 16px; max-width: 74ch; }
+.chat-ask textarea {
+  flex: 1; min-width: 0; resize: none; min-height: 42px; max-height: 160px;
+  padding: 10px 14px; font: inherit; font-size: 13.5px; line-height: 1.45;
+  border-radius: var(--radius-xs); border: 1px solid var(--line);
+  background: var(--panel-2); color: var(--ink);
+}
+.chat-ask textarea:focus { outline: none; border-color: var(--violet); }
+.chat-ask textarea::placeholder { color: var(--faint); }
+.chat-ask .btn { height: 42px; flex-shrink: 0; }
+
+.chat-ask + .note { margin-top: 12px; max-width: 74ch; }
+
+/* На планшете кнопка под полем: рядом с ней поле для вопроса сжимается до
+   пары слов, а вопрос обычно длиннее. */
+@media (max-width: 720px) {
+  .chat-ask { flex-direction: column; align-items: stretch; }
+  .chat-ask .btn { width: 100%; }
+  .chat-turn.is-user { max-width: 100%; }
+}
+
 /* Тон карточки говорит, тревожная цифра или спокойная: цвет здесь несёт
    смысл, поэтому подкрашена сама цифра, а не подложка. */
 .kpi.is-warn .kpi-value { color: var(--rose-ink); }

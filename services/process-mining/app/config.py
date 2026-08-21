@@ -73,6 +73,26 @@ class Settings(BaseSettings):
     stt_sample_rate: int = 16000
     stt_skip_ngrok_warning: bool = False
 
+    # ---- Языковая модель (необязательный слой поверх аналитики) ----
+    #
+    # Числа считает сам сервис, модель только рассказывает о них словами. Ей
+    # уходит готовая выжимка - десяток показателей, - а не журнал, поэтому
+    # соврать про партию ей не на чем: цифры в тексте те же, что на экране.
+    #
+    # Выключено по умолчанию и молча отключается, если модель не отвечает:
+    # сводка тогда собирается из шаблонов, как и раньше. Экран аналитики не
+    # должен ломаться из-за чужой машины.
+    llm_enabled: bool = False
+    llm_base_url: str = ""
+    llm_model: str = ""
+    llm_api_key: str = ""
+    llm_timeout_seconds: int = 30
+    # Размышление модели для сводки только мешает: оно съедает лимит вывода и
+    # возвращает пустой ответ. Для будущего чата с инструментами включим
+    # отдельно - там ему есть что обдумывать.
+    llm_thinking: bool = False
+    llm_max_tokens: int = 700
+
     # Callbacks are signed with HMAC-SHA256 over the raw body; the receiver
     # rejects anything unsigned, so an empty secret disables sending.
     callback_secret: str = ""

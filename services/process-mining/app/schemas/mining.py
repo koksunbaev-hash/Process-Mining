@@ -8,6 +8,31 @@ from pydantic import Field
 from app.schemas.common import Algorithm, Base, OutputFormat
 
 
+class AssistantTurn(Base):
+    """Одна реплика прошлой переписки. Историю хранит браузер, не сервер."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field("", max_length=4000)
+
+
+class AssistantRequest(Base):
+    """Вопрос по журналу. Фильтры те же, что на экране: спрашивают о том,
+    что видят, а не о журнале целиком."""
+
+    question: str = Field(..., min_length=1, max_length=1000)
+    history: list[AssistantTurn] = Field(default_factory=list, max_length=12)
+    filters: LogFilters | None = None
+
+
+class AssistantResponse(Base):
+    log_id: str | None = None
+    available: bool = Field(..., description="False - модель не настроена или не ответила")
+    answer: str
+    steps: list[dict[str, Any]] = Field(
+        default_factory=list, description="Какие запросы к данным модель сделала по пути"
+    )
+
+
 class LogFilters(Base):
     """Applied *before* discovery. All filters are optional and combinable."""
 

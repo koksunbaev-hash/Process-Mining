@@ -1409,7 +1409,9 @@
         "</div>" +
 
         '<div class="card"><div class="card-head"><h3>Сводка</h3>' +
-          '<div class="tools"><span class="tag">обновляется вместе с журналом</span></div></div>' +
+          '<div class="tools"><span class="tag">' +
+          (report.narrator === "llm" ? "написано моделью по этим числам" : "обновляется вместе с журналом") +
+          "</span></div></div>" +
           '<div class="card-body"><div class="digest">' +
           (digest.length
             ? digest.map(function (line) { return "<p>" + esc(line) + "</p>"; }).join("")
@@ -1430,8 +1432,175 @@
               '<td class="num">×' + item.ratio + "</td></tr>";
           }).join("") : '<tr><td colspan="5" class="empty">Ничего не застряло</td></tr>') +
           "</tbody></table></div></div></div>" +
+
+        chatCard() +
       "</section>"
     );
+  }
+
+  /* Помощник: тот же журнал, но вопросом-ответом.
+   *
+   * Переписка живёт здесь, а не в state: на state завязана перерисовка всей
+   * страницы, и она стирала бы недописанный вопрос при каждом обновлении
+   * данных. Сервер её тоже не хранит - историю присылает браузер, поэтому
+   * разговор исчезает вместе со вкладкой. */
+  var chatTurns = [];
+  var chatBusy = false;
+
+  var CHAT_HINTS = [
+    "Где мы теряем больше всего времени?",
+    "Какие кейсы застряли и насколько?",
+    "Какой этап чаще всего повторяется?",
+    "Кто из исполнителей загружен сильнее всех?",
+  ];
+
+  // Имена инструментов человеку ни о чём не говорят, а знать, куда помощник
+  // ходил за числом, полезно: так видно, что оно не выдумано.
+  var STEP_NAMES = {
+    overview: "общие показатели", bottlenecks: "узкие места", anomalies: "застрявшие кейсы",
+    activity: "этап", resources: "исполнители", case: "путь кейса",
+    variants: "маршруты", slowest_cases: "самые долгие кейсы",
+  };
+
+  function chatCard() {
+    return '<div class="card" id="chatCard"><div class="card-head"><h3>Спросить о процессе</h3>' +
+      '<div class="tools"><span class="tag">отвечает по этому журналу</span></div></div>' +
+      '<div class="card-body">' +
+        '<div class="chat" id="chatLog">' + chatBody() + "</div>" +
+        '<div class="chat-ask">' +
+          '<textarea id="chatInput" rows="1" maxlength="1000" ' +
+          'placeholder="Например: почему кейсы ждут перед печью?"></textarea>' +
+          '<button class="btn" id="chatSend">Спросить</button>' +
+        "</div>" +
+        '<p class="note">Помощник смотрит только загруженный журнал и текущий отбор. ' +
+        "Числа он берёт из тех же расчётов, что и таблицы выше.</p>" +
+      "</div></div>";
+  }
+
+  function chatBody() {
+    if (!chatTurns.length) {
+      return '<div class="chat-hints">' +
+        CHAT_HINTS.map(function (hint) {
+          return '<button class="chip" data-ask="' + esc(hint) + '">' + esc(hint) + "</button>";
+        }).join("") + "</div>";
+    }
+    return chatTurns.map(function (turn) {
+      var steps = turn.steps && turn.steps.length
+        ? '<div class="chat-steps">смотрел: ' +
+          esc(turn.steps.map(function (step) { return STEP_NAMES[step.tool] || step.tool; }).join(", ")) +
+          "</div>"
+        : "";
+      // Переносы строк модель ставит осмысленно, абзацами, и склеивать их в
+      // кирпич значит терять её же разметку.
+      var text = esc(turn.content).split("\n").filter(Boolean)
+        .map(function (line) { return "<p>" + line + "</p>"; }).join("");
+      return '<div class="chat-turn is-' + turn.role + (turn.muted ? " is-muted" : "") + '">' +
+        text + steps + "</div>";
+    }).join("");
+  }
+
+  function paintChat() {
+    var box = $("chatLog");
+    if (!box) return;
+    box.innerHTML = chatBody();
+    box.scrollTop = box.scrollHeight;
+    bindChatHints();
+    var send = $("chatSend");
+    if (send) {
+      send.disabled = chatBusy;
+      send.textContent = chatBusy ? "Думает…" : "Спросить";
+    }
+  }
+
+  function bindChatHints() {
+    Array.prototype.forEach.call(document.querySelectorAll("[data-ask]"), function (chip) {
+      chip.addEventListener("click", function () { askAssistant(chip.dataset.ask); });
+    });
+  }
+
+  function askAssistant(question) {
+    question = (question || "").trim();
+    if (!question || chatBusy || !state.logId) return;
+
+    chatTurns.push({ role: "user", content: question });
+    chatBusy = true;
+    paintChat();
+
+    // Истории уходит хвост: сервер всё равно берёт последние реплики, гонять
+    // по сети весь разговор незачем.
+    var history = chatTurns.slice(0, -1).slice(-6).map(function (turn) {
+      return { role: turn.role, content: turn.content };
+    });
+
+    api.post("/api/v1/logs/" + state.logId + "/assistant", {
+      question: question, history: history, filters: filterBody(),
+    }).then(function (reply) {
+      chatTurns.push({
+        role: "assistant",
+        content: (reply && reply.answer) || "Пустой ответ.",
+        steps: (reply && reply.steps) || [],
+        muted: !(reply && reply.available),
+      });
+    }).catch(function (error) {
+      chatTurns.push({ role: "assistant", content: error.message, muted: true });
+    }).then(function () {
+      chatBusy = false;
+      paintChat();
+    });
+  }
+
+  /* Пересказ моделью догоняет страницу.
+   *
+   * Шаблонная сводка уже на экране - её посчитали вместе с остальными
+   * данными. Модель пишет несколько секунд, и держать ради этого весь
+   * экран в скелетах незачем: текст подменяется, когда придёт. Не придёт -
+   * останется шаблонный, и человек не узнает, что кто-то не ответил. */
+  var narrated = "";
+
+  function fetchNarration() {
+    var box = document.querySelector(".digest");
+    var tag = document.querySelector("#view .card .tools .tag");
+    if (!box || !state.logId) return;
+    if (narrated === state.logId) return;
+
+    var query = filterQuery();
+    api.get("/api/v1/logs/" + state.logId + "/analyst?narrate=1" + query)
+      .then(function (report) {
+        if (!report || report.narrator !== "llm" || currentRoute() !== "analyst") return;
+        narrated = state.logId;
+        state.analyst = report;
+        box.innerHTML = (report.digest || []).map(function (line) {
+          return "<p>" + esc(line) + "</p>";
+        }).join("");
+        if (tag) tag.textContent = "написано моделью по этим числам";
+      })
+      .catch(function () { /* остаётся шаблонная сводка */ });
+  }
+
+  function afterAnalyst() {
+    fetchNarration();
+    bindChatHints();
+    var input = $("chatInput");
+    var send = $("chatSend");
+    if (!input || !send) return;
+
+    function submit() {
+      var question = input.value;
+      input.value = "";
+      input.style.height = "";
+      askAssistant(question);
+    }
+
+    send.addEventListener("click", submit);
+    input.addEventListener("keydown", function (event) {
+      // Enter отправляет, Shift+Enter переносит строку: вопрос обычно в одну
+      // строку, и тянуться к кнопке ради каждого - лишнее.
+      if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(); }
+    });
+    input.addEventListener("input", function () {
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 160) + "px";
+    });
   }
 
   function pageCases() {
@@ -2100,7 +2269,7 @@
 
   var AFTER = {
     overview: afterOverview, map: afterMap, events: afterEvents, analysis: afterAnalysis,
-    cases: afterCases, metrics: afterMetrics, predictions: afterPredictions,
+    analyst: afterAnalyst, cases: afterCases, metrics: afterMetrics, predictions: afterPredictions,
     dashboards: afterDashboards, sources: afterSources, integrations: afterIntegrations,
     settings: afterSettings,
   };

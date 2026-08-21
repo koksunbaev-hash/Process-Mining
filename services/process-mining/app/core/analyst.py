@@ -6,8 +6,11 @@
 устойчивой статистикой (медианы и квантили, не среднее: одно застрявшее
 дело не должно сдвигать порог), а текст собирается из шаблонов.
 
-Если когда-нибудь захочется языковую модель - заменить нужно только
-``compose_digest``: вся аналитика от способа изложения не зависит.
+Языковая модель, если она настроена, меняет только изложение: ``narrate``
+пересказывает ту же выжимку живее, чем ``compose_digest`` собирает её из
+шаблонов. Числа она получает готовыми и журнала не видит - соврать про
+партию ей не на чем. Модели нет или молчит - остаются шаблоны, и экран
+выглядит ровно так же, как до неё.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from typing import Any
 
 import pandas as pd
 
+from . import llm
 from . import metrics as metrics_mod
 from . import model
 from .mining import edge_duration_stats
@@ -252,3 +256,112 @@ def compose_digest(analysis: dict[str, Any]) -> list[str]:
         )
 
     return parts
+
+
+# ------------------------------------------- тот же текст, но словами модели
+
+NARRATOR_SYSTEM = (
+    "Ты аналитик производства. Тебе дают готовую сводку показателей по журналу "
+    "событий и просят изложить её по-русски для сменного мастера.\n"
+    "Правила:\n"
+    "1. Используй только те числа, что даны. Ничего не досчитывай и не округляй "
+    "заново - пиши длительности ровно так, как они записаны в сводке.\n"
+    "2. Не выдумывай причин, которых не видно в данных. Можно осторожно "
+    "предположить, но тогда так и скажи: «похоже», «стоит проверить».\n"
+    "3. От трёх до пяти абзацев, каждый - одна мысль. Без списков, без "
+    "заголовков, без разметки, без вступлений вроде «вот сводка».\n"
+    "4. Спокойный рабочий тон. Если всё в порядке - так и напиши, "
+    "не выдавливай тревогу из ровных чисел."
+)
+
+# Модель может замолчать, поперхнуться разметкой или выдать пару слов. Всё это
+# для нас одно и то же - «не получилось», и тогда работают шаблоны.
+MIN_NARRATION_CHARS = 120
+
+
+def brief(analysis: dict[str, Any]) -> str:
+    """Выжимка для модели: только показатели, уже посчитанные и оформленные.
+
+    Журнал модели не отдаём - ни целиком, ни кусками. Во-первых, он не влезет;
+    во-вторых, пересказывая готовые числа, ошибиться в них труднее, чем
+    считая их самой.
+    """
+    lines = [
+        f"Кейсов в журнале: {analysis.get('cases', 0)}",
+        f"Событий: {analysis.get('events', 0)}",
+    ]
+    period = analysis.get("period") or {}
+    if period.get("from") and period.get("to"):
+        lines.append(f"Период: с {period['from'][:16]} по {period['to'][:16]}")
+
+    throughput = analysis.get("throughput_seconds") or {}
+    if throughput.get("median") is not None:
+        lines.append(
+            f"Время прохождения кейса: медиана {humanize_seconds(throughput.get('median'))}, "
+            f"95-й процентиль {humanize_seconds(throughput.get('p95'))}"
+        )
+
+    necks = analysis.get("bottlenecks") or []
+    if necks:
+        lines.append("Самые долгие переходы:")
+        for item in necks[:3]:
+            lines.append(
+                f"  - «{item.get('source')} → {item.get('target')}»: "
+                f"обычно {humanize_seconds(item.get('median_duration_seconds'))} на кейс, "
+                f"{round((item.get('share_of_total_time') or 0) * 100)}% всего времени процесса"
+            )
+
+    anomalies = analysis.get("anomalies") or []
+    if anomalies:
+        lines.append(f"Кейсов, ждавших ненормально долго: {len(anomalies)}. Худшие:")
+        for item in anomalies[:3]:
+            lines.append(
+                f"  - кейс «{item['case_id']}» перед «{item['target']}» простоял "
+                f"{humanize_seconds(item['waited_seconds'])} при обычных "
+                f"{humanize_seconds(item['typical_seconds'])} (в {item['ratio']:g} раза дольше)"
+            )
+    else:
+        lines.append("Застрявших кейсов нет: никто не ждал дольше тройной медианы перехода.")
+
+    rework = analysis.get("rework") or []
+    if rework:
+        lines.append("Повторы этапов:")
+        for item in rework[:3]:
+            lines.append(
+                f"  - «{item.get('activity')}» проходили больше одного раза "
+                f"{item.get('cases_with_rework', 0)} кейсов"
+            )
+    else:
+        lines.append("Повторных прохождений этапов не зафиксировано.")
+
+    trend = analysis.get("trend")
+    if trend:
+        lines.append(
+            f"Поток: {trend['last_week']} кейсов за последнюю неделю против "
+            f"{trend['prev_week']} за предыдущую ({trend['change_pct']:+d}%)"
+        )
+
+    busiest = analysis.get("busiest_resource")
+    if busiest and busiest.get("events"):
+        lines.append(
+            f"Самый нагруженный исполнитель: {busiest['resource']}, {busiest['events']} событий"
+        )
+
+    return "\n".join(lines)
+
+
+def narrate(settings, analysis: dict[str, Any]) -> list[str] | None:
+    """Сводка словами модели. None - значит модель не помогла, берём шаблоны."""
+    if analysis.get("cases", 0) < 3:
+        # Про два кейса и шаблону сказать нечего, и модели тем более.
+        return None
+
+    text = llm.say(
+        settings,
+        NARRATOR_SYSTEM,
+        "Сводка показателей:\n\n" + brief(analysis) + "\n\nИзложи это для сменного мастера.",
+    )
+    if not text or len(text) < MIN_NARRATION_CHARS:
+        return None
+    paragraphs = [line.strip(" \t*#-") for line in text.split("\n")]
+    return [line for line in paragraphs if line] or None

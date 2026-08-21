@@ -20,6 +20,8 @@ from app.deps import ApiKeyDep, JobManagerDep, LogServiceDep, MiningServiceDep
 from app.errors import ValidationError
 from app.schemas.common import Algorithm, OutputFormat
 from app.schemas.mining import (
+    AssistantRequest,
+    AssistantResponse,
     BottlenecksResponse,
     ConformanceRequest,
     ConformanceResponse,
@@ -244,10 +246,45 @@ async def analyst(
     _: ApiKeyDep,
     filters: FiltersDep,
     tenant: str | None = None,
+    narrate: bool = Query(
+        False, description="Пересказать сводку языковой моделью, если она настроена"
+    ),
 ) -> Any:
     record = logs.require(log_id, tenant)
     return await jobs.run_blocking(
-        mining.analyst, record.frame, filters, log_id=log_id, log_version=record.updated_at
+        mining.analyst,
+        record.frame,
+        filters,
+        log_id=log_id,
+        log_version=record.updated_at,
+        narrate=narrate,
+    )
+
+
+@router.post(
+    "/logs/{log_id}/assistant",
+    response_model=AssistantResponse,
+    summary="Спросить о процессе словами: помощник посмотрит журнал и ответит",
+)
+async def assistant(
+    log_id: str,
+    payload: AssistantRequest,
+    logs: LogServiceDep,
+    mining: MiningServiceDep,
+    jobs: JobManagerDep,
+    _: ApiKeyDep,
+    tenant: str | None = None,
+) -> Any:
+    record = logs.require(log_id, tenant)
+    # Через пул: поход к модели идёт секундами, а обработчик - на общем
+    # цикле событий, и держать его занятым всё это время нельзя.
+    return await jobs.run_blocking(
+        mining.ask,
+        record.frame,
+        payload.question,
+        [turn.model_dump() for turn in payload.history],
+        payload.filters,
+        log_id=log_id,
     )
 
 
