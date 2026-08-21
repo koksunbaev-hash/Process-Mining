@@ -72,9 +72,11 @@ class Model:
     def __init__(self, *replies):
         self.replies = list(replies)
         self.sent: list[list[dict]] = []
+        self.options: list[dict] = []
 
     def __call__(self, settings, messages, **kwargs):
         self.sent.append([dict(m) for m in messages])
+        self.options.append(kwargs)
         return self.replies.pop(0) if self.replies else None
 
 
@@ -320,6 +322,47 @@ class TestConversation:
         assert len(sent) == 1 + 6 + 1
         assert sent[-1]["content"] == "а это та же печь?"
 
+    def test_a_question_about_the_subject_needs_no_data(self, wired, log, monkeypatch):
+        """«Что такое process mining» - законный вопрос, и ходить за ним в
+        журнал некуда. Определение это не число, придумывать его модели не
+        запрещено."""
+        fake = Model({"role": "assistant", "content": "Process mining - это восстановление "
+                      "реального хода процесса по журналу событий информационной системы."})
+        monkeypatch.setattr(llm, "chat", fake)
+
+        result = assistant.ask(wired, log, "что такое process mining?")
+
+        assert result["available"] is True
+        assert result["steps"] == []
+        assert "журнал" in result["answer"]
+
+    def test_without_a_log_no_tools_are_offered(self, wired, monkeypatch):
+        """Обещать посмотреть данные, которых нет, - худший вид вежливости.
+        Инструментов модели не дают вовсе, и она об этом предупреждена."""
+        fake = Model({"role": "assistant", "content": "Это методика анализа процессов."})
+        monkeypatch.setattr(llm, "chat", fake)
+
+        result = assistant.ask(wired, None, "что такое process mining?")
+
+        assert result["available"] is True
+        assert fake.options[0].get("tools") is None
+        assert "ЖУРНАЛ НЕ ЗАГРУЖЕН" in fake.sent[0][0]["content"]
+
+    def test_an_empty_log_counts_as_no_log(self, wired, monkeypatch):
+        """Пустая таблица и отсутствие таблицы для помощника одно и то же:
+        спрашивать у неё узкие места нечего."""
+        fake = Model({"role": "assistant", "content": "Загрузите журнал событий."})
+        monkeypatch.setattr(llm, "chat", fake)
+        assistant.ask(wired, bakery_log(cases=0), "сколько дел в журнале?")
+        assert fake.options[0].get("tools") is None
+
+    def test_with_a_log_the_tools_are_there(self, wired, log, monkeypatch):
+        fake = Model({"role": "assistant", "content": "Всё спокойно."})
+        monkeypatch.setattr(llm, "chat", fake)
+        assistant.ask(wired, log, "как дела?")
+        names = [spec["function"]["name"] for spec in fake.options[0]["tools"]]
+        assert "bottlenecks" in names and "case" in names
+
     def test_an_empty_question_is_not_sent_anywhere(self, wired, log, monkeypatch):
         monkeypatch.setattr(llm, "chat", Model({"role": "assistant", "content": "не должно случиться"}))
         assert assistant.ask(wired, log, "   ")["answer"] == "Задайте вопрос по журналу."
@@ -357,5 +400,18 @@ class TestAssistantEndpoint:
             "/api/v1/logs/nope/assistant",
             json={"question": "привет"},
             headers={"X-API-Key": "wrong"},
+        )
+        assert bare.status_code in (401, 403)
+
+    def test_the_subject_can_be_asked_about_without_any_log(self, client):
+        """На пустой консоли «что это вообще такое» спрашивают раньше, чем
+        успевают что-то загрузить. Маршрут журнала не требует."""
+        response = client.post("/api/v1/assistant", json={"question": "что такое process mining?"})
+        assert response.status_code == 200, response.text
+        assert response.json()["log_id"] is None
+
+    def test_the_general_route_needs_the_api_key_too(self, client):
+        bare = client.post(
+            "/api/v1/assistant", json={"question": "привет"}, headers={"X-API-Key": "wrong"}
         )
         assert bare.status_code in (401, 403)

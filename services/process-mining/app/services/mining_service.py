@@ -206,18 +206,20 @@ class MiningService:
 
     def ask(
         self,
-        frame: pd.DataFrame,
+        frame: pd.DataFrame | None,
         question: str,
         history: list[dict[str, str]] | None = None,
         filters: LogFilters | None = None,
         *,
         log_id: str | None = None,
     ) -> dict[str, Any]:
-        """Вопрос к журналу словами. Без кэша: один и тот же вопрос заданный
-        дважды - обычно уточнение, а не повтор, и старый ответ тут мешает."""
-        result = assistant_mod.ask(
-            self.settings, apply_filters(frame, filters), question, history
-        )
+        """Вопрос словами. Журнал необязателен: «что такое process mining» -
+        такой же законный вопрос, как «где теряем время».
+
+        Без кэша: один и тот же вопрос, заданный дважды, - обычно уточнение,
+        а не повтор, и старый ответ тут мешает."""
+        scoped = apply_filters(frame, filters) if frame is not None else None
+        result = assistant_mod.ask(self.settings, scoped, question, history)
         result["log_id"] = log_id
         return result
 

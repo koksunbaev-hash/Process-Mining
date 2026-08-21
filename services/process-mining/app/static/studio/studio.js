@@ -1374,7 +1374,17 @@
    * процессом не так; таблицы на «Анализе» отвечают на тот же вопрос, но
    * требуют читать их глазами аналитика. */
   function pageAnalyst() {
-    if (!hasData()) return skeletonPage();
+    if (state.loading) return skeletonPage();
+    // Журнала нет - выводить нечего, но спросить «что это вообще такое»
+    // человек хочет как раз до того, как что-то загрузит.
+    if (!hasData()) {
+      return '<section class="surface page">' +
+        '<div class="hero"><div><h1>Аналитик</h1>' +
+        "<p>Журнала пока нет - но спросить о process mining можно и без него</p></div></div>" +
+        emptyState("Данных нет", "Загрузите журнал событий, и здесь появятся сводка и находки.", "") +
+        chatCard() +
+        "</section>";
+    }
 
     var report = state.analyst || {};
     var digest = report.digest || [];
@@ -1451,7 +1461,16 @@
     "Где мы теряем больше всего времени?",
     "Какие кейсы застряли и насколько?",
     "Какой этап чаще всего повторяется?",
-    "Кто из исполнителей загружен сильнее всех?",
+    "Что такое process mining?",
+  ];
+
+  // Без журнала спрашивать про узкие места не у чего - подсказки становятся
+  // про сам предмет, иначе первый же клик упрётся в «данных нет».
+  var CHAT_HINTS_EMPTY = [
+    "Что такое process mining?",
+    "Какой журнал событий нужен, чтобы начать?",
+    "Что показывает карта процесса?",
+    "Что значит узкое место в процессе?",
   ];
 
   // Имена инструментов человеку ни о чём не говорят, а знать, куда помощник
@@ -1464,7 +1483,9 @@
 
   function chatCard() {
     return '<div class="card" id="chatCard"><div class="card-head"><h3>Спросить о процессе</h3>' +
-      '<div class="tools"><span class="tag">отвечает по этому журналу</span></div></div>' +
+      '<div class="tools"><span class="tag">' +
+      (hasData() ? "отвечает по этому журналу" : "журнала нет - отвечает по существу") +
+      "</span></div></div>" +
       '<div class="card-body">' +
         '<div class="chat" id="chatLog">' + chatBody() + "</div>" +
         '<div class="chat-ask">' +
@@ -1472,15 +1493,16 @@
           'placeholder="Например: почему кейсы ждут перед печью?"></textarea>' +
           '<button class="btn" id="chatSend">Спросить</button>' +
         "</div>" +
-        '<p class="note">Помощник смотрит только загруженный журнал и текущий отбор. ' +
-        "Числа он берёт из тех же расчётов, что и таблицы выше.</p>" +
+        '<p class="note">О вашем процессе помощник отвечает числами из тех же расчётов, ' +
+        "что и таблицы консоли, и только по текущему отбору. О самом process mining " +
+        "рассказывает своими знаниями.</p>" +
       "</div></div>";
   }
 
   function chatBody() {
     if (!chatTurns.length) {
       return '<div class="chat-hints">' +
-        CHAT_HINTS.map(function (hint) {
+        (hasData() ? CHAT_HINTS : CHAT_HINTS_EMPTY).map(function (hint) {
           return '<button class="chip" data-ask="' + esc(hint) + '">' + esc(hint) + "</button>";
         }).join("") + "</div>";
     }
@@ -1520,7 +1542,7 @@
 
   function askAssistant(question) {
     question = (question || "").trim();
-    if (!question || chatBusy || !state.logId) return;
+    if (!question || chatBusy) return;
 
     chatTurns.push({ role: "user", content: question });
     chatBusy = true;
@@ -1532,9 +1554,15 @@
       return { role: turn.role, content: turn.content };
     });
 
-    api.post("/api/v1/logs/" + state.logId + "/assistant", {
-      question: question, history: history, filters: filterBody(),
-    }).then(function (reply) {
+    // С журналом вопрос уходит к нему и к текущему отбору; без журнала -
+    // на общий маршрут, где у помощника нет функций к данным и он это знает.
+    var request = hasData() && state.logId
+      ? api.post("/api/v1/logs/" + state.logId + "/assistant", {
+          question: question, history: history, filters: filterBody(),
+        })
+      : api.post("/api/v1/assistant", { question: question, history: history });
+
+    request.then(function (reply) {
       chatTurns.push({
         role: "assistant",
         content: (reply && reply.answer) || "Пустой ответ.",
@@ -1578,7 +1606,7 @@
   }
 
   function afterAnalyst() {
-    fetchNarration();
+    if (hasData()) fetchNarration();
     bindChatHints();
     var input = $("chatInput");
     var send = $("chatSend");

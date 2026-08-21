@@ -262,6 +262,27 @@ async def analyst(
 
 
 @router.post(
+    "/assistant",
+    response_model=AssistantResponse,
+    summary="Спросить о process mining вообще, без привязки к журналу",
+)
+async def assistant_general(
+    payload: AssistantRequest,
+    mining: MiningServiceDep,
+    jobs: JobManagerDep,
+    _: ApiKeyDep,
+) -> Any:
+    """То же окно вопросов, но журнала нет. Нужно на пустой консоли: «что
+    это вообще такое» спрашивают раньше, чем успевают что-то загрузить."""
+    return await jobs.run_blocking(
+        mining.ask,
+        None,
+        payload.question,
+        [turn.model_dump() for turn in payload.history],
+    )
+
+
+@router.post(
     "/logs/{log_id}/assistant",
     response_model=AssistantResponse,
     summary="Спросить о процессе словами: помощник посмотрит журнал и ответит",
