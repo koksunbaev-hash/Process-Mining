@@ -107,6 +107,47 @@
   <div class="sheet-body" id="sheetBody"></div>
 </div>
 
+<!--
+  Помощник живёт отдельным окном, а не карточкой на странице. Разговор
+  растёт, и вместе с ним растягивалась бы вкладка: после третьего вопроса
+  «Аналитик» уезжал вниз на два экрана. Здесь список прокручивается сам,
+  ничего под собой не двигая.
+
+  Окно снаружи #view, поэтому перерисовка раздела его не трогает: разговор
+  переживает переход на карту или в журнал, а спрашивают обычно как раз
+  глядя на них.
+-->
+<button class="ask-fab" id="askFab" type="button" title="Спросить помощника"
+        aria-label="Спросить помощника" aria-expanded="false" aria-controls="askPanel">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v10H9l-5 4z"/><path d="M8.5 10.5h7"/></svg>
+</button>
+
+<div class="ask-panel" id="askPanel" hidden role="dialog" aria-label="Помощник">
+  <div class="ask-head">
+    <h2>Помощник</h2>
+    <span class="tag" id="askScope"></span>
+    <button class="ghost-btn" id="askClear" type="button" title="Начать заново" aria-label="Начать заново">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12a7 7 0 11-2.6-5.4"/><path d="M20 4v4h-4"/></svg>
+    </button>
+    <button class="ghost-btn" id="askClose" type="button" title="Закрыть" aria-label="Закрыть">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+
+  <div class="chat" id="chatLog"></div>
+
+  <div class="ask-foot">
+    <div class="chat-ask">
+      <textarea id="chatInput" rows="1" maxlength="1000"
+                placeholder="Например: где мы теряем больше всего времени?"></textarea>
+      <button class="btn" id="chatSend" type="button">Спросить</button>
+    </div>
+    <p class="note">О вашем процессе помощник отвечает числами из тех же расчётов,
+      что и таблицы консоли, и только по текущему отбору. О самом process mining
+      рассказывает своими знаниями.</p>
+  </div>
+</div>
+
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <input type="file" id="filePicker" accept=".csv,.xes,.json,.gz,.zip" hidden>

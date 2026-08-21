@@ -684,12 +684,56 @@ table.tbl .empty { color: var(--muted); text-align: center; padding: 26px 19px; 
 .digest p:first-child { font-size: 16px; font-weight: 500; }
 .digest .empty { color: var(--muted); font-size: 14px; }
 
-/* Помощник. Разговор, а не лента сообщений: реплик тут единицы, и рисовать
-   ради них мессенджер с аватарками значит спорить с остальной консолью.
-   Вопрос прижат вправо и приглушён, ответ занимает всю ширину - читают
-   всё-таки ответ. */
-.chat { display: grid; gap: 14px; max-width: 74ch; }
-.chat:empty { display: none; }
+/* Помощник - отдельное окно в углу, а не карточка на странице: разговор
+   растёт, и вместе с ним растягивалась бы вкладка. Здесь прокручивается
+   только список реплик, всё остальное стоит на месте.
+
+   Ниже шторки (z-index 80): открытая шторка - модальный разговор, и
+   перекрывать её окном, которое никуда не денется, незачем. */
+.ask-fab {
+  position: fixed; z-index: 55; right: 22px; bottom: 22px;
+  width: 52px; height: 52px; display: grid; place-items: center; cursor: pointer;
+  border-radius: 50%; border: 1px solid transparent;
+  background: linear-gradient(120deg, #7550f0, #5b3ee8); color: #fff;
+  box-shadow: 0 12px 30px rgba(91, 62, 232, .38);
+}
+.ask-fab:hover { filter: brightness(1.08); }
+.ask-fab svg { width: 22px; height: 22px; }
+/* Пока окно открыто, кнопка под ним - и не нужна: закрывают крестиком. */
+body.ask-open .ask-fab { display: none; }
+
+.ask-panel {
+  position: fixed; z-index: 60; right: 22px; bottom: 22px;
+  width: min(410px, calc(100vw - 44px));
+  height: min(620px, calc(100vh - 44px));
+  display: flex; flex-direction: column;
+  border-radius: var(--radius); border: 1px solid var(--line);
+  background: var(--panel); box-shadow: 0 26px 64px rgba(0, 0, 0, .55);
+}
+/* Атрибута hidden мало: display:flex выше по силе, чем правило браузера. */
+.ask-panel[hidden] { display: none; }
+
+.ask-head {
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  padding: 14px 14px 14px 18px; border-bottom: 1px solid var(--line-soft);
+}
+.ask-head h2 { font-size: 14.5px; }
+/* Подпись отдаёт место кнопкам: длинное имя журнала не должно их выдавливать. */
+.ask-head .tag { margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ask-head .ghost-btn { width: 30px; height: 30px; flex-shrink: 0; }
+.ask-head .ghost-btn svg { width: 15px; height: 15px; }
+
+.ask-foot { flex-shrink: 0; padding: 0 18px 16px; }
+.ask-foot .note { font-size: 11.5px; padding: 9px 12px; }
+
+/* Разговор, а не лента сообщений: реплик тут единицы, и рисовать ради них
+   мессенджер с аватарками значит спорить с остальной консолью. Вопрос
+   прижат вправо и приглушён, ответ занимает всю ширину - читают ответ. */
+.chat {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  display: grid; gap: 14px; align-content: start;
+  padding: 16px 18px;
+}
 
 .chat-turn { display: grid; gap: 8px; }
 .chat-turn p { margin: 0; font-size: 14.5px; line-height: 1.62; color: var(--ink); }
@@ -711,9 +755,7 @@ table.tbl .empty { color: var(--muted); text-align: center; padding: 26px 19px; 
 .chat-hints { display: flex; flex-wrap: wrap; gap: 8px; }
 .chat-hints .chip { height: 34px; padding: 0 13px; font-size: 12.5px; white-space: normal; }
 
-/* Поле ввода по ширине разговора, а не карточки: строка ввода шире текста,
-   который она порождает, выглядит как чужая. */
-.chat-ask { display: flex; gap: 10px; align-items: flex-end; margin-top: 16px; max-width: 74ch; }
+.chat-ask { display: flex; gap: 10px; align-items: flex-end; margin-top: 14px; }
 .chat-ask textarea {
   flex: 1; min-width: 0; resize: none; min-height: 42px; max-height: 160px;
   padding: 10px 14px; font: inherit; font-size: 13.5px; line-height: 1.45;
@@ -724,14 +766,23 @@ table.tbl .empty { color: var(--muted); text-align: center; padding: 26px 19px; 
 .chat-ask textarea::placeholder { color: var(--faint); }
 .chat-ask .btn { height: 42px; flex-shrink: 0; }
 
-.chat-ask + .note { margin-top: 12px; max-width: 74ch; }
+.chat-ask + .note { margin-top: 10px; }
 
-/* На планшете кнопка под полем: рядом с ней поле для вопроса сжимается до
-   пары слов, а вопрос обычно длиннее. */
-@media (max-width: 720px) {
+/* Тост появляется в том же углу. Пока окно открыто, уводим его влево -
+   иначе он ложится ровно на поле, в котором человек печатает. */
+body.ask-open .toasts { right: calc(min(410px, 100vw - 44px) + 34px); }
+
+/* На узком экране окно во весь экран: панель в 410 px там просто не
+   помещается, а разговор в щели шириной с ладонь не читается. */
+@media (max-width: 560px) {
+  .ask-panel {
+    right: 0; bottom: 0; left: 0; top: 0;
+    width: auto; height: auto; border-radius: 0; border: 0;
+  }
   .chat-ask { flex-direction: column; align-items: stretch; }
   .chat-ask .btn { width: 100%; }
   .chat-turn.is-user { max-width: 100%; }
+  body.ask-open .toasts { right: 20px; }
 }
 
 /* Тон карточки говорит, тревожная цифра или спокойная: цвет здесь несёт

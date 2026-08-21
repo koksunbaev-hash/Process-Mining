@@ -1381,8 +1381,8 @@
       return '<section class="surface page">' +
         '<div class="hero"><div><h1>Аналитик</h1>' +
         "<p>Журнала пока нет - но спросить о process mining можно и без него</p></div></div>" +
-        emptyState("Данных нет", "Загрузите журнал событий, и здесь появятся сводка и находки.", "") +
-        chatCard() +
+        emptyState("Данных нет", "Загрузите журнал событий, и здесь появятся сводка и находки.",
+                   '<button class="btn secondary" id="emptyAsk">Спросить о process mining</button>') +
         "</section>";
     }
 
@@ -1442,8 +1442,6 @@
               '<td class="num">×' + item.ratio + "</td></tr>";
           }).join("") : '<tr><td colspan="5" class="empty">Ничего не застряло</td></tr>') +
           "</tbody></table></div></div></div>" +
-
-        chatCard() +
       "</section>"
     );
   }
@@ -1456,6 +1454,7 @@
    * разговор исчезает вместе со вкладкой. */
   var chatTurns = [];
   var chatBusy = false;
+  var chatLogId = "";
 
   var CHAT_HINTS = [
     "Где мы теряем больше всего времени?",
@@ -1481,24 +1480,6 @@
     variants: "маршруты", slowest_cases: "самые долгие кейсы",
   };
 
-  function chatCard() {
-    return '<div class="card" id="chatCard"><div class="card-head"><h3>Спросить о процессе</h3>' +
-      '<div class="tools"><span class="tag">' +
-      (hasData() ? "отвечает по этому журналу" : "журнала нет - отвечает по существу") +
-      "</span></div></div>" +
-      '<div class="card-body">' +
-        '<div class="chat" id="chatLog">' + chatBody() + "</div>" +
-        '<div class="chat-ask">' +
-          '<textarea id="chatInput" rows="1" maxlength="1000" ' +
-          'placeholder="Например: почему кейсы ждут перед печью?"></textarea>' +
-          '<button class="btn" id="chatSend">Спросить</button>' +
-        "</div>" +
-        '<p class="note">О вашем процессе помощник отвечает числами из тех же расчётов, ' +
-        "что и таблицы консоли, и только по текущему отбору. О самом process mining " +
-        "рассказывает своими знаниями.</p>" +
-      "</div></div>";
-  }
-
   function chatBody() {
     if (!chatTurns.length) {
       return '<div class="chat-hints">' +
@@ -1521,9 +1502,44 @@
     }).join("");
   }
 
+  function askOpen() { return !$("askPanel").hidden; }
+
+  function openAsk(question) {
+    $("askPanel").hidden = false;
+    $("askFab").setAttribute("aria-expanded", "true");
+    document.body.classList.add("ask-open");
+    paintChat();
+    if (question) askAssistant(question);
+    else $("chatInput").focus();
+  }
+
+  function closeAsk() {
+    $("askPanel").hidden = true;
+    $("askFab").setAttribute("aria-expanded", "false");
+    document.body.classList.remove("ask-open");
+  }
+
+  function clearChat() {
+    chatTurns = [];
+    paintChat();
+    $("chatInput").focus();
+  }
+
+  /* Подпись в шапке окна: по журналу отвечает помощник или по существу.
+   * Журнал в консоли меняют, окно при этом остаётся открытым - подпись
+   * пересобирается на каждой отрисовке, а не один раз при открытии. */
+  function paintScope() {
+    var scope = $("askScope");
+    if (!scope) return;
+    var log = state.logs.filter(function (item) { return item.log_id === state.logId; })[0];
+    var name = hasData() && log ? log.name : "";
+    scope.textContent = name ? "по журналу «" + name + "»" : "журнала нет";
+  }
+
   function paintChat() {
     var box = $("chatLog");
     if (!box) return;
+    paintScope();
     box.innerHTML = chatBody();
     box.scrollTop = box.scrollHeight;
     bindChatHints();
@@ -1535,7 +1551,7 @@
   }
 
   function bindChatHints() {
-    Array.prototype.forEach.call(document.querySelectorAll("[data-ask]"), function (chip) {
+    Array.prototype.forEach.call($("askPanel").querySelectorAll("[data-ask]"), function (chip) {
       chip.addEventListener("click", function () { askAssistant(chip.dataset.ask); });
     });
   }
@@ -1543,6 +1559,13 @@
   function askAssistant(question) {
     question = (question || "").trim();
     if (!question || chatBusy) return;
+
+    // Сменили журнал - прошлый разговор к новому не относится, а модель,
+    // получив его в истории, продолжит рассуждать о чужих числах.
+    if (state.logId !== chatLogId) {
+      chatTurns = [];
+      chatLogId = state.logId;
+    }
 
     chatTurns.push({ role: "user", content: question });
     chatBusy = true;
@@ -1605,12 +1628,9 @@
       .catch(function () { /* остаётся шаблонная сводка */ });
   }
 
-  function afterAnalyst() {
-    if (hasData()) fetchNarration();
-    bindChatHints();
+  function bindAsk() {
     var input = $("chatInput");
     var send = $("chatSend");
-    if (!input || !send) return;
 
     function submit() {
       var question = input.value;
@@ -1619,6 +1639,9 @@
       askAssistant(question);
     }
 
+    $("askFab").addEventListener("click", function () { openAsk(); });
+    $("askClose").addEventListener("click", closeAsk);
+    $("askClear").addEventListener("click", clearChat);
     send.addEventListener("click", submit);
     input.addEventListener("keydown", function (event) {
       // Enter отправляет, Shift+Enter переносит строку: вопрос обычно в одну
@@ -1629,6 +1652,13 @@
       input.style.height = "auto";
       input.style.height = Math.min(input.scrollHeight, 160) + "px";
     });
+    paintChat();
+  }
+
+  function afterAnalyst() {
+    if (hasData()) fetchNarration();
+    var ask = $("emptyAsk");
+    if (ask) ask.addEventListener("click", function () { openAsk(); });
   }
 
   function pageCases() {
@@ -2660,6 +2690,7 @@
       if (event.key !== "Escape") return;
       closeSheet();
       closeFindings();
+      if (askOpen()) closeAsk();
     });
 
     $("themeToggle").addEventListener("click", function () {
@@ -2670,6 +2701,7 @@
     $("newBtn").addEventListener("click", function () { go("sources"); });
     $("userCard").addEventListener("click", function () { go("settings"); });
     $("bellBtn").addEventListener("click", openFindings);
+    bindAsk();
 
     $("filePicker").addEventListener("change", function (event) {
       if (event.target.files && event.target.files[0]) uploadFile(event.target.files[0]);
