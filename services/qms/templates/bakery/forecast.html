@@ -38,9 +38,12 @@
   <header class="sheet-head">
     <h3>Прогноз выпуска</h3>
     <p class="sheet-head__meta">
-      с <strong>{{ start|date:"d.m.Y" }}</strong> на 7 дней
-      · по факту выпуска за {{ weeks }} нед.
-      · позиций в истории: {{ history_days }}
+      {% comment %}
+        Одним куском: тег внутри фразы отрывал предлог в отдельный узел, и
+        переводить его было нечего - «с» без остального ничего не значит.
+      {% endcomment %}
+      <span class="sheet-head__range">с {{ start|date:"d.m.Y" }} на 7 дней</span>
+      <span>· по факту выпуска за {{ weeks }} нед. · позиций в истории: {{ history_days }}</span>
     </p>
   </header>
 

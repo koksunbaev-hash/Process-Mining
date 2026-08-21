@@ -174,7 +174,12 @@
 
     tick = window.setInterval(() => {
       const elapsed = Date.now() - startedAt;
-      timer.textContent = (elapsed / 1000).toFixed(1) + " с";
+      // Через словарь, а не строкой: таймер обновляет сам себя, и
+      // наблюдатель за деревом эту правку не видит.
+      const seconds = (elapsed / 1000).toFixed(1);
+      timer.textContent = window.qmsTranslate
+        ? window.qmsTranslate(seconds + " с")
+        : seconds + " с";
       if (elapsed >= MAX_HOLD_MS) endHold();
     }, 100);
   }
