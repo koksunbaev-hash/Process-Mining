@@ -77,7 +77,12 @@
     if (!value) return "—";
     var d = value instanceof Date ? value : new Date(value);
     if (isNaN(d)) return "—";
-    return d.toLocaleDateString(i18n.locale, { day: "numeric", month: "short" });
+    // Короткий месяц в казахской локали браузер печатает как «M08 18» -
+    // читать это невозможно, поэтому там числовая дата.
+    var shape = i18n.lang === "kk"
+      ? { day: "2-digit", month: "2-digit" }
+      : { day: "numeric", month: "short" };
+    return d.toLocaleDateString(i18n.locale, shape);
   }
 
   function dateTime(value) {
@@ -566,20 +571,20 @@
   // ================================================= распределение и прогноз
 
   var BUCKETS = [
-    { limit: 60, label: "1 мин" },
-    { limit: 300, label: "5 мин" },
-    { limit: 900, label: "15 мин" },
-    { limit: 3600, label: "1 час" },
-    { limit: 3 * 3600, label: "3 часа" },
-    { limit: 6 * 3600, label: "6 часов" },
-    { limit: 12 * 3600, label: "12 часов" },
-    { limit: 86400, label: "1 дн." },
-    { limit: 2 * 86400, label: "2 дн." },
-    { limit: 3 * 86400, label: "3 дн." },
-    { limit: 7 * 86400, label: "1 нед." },
-    { limit: 14 * 86400, label: "2 нед." },
-    { limit: 30 * 86400, label: "1 мес." },
-    { limit: Infinity, label: "> 1 мес." },
+    { limit: 60, label: t("1 мин") },
+    { limit: 300, label: t("5 мин") },
+    { limit: 900, label: t("15 мин") },
+    { limit: 3600, label: t("1 час") },
+    { limit: 3 * 3600, label: t("3 часа") },
+    { limit: 6 * 3600, label: t("6 часов") },
+    { limit: 12 * 3600, label: t("12 часов") },
+    { limit: 86400, label: t("1 дн.") },
+    { limit: 2 * 86400, label: t("2 дн.") },
+    { limit: 3 * 86400, label: t("3 дн.") },
+    { limit: 7 * 86400, label: t("1 нед.") },
+    { limit: 14 * 86400, label: t("2 нед.") },
+    { limit: 30 * 86400, label: t("1 мес.") },
+    { limit: Infinity, label: "> " + t("1 мес.") },
   ];
 
   function durationHistogram() {
@@ -650,19 +655,19 @@
   /* Названия разделов переводятся при отрисовке, а не здесь: список строится
    * один раз, а язык переключают на ходу. */
   var ROUTES = [
-    { id: "overview", label: "Обзор процессов", icon: "overview", render: pageOverview },
-    { id: "map", label: "Карта процесса", icon: "map", render: pageMap },
-    { id: "events", label: "Журнал событий", icon: "events", render: pageEvents },
-    { id: "analysis", label: "Анализ", icon: "analysis", render: pageAnalysis },
-    { id: "analyst", label: "Аналитик", icon: "analyst", render: pageAnalyst },
-    { id: "cases", label: "Кейсы", icon: "cases", render: pageCases },
-    { id: "metrics", label: "Показатели", icon: "metrics", render: pageMetrics },
-    { id: "predictions", label: "Предсказания", icon: "predictions", render: pagePredictions },
-    { id: "dashboards", label: "Дашборды", icon: "dashboards", render: pageDashboards },
-    { group: "Управление" },
-    { id: "sources", label: "Источники данных", icon: "sources", render: pageSources },
-    { id: "integrations", label: "Интеграции", icon: "integrations", render: pageIntegrations },
-    { id: "settings", label: "Настройки", icon: "settings", render: pageSettings },
+    { id: "overview", label: t("Обзор процессов"), icon: "overview", render: pageOverview },
+    { id: "map", label: t("Карта процесса"), icon: "map", render: pageMap },
+    { id: "events", label: t("Журнал событий"), icon: "events", render: pageEvents },
+    { id: "analysis", label: t("Анализ"), icon: "analysis", render: pageAnalysis },
+    { id: "analyst", label: t("Аналитик"), icon: "analyst", render: pageAnalyst },
+    { id: "cases", label: t("Кейсы"), icon: "cases", render: pageCases },
+    { id: "metrics", label: t("Показатели"), icon: "metrics", render: pageMetrics },
+    { id: "predictions", label: t("Предсказания"), icon: "predictions", render: pagePredictions },
+    { id: "dashboards", label: t("Дашборды"), icon: "dashboards", render: pageDashboards },
+    { group: t("Управление") },
+    { id: "sources", label: t("Источники данных"), icon: "sources", render: pageSources },
+    { id: "integrations", label: t("Интеграции"), icon: "integrations", render: pageIntegrations },
+    { id: "settings", label: t("Настройки"), icon: "settings", render: pageSettings },
   ];
 
   function routeById(id) {
@@ -687,7 +692,7 @@
       var up = deltaValue >= 0;
       var good = invert ? !up : up;
       deltaHtml = '<div class="kpi-delta ' + (good ? "up" : "down") + '"><b>' +
-        (up ? "+" : "") + num(deltaValue * 100, 1) + " %</b> " + esc(note || "к прошлому периоду") + "</div>";
+        (up ? "+" : "") + num(deltaValue * 100, 1) + " %</b> " + esc(note || t("к прошлому периоду")) + "</div>";
     } else if (note) {
       deltaHtml = '<div class="kpi-delta">' + esc(note) + "</div>";
     }
@@ -720,12 +725,12 @@
     var reworked = ((state.necks && state.necks.rework) || []).some(function (item) {
       return item.activity === neck.activity || item.activity === neck.target;
     });
-    if (reworked) return { text: "Частые возвраты", tone: "amber" };
+    if (reworked) return { text: t("Частые возвраты"), tone: "amber" };
     if (neck.median_duration_seconds && neck.p95_duration_seconds / neck.median_duration_seconds > 3) {
-      return { text: "Нестабильное время", tone: "amber" };
+      return { text: t("Нестабильное время"), tone: "amber" };
     }
-    if (neck.share_of_total_time >= 0.2) return { text: "Высокая длительность", tone: "rose" };
-    return { text: "Узкое место", tone: "violet" };
+    if (neck.share_of_total_time >= 0.2) return { text: t("Высокая длительность"), tone: "rose" };
+    return { text: t("Узкое место"), tone: "violet" };
   }
 
   function pageOverview() {
@@ -746,15 +751,16 @@
 
     var range = stats.start_time && stats.end_time
       ? dateShort(stats.start_time) + " – " + dateShort(stats.end_time)
-      : "весь журнал";
+      : t("весь журнал");
 
     var kpis =
-      kpiCard("Всего событий", num(stats.events), eventsDelta, "spEvents", "#7c5cff") +
-      kpiCard("Активных кейсов", num(active),
+      kpiCard(t("Всего событий"), num(stats.events), eventsDelta, "spEvents", "#7c5cff") +
+      kpiCard(t("Активных кейсов"), num(active),
         active ? activeDelta : null, "spCases", "#3b82f6",
-        active ? "не дошли до «" + finalActivity() + "»" : "все кейсы дошли до финала", true) +
-      kpiCard("Средняя длительность", dur(thr.mean), cycleDelta, "spCycle", "#f43f5e", null, true) +
-      kpiCard("Завершено кейсов", num(done), doneDelta, "spDone", "#34d399");
+        active ? t("не дошли до «{step}»", { step: finalActivity() })
+               : t("все кейсы дошли до финала"), true) +
+      kpiCard(t("Средняя длительность"), dur(thr.mean), cycleDelta, "spCycle", "#f43f5e", null, true) +
+      kpiCard(t("Завершено кейсов"), num(done), doneDelta, "spDone", "#34d399");
 
     var variants = ((state.variants && state.variants.items) || []).slice(0, 5);
     var necks = ((state.necks && state.necks.bottlenecks) || []).slice(0, 5);
@@ -762,13 +768,13 @@
     return (
       '<section class="surface page">' +
         '<div class="hero">' +
-          "<div><h1>Добро пожаловать, " + esc(userName()) + " 👋</h1>" +
-          "<p>Анализируйте процессы и находите возможности для улучшения</p></div>" +
+          "<div><h1>" + t("Добро пожаловать, {name} 👋", { name: esc(userName()) }) + "</h1>" +
+          "<p>" + t("Анализируйте процессы и находите возможности для улучшения") + "</p></div>" +
           '<div class="hero-tools">' +
             '<button class="chip" id="rangeChip" type="button">' + icon("calendar") +
               "<span>" + esc(range) + "</span>" + icon("chevron", "chev") + "</button>" +
             '<button class="icon-square' + (filtersActive() ? " is-on" : "") +
-              '" id="filterChip" type="button" title="Отбор данных">' + icon("filter") + "</button>" +
+              '" id="filterChip" type="button" title="' + esc(t('Отбор данных')) + '">' + icon("filter") + "</button>" +
           "</div>" +
         "</div>" +
 
@@ -776,33 +782,33 @@
 
         '<div class="cols cols-2-1">' +
           '<div class="card">' +
-            '<div class="card-head"><h3>Карта процесса</h3><div class="tools">' +
-              '<button class="mini-square" id="mapFit" type="button" title="Вписать">' + icon("fit") + "</button>" +
-              '<button class="mini-square" id="mapFull" type="button" title="Открыть раздел">' + icon("expand") + "</button>" +
+            '<div class="card-head"><h3>' + t('Карта процесса') + '</h3><div class="tools">' +
+              '<button class="mini-square" id="mapFit" type="button" title="' + esc(t('Вписать')) + '">' + icon("fit") + "</button>" +
+              '<button class="mini-square" id="mapFull" type="button" title="' + esc(t('Открыть раздел')) + '">' + icon("expand") + "</button>" +
               '<div class="select-wrap"><select id="mapMode">' +
-                '<option value="frequency"' + (state.mapMode === "frequency" ? " selected" : "") + ">Частота</option>" +
-                '<option value="performance"' + (state.mapMode === "performance" ? " selected" : "") + ">Время</option>" +
+                '<option value="frequency"' + (state.mapMode === "frequency" ? " selected" : "") + ">" + t("Частота") + "</option>" +
+                '<option value="performance"' + (state.mapMode === "performance" ? " selected" : "") + ">" + t("Время") + "</option>" +
               "</select>" + icon("chevron", "chev") + "</div>" +
             "</div></div>" +
             '<div class="map-shell"><div class="map-canvas" id="mapCanvas"><div class="map-stage" id="mapStage"></div></div>' +
-              '<div class="map-zoom"><button id="zoomIn" type="button" aria-label="Приблизить">' + icon("plus") + "</button>" +
-              '<button id="zoomOut" type="button" aria-label="Отдалить">' + icon("minus") + "</button>" +
-              '<button id="zoomFit" type="button" aria-label="Вписать">' + icon("fit") + "</button>" +
+              '<div class="map-zoom"><button id="zoomIn" type="button" aria-label="' + esc(t('Приблизить')) + '">' + icon("plus") + "</button>" +
+              '<button id="zoomOut" type="button" aria-label="' + esc(t('Отдалить')) + '">' + icon("minus") + "</button>" +
+              '<button id="zoomFit" type="button" aria-label="' + esc(t('Вписать')) + '">' + icon("fit") + "</button>" +
               '<div class="level" id="zoomLevel">100%</div></div>' +
             "</div>" +
           "</div>" +
 
           '<div class="card">' +
-            '<div class="card-head"><h3>Анализ производительности</h3></div>' +
+            '<div class="card-head"><h3>' + t('Анализ производительности') + '</h3></div>' +
             '<div class="card-body flush">' +
               '<div class="stat-row">' +
-                "<div><b>" + dur(thr.mean) + "</b><span>Средняя длительность</span></div>" +
-                "<div><b>" + dur(thr.median) + "</b><span>Медианная длительность</span></div>" +
-                "<div><b>" + dur(thr.max) + "</b><span>Максимальная</span></div>" +
-                "<div><b>" + dur(thr.min) + "</b><span>Минимальная</span></div>" +
+                "<div><b>" + dur(thr.mean) + "</b><span>" + t("Средняя длительность") + "</span></div>" +
+                "<div><b>" + dur(thr.median) + "</b><span>" + t("Медианная длительность") + "</span></div>" +
+                "<div><b>" + dur(thr.max) + "</b><span>" + t("Максимальная") + "</span></div>" +
+                "<div><b>" + dur(thr.min) + "</b><span>" + t("Минимальная") + "</span></div>" +
               "</div>" +
               '<div style="padding:15px 19px 19px;display:grid;gap:12px">' +
-                '<div class="chart-title">Распределение длительности кейсов</div>' +
+                '<div class="chart-title">' + t('Распределение длительности кейсов') + '</div>' +
                 '<svg class="chart-box" id="distChart"></svg>' +
               "</div>" +
             "</div>" +
@@ -811,22 +817,22 @@
 
         '<div class="cols cols-1-1">' +
           '<div class="card">' +
-            '<div class="card-head"><h3>Наиболее частые пути</h3><div class="tools">' +
-              '<button class="link-btn" data-goto="analysis" type="button">Смотреть все</button></div></div>' +
+            '<div class="card-head"><h3>' + t('Наиболее частые пути') + '</h3><div class="tools">' +
+              '<button class="link-btn" data-goto="analysis" type="button">' + t('Смотреть все') + '</button></div></div>' +
             '<div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-              '<thead><tr><th>Путь</th><th class="num">Частота</th></tr></thead><tbody>' +
+              '<thead><tr><th>' + t('Путь') + '</th><th class="num">' + t('Частота') + '</th></tr></thead><tbody>' +
               (variants.length ? variants.map(function (variant) {
                 return "<tr><td>" + pathCell(variant.sequence) + '</td><td class="num strong">' +
                   pct(variant.share) + "</td></tr>";
-              }).join("") : '<tr><td colspan="2" class="empty">Нет маршрутов</td></tr>') +
+              }).join("") : '<tr><td colspan="2" class="empty">' + t('Нет маршрутов') + '</td></tr>') +
             "</tbody></table></div></div>" +
           "</div>" +
 
           '<div class="card">' +
-            '<div class="card-head"><h3>Проблемные места</h3><div class="tools">' +
-              '<button class="link-btn" data-goto="analysis" type="button">Смотреть все</button></div></div>' +
+            '<div class="card-head"><h3>' + t('Проблемные места') + '</h3><div class="tools">' +
+              '<button class="link-btn" data-goto="analysis" type="button">' + t('Смотреть все') + '</button></div></div>' +
             '<div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-              "<thead><tr><th>Этап</th><th>Проблема</th><th class=\"num\">Влияние</th></tr></thead><tbody>" +
+              "<thead><tr><th>" + t("Этап") + "</th><th>" + t("Проблема") + "</th><th class=\"num\">" + t("Влияние") + "</th></tr></thead><tbody>" +
               (necks.length ? necks.map(function (neck) {
                 var problem = neckProblem(neck);
                 var level = neck.share_of_total_time >= 0.2 ? "high" : (neck.share_of_total_time >= 0.1 ? "mid" : "low");
@@ -835,12 +841,12 @@
                   '<td class="num"><span class="impact"><span class="bar"><i data-level="' + level +
                   '" style="width:' + Math.min(100, Math.round(neck.share_of_total_time * 100 * 2)) + '%"></i></span>' +
                   dur(neck.median_duration_seconds) + "</span></td></tr>";
-              }).join("") : '<tr><td colspan="3" class="empty">Узких мест не найдено</td></tr>') +
+              }).join("") : '<tr><td colspan="3" class="empty">' + t('Узких мест не найдено') + '</td></tr>') +
             "</tbody></table></div></div>" +
           "</div>" +
         "</div>" +
 
-        "<div><h3 style=\"margin-bottom:14px\">Инсайты и рекомендации</h3>" +
+        "<div><h3 style=\"margin-bottom:14px\">" + t("Инсайты и рекомендации") + "</h3>" +
           '<div class="insights">' + insightCards() + "</div></div>" +
       "</section>"
     );
@@ -855,26 +861,42 @@
 
     if (necks[0]) {
       cards.push({
-        tone: "amber", icon: "alert", title: "Узкое место обнаружено",
-        text: "Этап «" + neckLabel(necks[0]) + "» забирает " + pct(necks[0].share_of_total_time, 0) +
-          " всего времени процесса, медиана — " + dur(necks[0].median_duration_seconds) + ".",
+        tone: "amber", icon: "alert", title: t("Узкое место обнаружено"),
+        text: t("Этап «{step}» забирает {share} всего времени процесса, медиана — {median}.", {
+          step: neckLabel(necks[0]),
+          share: pct(necks[0].share_of_total_time, 0),
+          median: dur(necks[0].median_duration_seconds),
+        }),
         goto: "analysis",
       });
     }
     if (rework[0]) {
       var share = state.cases.length ? rework[0].cases_with_rework / state.cases.length : null;
       cards.push({
-        tone: "rose", icon: "repeat", title: "Высокий процент возвратов",
-        text: (share === null ? rework[0].cases_with_rework + " кейсов" : pct(share, 0) + " кейсов") +
-          " проходят «" + rework[0].activity + "» повторно, всего " + num(rework[0].total_repetitions) + " повторов.",
+        tone: "rose", icon: "repeat", title: t("Высокий процент возвратов"),
+        // Долю считаем не всегда: без списка кейсов делить не на что. Тогда
+        // говорим числом, а не процентом, - это разные предложения.
+        text: share === null
+          ? t("Кейсов с повтором «{step}»: {cases}, всего повторов: {repeats}.", {
+              step: rework[0].activity,
+              cases: num(rework[0].cases_with_rework),
+              repeats: num(rework[0].total_repetitions),
+            })
+          : t("{share} кейсов проходят «{step}» повторно, всего повторов: {repeats}.", {
+              share: pct(share, 0),
+              step: rework[0].activity,
+              repeats: num(rework[0].total_repetitions),
+            }),
         goto: "analysis",
       });
     }
     if (variants[0]) {
       cards.push({
-        tone: "green", icon: "spark", title: "Основной маршрут",
-        text: "По одному пути из " + num(state.variants.total_variants) + " идёт " + pct(variants[0].share, 0) +
-          " кейсов — на нём и окупается автоматизация.",
+        tone: "green", icon: "spark", title: t("Основной маршрут"),
+        text: t("По одному пути из {total} идёт {share} кейсов — на нём и окупается автоматизация.", {
+          total: num(state.variants.total_variants),
+          share: pct(variants[0].share, 0),
+        }),
         goto: "analysis",
       });
     }
@@ -882,20 +904,22 @@
     if (thr.p95 && thr.median) {
       var factor = thr.p95 / thr.median;
       cards.push({
-        tone: "violet", icon: "clock", title: "Оптимизация процесса",
-        text: "Долгие кейсы идут в " + num(factor, 1) + "× дольше медианных. Подтянув хвост к медиане, процесс сокращается на " +
-          dur(thr.p95 - thr.median) + ".",
+        tone: "violet", icon: "clock", title: t("Оптимизация процесса"),
+        text: t("Долгие кейсы идут в {factor}× дольше медианных. Подтянув хвост к медиане, процесс сокращается на {saved}.", {
+          factor: num(factor, 1),
+          saved: dur(thr.p95 - thr.median),
+        }),
         goto: "predictions",
       });
     }
 
-    if (!cards.length) return '<div class="note">Пока нечего рекомендовать: слишком мало данных.</div>';
+    if (!cards.length) return '<div class="note">' + t('Пока нечего рекомендовать: слишком мало данных.') + '</div>';
 
     return cards.slice(0, 4).map(function (card) {
       return '<div class="insight" data-tone="' + card.tone + '">' +
         '<div class="insight-head"><span class="insight-icon">' + icon(card.icon) + "</span><b>" + esc(card.title) + "</b></div>" +
         "<p>" + esc(card.text) + "</p>" +
-        '<button class="link-btn" data-goto="' + card.goto + '" type="button">Подробнее</button></div>';
+        '<button class="link-btn" data-goto="' + card.goto + '" type="button">' + t('Подробнее') + '</button></div>';
     }).join("");
   }
 
@@ -917,12 +941,12 @@
     if (dist) {
       drawArea(dist, durationHistogram(), {
         xLabels: [
-          { at: 0, text: "1 мин" },
-          { at: 3 / 13, text: "1 час" },
-          { at: 7 / 13, text: "1 дн." },
-          { at: 9 / 13, text: "3 дн." },
-          { at: 10 / 13, text: "1 нед." },
-          { at: 12 / 13, text: "1 мес." },
+          { at: 0, text: t("1 мин") },
+          { at: 3 / 13, text: t("1 час") },
+          { at: 7 / 13, text: t("1 дн.") },
+          { at: 9 / 13, text: t("3 дн.") },
+          { at: 10 / 13, text: t("1 нед.") },
+          { at: 12 / 13, text: t("1 мес.") },
         ],
       });
     }
@@ -970,7 +994,7 @@
       onEdge: function (edge) { showTransition(edge); },
     });
     if (!model) {
-      canvas.insertAdjacentHTML("beforeend", '<div class="map-empty">Граф пуст: в журнале нет переходов между активностями.</div>');
+      canvas.insertAdjacentHTML("beforeend", '<div class="map-empty">' + t('Граф пуст: в журнале нет переходов между активностями.') + '</div>');
       return;
     }
 
@@ -1010,14 +1034,20 @@
     var stats = (state.graph && state.graph.stats) || {};
     var parts = [];
     if (stats.places !== undefined) {
-      parts.push(num(stats.places) + " позиций");
-      parts.push(num(stats.transitions) + " переходов");
-      if (stats.silent_transitions) parts.push("из них " + num(stats.silent_transitions) + " невидимых");
+      parts.push(num(stats.places) + " " + plural(stats.places, "позиция"));
+      parts.push(num(stats.transitions) + " " + plural(stats.transitions, "переход"));
+      if (stats.silent_transitions) {
+        parts.push(t("из них {count} невидимых", { count: num(stats.silent_transitions) }));
+      }
     } else {
-      parts.push(num(stats.activities !== undefined ? stats.activities : (state.graph.nodes || []).length) + " активностей");
-      parts.push(num(stats.arcs !== undefined ? stats.arcs : (state.graph.edges || []).length) + " переходов");
+      var nodes = stats.activities !== undefined ? stats.activities : (state.graph.nodes || []).length;
+      var arcs = stats.arcs !== undefined ? stats.arcs : (state.graph.edges || []).length;
+      parts.push(num(nodes) + " " + plural(nodes, "активность"));
+      parts.push(num(arcs) + " " + plural(arcs, "переход"));
     }
-    return parts.join(", ") + ". Алгоритм: " + algoLabel(state.algorithm);
+    return t("{parts}. Алгоритм: {algorithm}", {
+      parts: parts.join(", "), algorithm: algoLabel(state.algorithm),
+    });
   }
 
   function pageMap() {
@@ -1025,28 +1055,29 @@
 
     return (
       '<section class="surface page">' +
-        '<div class="hero"><div><h1>Карта процесса</h1>' +
+        '<div class="hero"><div><h1>' + t('Карта процесса') + '</h1>' +
         "<p>" + esc(graphCaption()) + "</p></div>" +
         '<div class="hero-tools">' +
           '<div class="select-wrap" style="height:42px"><select id="algoSelect" style="height:42px;border-radius:9px">' +
             algoOptions() + "</select>" + icon("chevron", "chev") + "</div>" +
           '<div class="select-wrap" style="height:42px"><select id="mapMode" style="height:42px;border-radius:9px">' +
-            '<option value="frequency"' + (state.mapMode === "frequency" ? " selected" : "") + ">Толщина: частота</option>" +
-            '<option value="performance"' + (state.mapMode === "performance" ? " selected" : "") + ">Толщина: время</option>" +
+            '<option value="frequency"' + (state.mapMode === "frequency" ? " selected" : "") + ">" + t("Толщина: частота") + "</option>" +
+            '<option value="performance"' + (state.mapMode === "performance" ? " selected" : "") + ">" + t("Толщина: время") + "</option>" +
           "</select>" + icon("chevron", "chev") + "</div>" +
         "</div></div>" +
 
         '<div class="card"><div class="map-shell tall">' +
           '<div class="map-canvas" id="mapCanvas"><div class="map-stage" id="mapStage"></div></div>' +
-          '<div class="map-zoom"><button id="zoomIn" type="button" aria-label="Приблизить">' + icon("plus") + "</button>" +
-          '<button id="zoomOut" type="button" aria-label="Отдалить">' + icon("minus") + "</button>" +
-          '<button id="zoomFit" type="button" aria-label="Вписать">' + icon("fit") + "</button>" +
+          '<div class="map-zoom"><button id="zoomIn" type="button" aria-label="' + esc(t('Приблизить')) + '">' + icon("plus") + "</button>" +
+          '<button id="zoomOut" type="button" aria-label="' + esc(t('Отдалить')) + '">' + icon("minus") + "</button>" +
+          '<button id="zoomFit" type="button" aria-label="' + esc(t('Вписать')) + '">' + icon("fit") + "</button>" +
           '<div class="level" id="zoomLevel">100%</div></div>' +
         "</div></div>" +
 
-        '<div class="note">Кружок слева в узле — доля кейсов, прошедших через шаг; чем насыщеннее, тем чаще. ' +
-        "Синяя стрелка — переход, красная — самый нагруженный, оранжевая пунктирная — возврат назад по процессу, " +
-        "красная дуга сбоку — повтор шага подряд. Нажмите на узел или на стрелку, чтобы увидеть их показатели." +
+        '<div class="note">' + t('Кружок слева в узле — доля кейсов, прошедших через шаг; чем насыщеннее, тем чаще.') + ' ' +
+        t("Синяя стрелка — переход, красная — самый нагруженный, оранжевая пунктирная — возврат назад "
+          + "по процессу, красная дуга сбоку — повтор шага подряд. Нажмите на узел или на стрелку, "
+          + "чтобы увидеть их показатели.") +
         (((state.graph.stats || {}).places !== undefined)
           ? " У сети Петри кружки — позиции, глухая планка — невидимый переход: модели он нужен, событий в журнале ему не соответствует."
           : "") + "</div>" +
@@ -1056,11 +1087,11 @@
 
   function algoLabel(value) {
     return ({
-      dfg_frequency: "граф переходов (частота)",
-      dfg_performance: "граф переходов (время)",
-      petri_net_inductive: "сеть Петри, индуктивный",
-      petri_net_heuristics: "сеть Петри, эвристический",
-      process_tree: "дерево процесса",
+      dfg_frequency: t("граф переходов (частота)"),
+      dfg_performance: t("граф переходов (время)"),
+      petri_net_inductive: t("сеть Петри, индуктивный"),
+      petri_net_heuristics: t("сеть Петри, эвристический"),
+      process_tree: t("дерево процесса"),
       bpmn: "BPMN",
     })[value] || value;
   }
@@ -1100,15 +1131,23 @@
 
     openSheet(name, (
       '<div class="stat-row" style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">' +
-        "<div><b>" + num(stat && stat.occurrences) + "</b><span>Событий</span></div>" +
-        "<div><b>" + num(stat && stat.cases) + "</b><span>Кейсов</span></div>" +
-        "<div><b>" + dur(stat && stat.mean_waiting_after_seconds) + "</b><span>Ожидание после</span></div>" +
+        "<div><b>" + num(stat && stat.occurrences) + "</b><span>" + t("Событий") + "</span></div>" +
+        "<div><b>" + num(stat && stat.cases) + "</b><span>" + t("Кейсов") + "</span></div>" +
+        "<div><b>" + dur(stat && stat.mean_waiting_after_seconds) + "</b><span>" + t("Ожидание после") + "</span></div>" +
       "</div>" +
-      (neck ? '<div class="note"><b>Узкое место.</b> Медиана ' + dur(neck.median_duration_seconds) +
-        ", p95 " + dur(neck.p95_duration_seconds) + ", доля всего времени процесса " + pct(neck.share_of_total_time) + ".</div>" : "") +
-      (rework ? '<div class="note" data-tone="warn"><b>Возвраты.</b> ' + num(rework.cases_with_rework) +
-        " кейсов проходят шаг повторно, максимум " + num(rework.max_repetitions_in_case) + " раза в одном кейсе.</div>" : "") +
-      '<button class="btn secondary" id="sheetToCases" type="button">' + icon("cases") + " Кейсы с этим шагом</button>"
+      (neck ? '<div class="note"><b>' + t("Узкое место.") + "</b> " +
+        t("Медиана {median}, p95 {p95}, доля всего времени процесса {share}.", {
+          median: dur(neck.median_duration_seconds),
+          p95: dur(neck.p95_duration_seconds),
+          share: pct(neck.share_of_total_time),
+        }) + "</div>" : "") +
+      (rework ? '<div class="note" data-tone="warn"><b>' + t("Возвраты.") + "</b> " +
+        t("{cases} кейсов проходят шаг повторно, максимум {max} раза в одном кейсе.", {
+          cases: num(rework.cases_with_rework),
+          max: num(rework.max_repetitions_in_case),
+        }) + "</div>" : "") +
+      '<button class="btn secondary" id="sheetToCases" type="button">' + icon("cases") + " " +
+      t("Кейсы с этим шагом") + "</button>"
     ));
 
     var button = $("sheetToCases");
@@ -1129,23 +1168,25 @@
 
     openSheet(edge.source + " → " + edge.target, (
       '<div class="stat-row" style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">' +
-        "<div><b>" + num(edge.freq) + "</b><span>Переходов</span></div>" +
+        "<div><b>" + num(edge.freq) + "</b><span>" + t("Переходов") + "</span></div>" +
         "<div><b>" + dur(edge.median !== null && edge.median !== undefined ? edge.median : edge.mean) +
-          "</b><span>Медианное время</span></div>" +
+          "</b><span>" + t("Медианное время") + "</span></div>" +
       "</div>" +
       (neck
         ? '<div class="tbl-wrap"><table class="tbl"><tbody>' +
-          [["Общее время", dur(metrics.total_duration_seconds)],
-           ["Среднее", dur(metrics.mean_duration_seconds)],
-           ["Медиана", dur(metrics.median_duration_seconds)],
+          [[t("Общее время"), dur(metrics.total_duration_seconds)],
+           [t("Среднее"), dur(metrics.mean_duration_seconds)],
+           [t("Медиана"), dur(metrics.median_duration_seconds)],
            ["p95", dur(metrics.p95_duration_seconds)],
-           ["Доля всего времени процесса", pct(metrics.share_of_total_time)]].map(function (row) {
+           [t("Доля всего времени процесса"), pct(metrics.share_of_total_time)]].map(function (row) {
             return "<tr><td>" + esc(row[0]) + '</td><td class="num strong">' + row[1] + "</td></tr>";
           }).join("") + "</tbody></table></div>"
-        : '<div class="note">Этот переход не попал в список узких мест: по суммарному времени он не в верхних ' +
-          num(((state.necks && state.necks.bottlenecks) || []).length) + ".</div>") +
+        : '<div class="note">' +
+          t("Этот переход не попал в список узких мест: по суммарному времени он не в верхних {top}.", {
+            top: num(((state.necks && state.necks.bottlenecks) || []).length),
+          }) + "</div>") +
       '<button class="btn secondary" id="sheetToCases" type="button">' + icon("cases") +
-      " Кейсы с этим шагом</button>"
+      " " + t("Кейсы с этим шагом") + "</button>"
     ));
 
     var button = $("sheetToCases");
@@ -1172,7 +1213,7 @@
   }
 
   function pageEvents() {
-    if (!state.events.length) return state.loading ? skeletonPage() : emptyState("Событий нет", "Загрузите журнал в разделе «Источники данных».", "");
+    if (!state.events.length) return state.loading ? skeletonPage() : emptyState(t("Событий нет"), t("Загрузите журнал в разделе «Источники данных»."), "");
 
     var rows = filteredEvents();
     var pages = Math.max(1, Math.ceil(rows.length / EVENTS_PER_PAGE));
@@ -1181,25 +1222,28 @@
 
     return (
       '<section class="surface page">' +
-        '<div class="hero"><div><h1>Журнал событий</h1>' +
-        "<p>" + num(rows.length) + " из " + num(state.events.length) + " событий" +
-        (state.truncated ? " · показаны первые " + num(MAX_EVENTS) : "") + "</p></div>" +
+        '<div class="hero"><div><h1>' + t('Журнал событий') + '</h1>' +
+        "<p>" + t("{shown} из {total} событий", {
+          shown: num(rows.length), total: num(state.events.length),
+        }) + (state.truncated ? t(" · показаны первые {limit}", { limit: num(MAX_EVENTS) }) : "") + "</p></div>" +
         '<div class="hero-tools" style="flex:1;max-width:360px">' +
-          '<div class="field" style="flex:1"><input type="search" id="eventSearch" placeholder="Кейс, активность или исполнитель" value="' + esc(eventQuery) + '"></div>' +
+          '<div class="field" style="flex:1"><input type="search" id="eventSearch" placeholder="' + esc(t('Кейс, активность или исполнитель')) + '" value="' + esc(eventQuery) + '"></div>' +
         "</div></div>" +
 
-        (state.truncated ? '<div class="note" data-tone="warn">Журнал больше ' + num(MAX_EVENTS) +
-          " событий. Разделы «Кейсы», «Предсказания» и распределение длительности построены по этой части — остальное не выгружалось в браузер.</div>" : "") +
+        (state.truncated ? '<div class="note" data-tone="warn">' +
+          t("Журнал больше {limit} событий. Разделы «Кейсы», «Предсказания» и распределение длительности "
+            + "построены по этой части — остальное не выгружалось в браузер.", { limit: num(MAX_EVENTS) }) +
+          "</div>" : "") +
 
         '<div class="card"><div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-          "<thead><tr><th>Время</th><th>Кейс</th><th>Активность</th><th>Исполнитель</th><th>Стадия</th></tr></thead><tbody>" +
+          "<thead><tr><th>" + t("Время") + "</th><th>" + t("Кейс") + "</th><th>" + t("Активность") + "</th><th>" + t("Исполнитель") + "</th><th>" + t("Стадия") + "</th></tr></thead><tbody>" +
           (slice.length ? slice.map(function (event) {
             return "<tr><td>" + dateTime(event.timestamp) + "</td>" +
               '<td class="strong">' + esc(event.case_id) + "</td>" +
               "<td>" + activityDot(event.activity) + esc(event.activity) + "</td>" +
               "<td>" + esc(event.resource || "—") + "</td>" +
               "<td>" + esc(event.lifecycle || "—") + "</td></tr>";
-          }).join("") : '<tr><td colspan="5" class="empty">Ничего не найдено</td></tr>') +
+          }).join("") : '<tr><td colspan="5" class="empty">' + t('Ничего не найдено') + '</td></tr>') +
         "</tbody></table></div></div></div>" +
 
         pager(eventPage, pages, "eventPager")
@@ -1215,9 +1259,10 @@
   function pager(current, pages, id) {
     if (pages <= 1) return "";
     return '<div class="btn-row" id="' + id + '" style="justify-content:center;align-items:center">' +
-      '<button class="btn secondary" data-page="' + (current - 1) + '"' + (current === 0 ? " disabled" : "") + ">Назад</button>" +
-      '<span style="color:var(--muted);font-size:13px">Страница ' + (current + 1) + " из " + pages + "</span>" +
-      '<button class="btn secondary" data-page="' + (current + 1) + '"' + (current >= pages - 1 ? " disabled" : "") + ">Вперёд</button></div>";
+      '<button class="btn secondary" data-page="' + (current - 1) + '"' + (current === 0 ? " disabled" : "") + ">" + t("Назад") + "</button>" +
+      '<span style="color:var(--muted);font-size:13px">' +
+      t("Страница {current} из {pages}", { current: current + 1, pages: pages }) + "</span>" +
+      '<button class="btn secondary" data-page="' + (current + 1) + '"' + (current >= pages - 1 ? " disabled" : "") + ">" + t("Вперёд") + "</button></div>";
   }
 
   function afterEvents() {
@@ -1260,42 +1305,43 @@
 
     return (
       '<section class="surface page">' +
-        '<div class="hero"><div><h1>Анализ</h1>' +
-        "<p>Маршруты, узкие места, возвраты и соответствие модели</p></div>" +
+        '<div class="hero"><div><h1>' + t('Анализ') + '</h1>' +
+        "<p>" + t("Маршруты, узкие места, возвраты и соответствие модели") + "</p></div>" +
         '<div class="hero-tools"><button class="btn secondary" id="runConformance" type="button">' +
-          icon("play") + " Проверить соответствие</button></div></div>" +
+          icon("play") + " " + t("Проверить соответствие") + "</button></div></div>" +
 
         '<div class="cols cols-1-1">' +
-          '<div class="card"><div class="card-head"><h3>Маршруты</h3>' +
-            '<div class="tools"><span class="tag">' + num(state.variants.total_variants) + " всего</span></div></div>" +
+          '<div class="card"><div class="card-head"><h3>' + t('Маршруты') + '</h3>' +
+            '<div class="tools"><span class="tag">' +
+            t("{count} всего", { count: num(state.variants.total_variants) }) + "</span></div></div>" +
             '<div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-            '<thead><tr><th>Путь</th><th class="num">Кейсов</th><th class="num">Доля</th><th class="num">Медиана</th></tr></thead><tbody>' +
+            '<thead><tr><th>' + t('Путь') + '</th><th class="num">' + t('Кейсов') + '</th><th class="num">' + t('Доля') + '</th><th class="num">' + t('Медиана') + '</th></tr></thead><tbody>' +
             (variants.length ? variants.map(function (variant) {
               return '<tr data-variant="' + variant.rank + '"><td>' + pathCell(variant.sequence) + "</td>" +
                 '<td class="num">' + num(variant.cases) + "</td>" +
                 '<td class="num strong">' + pct(variant.share) + "</td>" +
                 '<td class="num">' + dur(variant.median_duration_seconds) + "</td></tr>";
-            }).join("") : '<tr><td colspan="4" class="empty">Нет данных</td></tr>') +
+            }).join("") : '<tr><td colspan="4" class="empty">' + t('Нет данных') + '</td></tr>') +
             "</tbody></table></div></div></div>" +
 
-          '<div class="card"><div class="card-head"><h3>Узкие места</h3>' +
-            '<div class="tools"><span class="tag">по доле времени</span></div></div>' +
+          '<div class="card"><div class="card-head"><h3>' + t('Узкие места') + '</h3>' +
+            '<div class="tools"><span class="tag">' + t('по доле времени') + '</span></div></div>' +
             '<div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-            '<thead><tr><th>Этап</th><th class="num">Медиана</th><th class="num">p95</th><th class="num">Доля времени</th></tr></thead><tbody>' +
+            '<thead><tr><th>' + t('Этап') + '</th><th class="num">' + t('Медиана') + '</th><th class="num">p95</th><th class="num">' + t('Доля времени') + '</th></tr></thead><tbody>' +
             (necks.length ? necks.map(function (neck) {
               return "<tr><td>" + esc(neckLabel(neck)) + "</td>" +
                 '<td class="num">' + dur(neck.median_duration_seconds) + "</td>" +
                 '<td class="num">' + dur(neck.p95_duration_seconds) + "</td>" +
                 '<td class="num strong">' + pct(neck.share_of_total_time) + "</td></tr>";
-            }).join("") : '<tr><td colspan="4" class="empty">Нет данных</td></tr>') +
+            }).join("") : '<tr><td colspan="4" class="empty">' + t('Нет данных') + '</td></tr>') +
             "</tbody></table></div></div></div>" +
         "</div>" +
 
         '<div class="cols cols-1-1">' +
-          '<div class="card"><div class="card-head"><h3>Активности</h3>' +
-            '<div class="tools"><span class="tag">ожидание — до следующего шага</span></div></div>' +
+          '<div class="card"><div class="card-head"><h3>' + t('Активности') + '</h3>' +
+            '<div class="tools"><span class="tag">' + t('ожидание — до следующего шага') + '</span></div></div>' +
             '<div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-            '<thead><tr><th>Активность</th><th class="num">Событий</th><th class="num">Кейсов</th><th class="num">Ожидание</th></tr></thead><tbody>' +
+            '<thead><tr><th>' + t('Активность') + '</th><th class="num">' + t('Событий') + '</th><th class="num">' + t('Кейсов') + '</th><th class="num">' + t('Ожидание') + '</th></tr></thead><tbody>' +
             (activities.length ? activities.map(function (item) {
               return '<tr><td>' + activityDot(item.activity) + esc(item.activity) +
                 '<span class="bar" style="display:block;height:4px;margin-top:6px;border-radius:999px;background:var(--panel-3)">' +
@@ -1304,26 +1350,26 @@
                 '<td class="num">' + num(item.occurrences) + "</td>" +
                 '<td class="num">' + num(item.cases) + "</td>" +
                 '<td class="num">' + dur(item.mean_waiting_after_seconds) + "</td></tr>";
-            }).join("") : '<tr><td colspan="4" class="empty">Нет данных</td></tr>') +
+            }).join("") : '<tr><td colspan="4" class="empty">' + t('Нет данных') + '</td></tr>') +
             "</tbody></table></div></div></div>" +
 
-          '<div class="card"><div class="card-head"><h3>Возвраты</h3></div>' +
+          '<div class="card"><div class="card-head"><h3>' + t('Возвраты') + '</h3></div>' +
             '<div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-            '<thead><tr><th>Активность</th><th class="num">Кейсов</th><th class="num">Повторов</th><th class="num">Макс. в кейсе</th></tr></thead><tbody>' +
+            '<thead><tr><th>' + t('Активность') + '</th><th class="num">' + t('Кейсов') + '</th><th class="num">' + t('Повторов') + '</th><th class="num">' + t('Макс. в кейсе') + '</th></tr></thead><tbody>' +
             (rework.length ? rework.map(function (item) {
               return "<tr><td>" + activityDot(item.activity) + esc(item.activity) + "</td>" +
                 '<td class="num">' + num(item.cases_with_rework) + "</td>" +
                 '<td class="num">' + num(item.total_repetitions) + "</td>" +
                 '<td class="num strong">' + num(item.max_repetitions_in_case) + "</td></tr>";
-            }).join("") : '<tr><td colspan="4" class="empty">Возвратов не найдено</td></tr>') +
+            }).join("") : '<tr><td colspan="4" class="empty">' + t('Возвратов не найдено') + '</td></tr>') +
             "</tbody></table></div></div></div>" +
         "</div>" +
 
         '<div id="conformanceBox"></div>' +
 
-        (resources.length ? '<div class="card"><div class="card-head"><h3>Исполнители</h3></div>' +
+        (resources.length ? '<div class="card"><div class="card-head"><h3>' + t('Исполнители') + '</h3></div>' +
           '<div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-          '<thead><tr><th>Исполнитель</th><th class="num">Событий</th><th class="num">Кейсов</th><th class="num">Активностей</th></tr></thead><tbody>' +
+          '<thead><tr><th>' + t('Исполнитель') + '</th><th class="num">' + t('Событий') + '</th><th class="num">' + t('Кейсов') + '</th><th class="num">' + t('Активностей') + '</th></tr></thead><tbody>' +
           resources.map(function (item) {
             return "<tr><td>" + esc(item.resource) + "</td>" +
               '<td class="num">' + num(item.events) + "</td>" +
@@ -1339,22 +1385,22 @@
     if (!button) return;
     button.addEventListener("click", function () {
       button.disabled = true;
-      button.textContent = "Считаем…";
+      button.textContent = t("Считаем…");
       api.post("/api/v1/logs/" + state.logId + "/conformance", { algorithm: "petri_net_inductive", compute_precision: true })
         .then(function (result) {
           var box = $("conformanceBox");
           if (!box) return;
           var fitness = result.fitness || {};
-          box.innerHTML = '<div class="card"><div class="card-head"><h3>Соответствие модели</h3></div>' +
+          box.innerHTML = '<div class="card"><div class="card-head"><h3>' + t('Соответствие модели') + '</h3></div>' +
             '<div class="card-body flush"><div class="stat-row">' +
-            "<div><b>" + pct(fitness.average_trace_fitness || fitness.averageFitness || fitness.log_fitness) + "</b><span>Соответствие трасс</span></div>" +
-            "<div><b>" + (result.precision === null || result.precision === undefined ? "—" : pct(result.precision)) + "</b><span>Точность модели</span></div>" +
-            "<div><b>" + num(result.deviating_cases) + "</b><span>Кейсов с отклонением</span></div>" +
-            "<div><b>" + num(result.traces_evaluated) + "</b><span>Трасс проверено</span></div>" +
+            "<div><b>" + pct(fitness.average_trace_fitness || fitness.averageFitness || fitness.log_fitness) + "</b><span>" + t("Соответствие трасс") + "</span></div>" +
+            "<div><b>" + (result.precision === null || result.precision === undefined ? "—" : pct(result.precision)) + "</b><span>" + t("Точность модели") + "</span></div>" +
+            "<div><b>" + num(result.deviating_cases) + "</b><span>" + t("Кейсов с отклонением") + "</span></div>" +
+            "<div><b>" + num(result.traces_evaluated) + "</b><span>" + t("Трасс проверено") + "</span></div>" +
             "</div></div></div>";
         })
         .catch(function (error) { toast(error.message, "bad"); })
-        .then(function () { button.disabled = false; button.innerHTML = icon("play") + " Проверить соответствие"; });
+        .then(function () { button.disabled = false; button.innerHTML = icon("play") + " " + t("Проверить соответствие"); });
     });
   }
 
@@ -1386,10 +1432,10 @@
     // человек хочет как раз до того, как что-то загрузит.
     if (!hasData()) {
       return '<section class="surface page">' +
-        '<div class="hero"><div><h1>Аналитик</h1>' +
-        "<p>Журнала пока нет - но спросить о process mining можно и без него</p></div></div>" +
-        emptyState("Данных нет", "Загрузите журнал событий, и здесь появятся сводка и находки.",
-                   '<button class="btn secondary" id="emptyAsk">Спросить о process mining</button>') +
+        '<div class="hero"><div><h1>' + t('Аналитик') + '</h1>' +
+        "<p>" + t("Журнала пока нет - но спросить о process mining можно и без него") + "</p></div></div>" +
+        emptyState(t("Данных нет"), t("Загрузите журнал событий, и здесь появятся сводка и находки."),
+                   '<button class="btn secondary" id="emptyAsk">' + t('Спросить о process mining') + '</button>') +
         "</section>";
     }
 
@@ -1401,21 +1447,21 @@
     var trend = analysis.trend;
 
     var cards = [
-      { label: "Кейсов в разборе", value: num(analysis.cases || 0) },
-      { label: "Типичный путь", value: dur((analysis.throughput_seconds || {}).median) },
-      { label: "Застрявших", value: num(anomalies.length), tone: anomalies.length ? "warn" : "ok" },
+      { label: t("Кейсов в разборе"), value: num(analysis.cases || 0) },
+      { label: t("Типичный путь"), value: dur((analysis.throughput_seconds || {}).median) },
+      { label: t("Застрявших"), value: num(anomalies.length), tone: anomalies.length ? "warn" : "ok" },
       // Тон - только на заметном сдвиге: колебание в несколько процентов это
       // обычная неделя, и красить его тревожным цветом значит звать зря.
       trend
-        ? { label: "Поток за неделю", value: (trend.change_pct > 0 ? "+" : "") + trend.change_pct + "%",
+        ? { label: t("Поток за неделю"), value: (trend.change_pct > 0 ? "+" : "") + trend.change_pct + "%",
             tone: trend.change_pct >= 15 ? "ok" : (trend.change_pct <= -15 ? "warn" : "") }
-        : { label: "Узких мест", value: num(necks.length) },
+        : { label: t("Узких мест"), value: num(necks.length) },
     ];
 
     return (
       '<section class="surface page">' +
-        '<div class="hero"><div><h1>Аналитик</h1>' +
-        "<p>Что происходит с процессом - человеческим языком, по свежим данным</p></div></div>" +
+        '<div class="hero"><div><h1>' + t('Аналитик') + '</h1>' +
+        "<p>" + t("Что происходит с процессом - человеческим языком, по свежим данным") + "</p></div></div>" +
 
         '<div class="kpis">' +
         cards.map(function (card) {
@@ -1425,21 +1471,21 @@
         }).join("") +
         "</div>" +
 
-        '<div class="card"><div class="card-head"><h3>Сводка</h3>' +
+        '<div class="card"><div class="card-head"><h3>' + t('Сводка') + '</h3>' +
           '<div class="tools"><span class="tag">' +
-          (report.narrator === "llm" ? "написано моделью по этим числам" : "обновляется вместе с журналом") +
+          (report.narrator === "llm" ? t("написано моделью по этим числам") : t("обновляется вместе с журналом")) +
           "</span></div></div>" +
           '<div class="card-body"><div class="digest">' +
           (digest.length
             ? digest.map(function (line) { return "<p>" + esc(line) + "</p>"; }).join("")
-            : '<p class="empty">Сводка появится, когда наберётся история.</p>') +
+            : '<p class="empty">' + t('Сводка появится, когда наберётся история.') + '</p>') +
           "</div></div></div>" +
 
-        '<div class="card"><div class="card-head"><h3>Застрявшие кейсы</h3>' +
-          '<div class="tools"><span class="tag">ждали дольше обычного</span></div></div>' +
+        '<div class="card"><div class="card-head"><h3>' + t('Застрявшие кейсы') + '</h3>' +
+          '<div class="tools"><span class="tag">' + t('ждали дольше обычного') + '</span></div></div>' +
           '<div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-          "<thead><tr><th>Кейс</th><th>Ждал перед</th><th class=\"num\">Простоял</th>" +
-          "<th class=\"num\">Обычно</th><th class=\"num\">Во сколько раз</th></tr></thead><tbody>" +
+          "<thead><tr><th>" + t("Кейс") + "</th><th>" + t("Ждал перед") + "</th><th class=\"num\">" + t("Простоял") + "</th>" +
+          "<th class=\"num\">" + t("Обычно") + "</th><th class=\"num\">" + t("Во сколько раз") + "</th></tr></thead><tbody>" +
           (anomalies.length ? anomalies.map(function (item) {
             return '<tr data-case="' + esc(item.case_id) + '">' +
               "<td>" + esc(item.case_id) + "</td>" +
@@ -1447,7 +1493,7 @@
               '<td class="num strong">' + dur(item.waited_seconds) + "</td>" +
               '<td class="num">' + dur(item.typical_seconds) + "</td>" +
               '<td class="num">×' + item.ratio + "</td></tr>";
-          }).join("") : '<tr><td colspan="5" class="empty">Ничего не застряло</td></tr>') +
+          }).join("") : '<tr><td colspan="5" class="empty">' + t('Ничего не застряло') + '</td></tr>') +
           "</tbody></table></div></div></div>" +
       "</section>"
     );
@@ -1464,27 +1510,27 @@
   var chatLogId = "";
 
   var CHAT_HINTS = [
-    "Где мы теряем больше всего времени?",
-    "Какие кейсы застряли и насколько?",
-    "Какой этап чаще всего повторяется?",
-    "Что такое process mining?",
+    t("Где мы теряем больше всего времени?"),
+    t("Какие кейсы застряли и насколько?"),
+    t("Какой этап чаще всего повторяется?"),
+    t("Что такое process mining?"),
   ];
 
   // Без журнала спрашивать про узкие места не у чего - подсказки становятся
   // про сам предмет, иначе первый же клик упрётся в «данных нет».
   var CHAT_HINTS_EMPTY = [
-    "Что такое process mining?",
-    "Какой журнал событий нужен, чтобы начать?",
-    "Что показывает карта процесса?",
-    "Что значит узкое место в процессе?",
+    t("Что такое process mining?"),
+    t("Какой журнал событий нужен, чтобы начать?"),
+    t("Что показывает карта процесса?"),
+    t("Что значит узкое место в процессе?"),
   ];
 
   // Имена инструментов человеку ни о чём не говорят, а знать, куда помощник
   // ходил за числом, полезно: так видно, что оно не выдумано.
   var STEP_NAMES = {
-    overview: "общие показатели", bottlenecks: "узкие места", anomalies: "застрявшие кейсы",
-    activity: "этап", resources: "исполнители", case: "путь кейса",
-    variants: "маршруты", slowest_cases: "самые долгие кейсы",
+    overview: t("общие показатели"), bottlenecks: t("узкие места"), anomalies: t("застрявшие кейсы"),
+    activity: t("этап"), resources: t("исполнители"), case: t("путь кейса"),
+    variants: t("маршруты"), slowest_cases: t("самые долгие кейсы"),
   };
 
   function chatBody() {
@@ -1496,7 +1542,7 @@
     }
     return chatTurns.map(function (turn) {
       var steps = turn.steps && turn.steps.length
-        ? '<div class="chat-steps">смотрел: ' +
+        ? '<div class="chat-steps">' + t('смотрел:') + ' ' +
           esc(turn.steps.map(function (step) { return STEP_NAMES[step.tool] || step.tool; }).join(", ")) +
           "</div>"
         : "";
@@ -1540,7 +1586,7 @@
     if (!scope) return;
     var log = state.logs.filter(function (item) { return item.log_id === state.logId; })[0];
     var name = hasData() && log ? log.name : "";
-    scope.textContent = name ? "по журналу «" + name + "»" : "журнала нет";
+    scope.textContent = name ? t("по журналу «{name}»", { name: name }) : t("журнала нет");
   }
 
   function paintChat() {
@@ -1553,7 +1599,7 @@
     var send = $("chatSend");
     if (send) {
       send.disabled = chatBusy;
-      send.textContent = chatBusy ? "Думает…" : "Спросить";
+      send.textContent = chatBusy ? "Думает…" : t("Спросить");
     }
   }
 
@@ -1595,7 +1641,7 @@
     request.then(function (reply) {
       chatTurns.push({
         role: "assistant",
-        content: (reply && reply.answer) || "Пустой ответ.",
+        content: (reply && reply.answer) || t("Пустой ответ."),
         steps: (reply && reply.steps) || [],
         muted: !(reply && reply.available),
       });
@@ -1630,7 +1676,7 @@
         box.innerHTML = (report.digest || []).map(function (line) {
           return "<p>" + esc(line) + "</p>";
         }).join("");
-        if (tag) tag.textContent = "написано моделью по этим числам";
+        if (tag) tag.textContent = t("написано моделью по этим числам");
       })
       .catch(function () { /* остаётся шаблонная сводка */ });
   }
@@ -1669,7 +1715,7 @@
   }
 
   function pageCases() {
-    if (!state.cases.length) return state.loading ? skeletonPage() : emptyState("Кейсов нет", "Загрузите журнал событий, и кейсы соберутся автоматически.", "");
+    if (!state.cases.length) return state.loading ? skeletonPage() : emptyState(t("Кейсов нет"), t("Загрузите журнал событий, и кейсы соберутся автоматически."), "");
 
     var rows = filteredCases();
     var pages = Math.max(1, Math.ceil(rows.length / CASES_PER_PAGE));
@@ -1679,22 +1725,23 @@
 
     return (
       '<section class="surface page">' +
-        '<div class="hero"><div><h1>Кейсы</h1>' +
-        "<p>" + num(rows.length) + " из " + num(state.cases.length) + " экземпляров процесса. " +
-        "Завершённым считается кейс, дошедший до «" + esc(final || "—") + "»</p></div>" +
+        '<div class="hero"><div><h1>' + t('Кейсы') + '</h1>' +
+        "<p>" + t("{shown} из {total} экземпляров процесса. Завершённым считается кейс, дошедший до «{final}»", {
+          shown: num(rows.length), total: num(state.cases.length), final: esc(final || "—"),
+        }) + "</p></div>" +
         '<div class="hero-tools">' +
           '<div class="select-wrap" style="height:42px"><select id="caseStatus" style="height:42px;border-radius:9px">' +
-            '<option value="all"' + (caseStatus === "all" ? " selected" : "") + ">Все</option>" +
-            '<option value="active"' + (caseStatus === "active" ? " selected" : "") + ">Активные</option>" +
-            '<option value="done"' + (caseStatus === "done" ? " selected" : "") + ">Завершённые</option>" +
-            '<option value="rework"' + (caseStatus === "rework" ? " selected" : "") + ">С возвратами</option>" +
+            '<option value="all"' + (caseStatus === "all" ? " selected" : "") + ">" + t("Все") + "</option>" +
+            '<option value="active"' + (caseStatus === "active" ? " selected" : "") + ">" + t("Активные") + "</option>" +
+            '<option value="done"' + (caseStatus === "done" ? " selected" : "") + ">" + t("Завершённые") + "</option>" +
+            '<option value="rework"' + (caseStatus === "rework" ? " selected" : "") + ">" + t("С возвратами") + "</option>" +
           "</select>" + icon("chevron", "chev") + "</div>" +
-          '<div class="field" style="flex:1 1 180px"><input type="search" id="caseSearch" placeholder="Номер кейса или шаг" value="' + esc(caseFilter) + '"></div>' +
+          '<div class="field" style="flex:1 1 180px"><input type="search" id="caseSearch" placeholder="' + esc(t('Номер кейса или шаг')) + '" value="' + esc(caseFilter) + '"></div>' +
         "</div></div>" +
 
         '<div class="card"><div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-          '<thead><tr><th>Кейс</th><th>Маршрут</th><th class="num">Шагов</th><th>Начало</th>' +
-          '<th class="num">Длительность</th><th>Текущий шаг</th><th>Статус</th></tr></thead><tbody>' +
+          '<thead><tr><th>' + t('Кейс') + '</th><th>' + t('Маршрут') + '</th><th class="num">' + t('Шагов') + '</th><th>' + t('Начало') + '</th>' +
+          '<th class="num">' + t('Длительность') + '</th><th>' + t('Текущий шаг') + '</th><th>' + t('Статус') + '</th></tr></thead><tbody>' +
           (slice.length ? slice.map(function (item) {
             return '<tr data-case="' + esc(item.id) + '" style="cursor:pointer">' +
               '<td class="strong">' + esc(item.id) + "</td>" +
@@ -1704,8 +1751,8 @@
               '<td class="num">' + dur(item.duration) + "</td>" +
               "<td>" + esc(item.last) + "</td>" +
               '<td><span class="tag" data-tone="' + (item.done ? "green" : (item.rework ? "amber" : "violet")) + '">' +
-              (item.done ? "Завершён" : (item.rework ? "Возвраты" : "В работе")) + "</span></td></tr>";
-          }).join("") : '<tr><td colspan="7" class="empty">Ничего не найдено</td></tr>') +
+              (item.done ? t("Завершён") : (item.rework ? t("Возвраты") : t("В работе"))) + "</span></td></tr>";
+          }).join("") : '<tr><td colspan="7" class="empty">' + t('Ничего не найдено') + '</td></tr>') +
         "</tbody></table></div></div></div>" +
 
         pager(casePage, pages, "casePager") +
@@ -1740,13 +1787,13 @@
     if (!item) return;
     var previous = null;
 
-    openSheet("Кейс " + id, (
+    openSheet(t("Кейс {id}", { id: id }), (
       '<div class="stat-row" style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">' +
-        "<div><b>" + num(item.steps.length) + "</b><span>Шагов</span></div>" +
-        "<div><b>" + dur(item.duration) + "</b><span>Длительность</span></div>" +
-        "<div><b>" + num(item.rework) + "</b><span>Возвратов</span></div>" +
+        "<div><b>" + num(item.steps.length) + "</b><span>" + t("Шагов") + "</span></div>" +
+        "<div><b>" + dur(item.duration) + "</b><span>" + t("Длительность") + "</span></div>" +
+        "<div><b>" + num(item.rework) + "</b><span>" + t("Возвратов") + "</span></div>" +
       "</div>" +
-      '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Шаг</th><th>Время</th><th class="num">Пауза</th></tr></thead><tbody>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>' + t('Шаг') + '</th><th>' + t('Время') + '</th><th class="num">' + t('Пауза') + '</th></tr></thead><tbody>' +
       item.steps.map(function (step) {
         var current = new Date(step.timestamp);
         var gap = previous ? (current - previous) / 1000 : null;
@@ -1770,37 +1817,40 @@
 
     return (
       '<section class="surface page">' +
-        '<div class="hero"><div><h1>Показатели</h1>' +
-        "<p>Сводка по журналу «" + esc(state.summary ? state.summary.name : "") + "» за " +
-        dateShort(stats.start_time) + " – " + dateShort(stats.end_time) + "</p></div></div>" +
+        '<div class="hero"><div><h1>' + t('Показатели') + '</h1>' +
+        "<p>" + t("Сводка по журналу «{name}» за {from} – {to}", {
+          name: esc(state.summary ? state.summary.name : ""),
+          from: dateShort(stats.start_time),
+          to: dateShort(stats.end_time),
+        }) + "</p></div></div>" +
 
         '<div class="card"><div class="card-body flush"><div class="stat-row">' +
-          "<div><b>" + num(stats.events) + "</b><span>Событий</span></div>" +
-          "<div><b>" + num(stats.cases) + "</b><span>Кейсов</span></div>" +
-          "<div><b>" + num(stats.activities) + "</b><span>Активностей</span></div>" +
-          "<div><b>" + num(stats.resources) + "</b><span>Исполнителей</span></div>" +
-          "<div><b>" + num(stats.variants) + "</b><span>Маршрутов</span></div>" +
+          "<div><b>" + num(stats.events) + "</b><span>" + t("Событий") + "</span></div>" +
+          "<div><b>" + num(stats.cases) + "</b><span>" + t("Кейсов") + "</span></div>" +
+          "<div><b>" + num(stats.activities) + "</b><span>" + t("Активностей") + "</span></div>" +
+          "<div><b>" + num(stats.resources) + "</b><span>" + t("Исполнителей") + "</span></div>" +
+          "<div><b>" + num(stats.variants) + "</b><span>" + t("Маршрутов") + "</span></div>" +
         "</div></div></div>" +
 
         '<div class="cols cols-1-1">' +
-          '<div class="card"><div class="card-head"><h3>Время прохождения</h3></div>' +
+          '<div class="card"><div class="card-head"><h3>' + t('Время прохождения') + '</h3></div>' +
             '<div class="card-body flush"><div class="stat-row">' +
-            "<div><b>" + dur(thr.min) + "</b><span>Минимум</span></div>" +
-            "<div><b>" + dur(thr.median) + "</b><span>Медиана</span></div>" +
-            "<div><b>" + dur(thr.mean) + "</b><span>Среднее</span></div>" +
+            "<div><b>" + dur(thr.min) + "</b><span>" + t("Минимум") + "</span></div>" +
+            "<div><b>" + dur(thr.median) + "</b><span>" + t("Медиана") + "</span></div>" +
+            "<div><b>" + dur(thr.mean) + "</b><span>" + t("Среднее") + "</span></div>" +
             "</div><div class=\"stat-row\" style=\"border-bottom:0\">" +
             "<div><b>" + dur(thr.p90) + "</b><span>p90</span></div>" +
             "<div><b>" + dur(thr.p95) + "</b><span>p95</span></div>" +
-            "<div><b>" + dur(thr.max) + "</b><span>Максимум</span></div>" +
+            "<div><b>" + dur(thr.max) + "</b><span>" + t("Максимум") + "</span></div>" +
             "</div></div></div>" +
 
-          '<div class="card"><div class="card-head"><h3>Кейсов в день</h3></div>' +
+          '<div class="card"><div class="card-head"><h3>' + t('Кейсов в день') + '</h3></div>' +
             '<div class="card-body"><svg class="chart-box" id="perDayChart"></svg>' +
-            '<div class="chart-title">' + (days.length ? dateShort(days[0]) + " – " + dateShort(days[days.length - 1]) : "нет данных") + "</div></div></div>" +
+            '<div class="chart-title">' + (days.length ? dateShort(days[0]) + " – " + dateShort(days[days.length - 1]) : t("нет данных")) + "</div></div></div>" +
         "</div>" +
 
-        '<div class="card"><div class="card-head"><h3>Ожидание после активности</h3>' +
-          '<div class="tools"><span class="tag">среднее время до следующего шага</span></div></div>' +
+        '<div class="card"><div class="card-head"><h3>' + t('Ожидание после активности') + '</h3>' +
+          '<div class="tools"><span class="tag">' + t('среднее время до следующего шага') + '</span></div></div>' +
           '<div class="card-body" id="activityBars"></div></div>' +
       "</section>"
     );
@@ -1826,7 +1876,7 @@
     var activities = (state.stats.activity_stats || []).slice().filter(function (item) {
       return item.mean_waiting_after_seconds;
     }).sort(function (a, b) { return b.mean_waiting_after_seconds - a.mean_waiting_after_seconds; });
-    if (!activities.length) { bars.innerHTML = '<div class="note">В журнале нет пауз между шагами: у последнего шага кейса ждать нечего.</div>'; return; }
+    if (!activities.length) { bars.innerHTML = '<div class="note">' + t('В журнале нет пауз между шагами: у последнего шага кейса ждать нечего.') + '</div>'; return; }
     var max = activities[0].mean_waiting_after_seconds;
     bars.innerHTML = activities.map(function (item) {
       return '<div style="display:grid;grid-template-columns:minmax(120px,26%) 1fr auto;gap:12px;align-items:center">' +
@@ -1851,47 +1901,49 @@
 
     return (
       '<section class="surface page">' +
-        '<div class="hero"><div><h1>Предсказания</h1>' +
-        "<p>Оценка по истории этого же журнала — не обученная модель</p></div></div>" +
+        '<div class="hero"><div><h1>' + t('Предсказания') + '</h1>' +
+        "<p>" + t("Оценка по истории этого же журнала — не обученная модель") + "</p></div></div>" +
 
-        '<div class="note"><b>Как это считается.</b> Для каждого незавершённого кейса берётся самый частый маршрут, ' +
-        "в нём находится текущий шаг, и складываются медианные длительности оставшихся переходов. " +
-        "Прогноз нагрузки — линейный тренд по числу кейсов в день. " +
-        "Кейс попадает в группу риска, если его ожидаемое общее время превышает p95 по журналу (" +
-        dur(state.stats.throughput_seconds && state.stats.throughput_seconds.p95) + ").</div>" +
+        '<div class="note"><b>' + t("Как это считается.") + "</b> " +
+        t("Для каждого незавершённого кейса берётся самый частый маршрут, в нём находится текущий шаг, "
+          + "и складываются медианные длительности оставшихся переходов. Прогноз нагрузки — линейный тренд "
+          + "по числу кейсов в день. Кейс попадает в группу риска, если его ожидаемое общее время превышает "
+          + "p95 по журналу ({p95}).",
+          { p95: dur(state.stats.throughput_seconds && state.stats.throughput_seconds.p95) }) + "</div>" +
 
         '<div class="kpis">' +
-          kpiCard("Кейсов в работе", num(rows.length), null, "spPredActive", "#3b82f6", "не дошли до финала") +
-          kpiCard("В группе риска", num(atRisk), null, "spPredRisk", "#f43f5e", "прогноз превышает p95") +
-          kpiCard("Ожидается за неделю", nextWeek === null ? "—" : num(nextWeek), null, "spPredLoad", "#7c5cff", "по линейному тренду") +
-          kpiCard("Медиана цикла", dur(state.stats.throughput_seconds && state.stats.throughput_seconds.median), null, "spPredCycle", "#34d399", "база для оценки") +
+          kpiCard(t("Кейсов в работе"), num(rows.length), null, "spPredActive", "#3b82f6", t("не дошли до финала")) +
+          kpiCard(t("В группе риска"), num(atRisk), null, "spPredRisk", "#f43f5e", t("прогноз превышает p95")) +
+          kpiCard(t("Ожидается за неделю"), nextWeek === null ? "—" : num(nextWeek), null, "spPredLoad", "#7c5cff", t("по линейному тренду")) +
+          kpiCard(t("Медиана цикла"), dur(state.stats.throughput_seconds && state.stats.throughput_seconds.median), null, "spPredCycle", "#34d399", t("база для оценки")) +
         "</div>" +
 
-        '<div class="card"><div class="card-head"><h3>Незавершённые кейсы</h3>' +
+        '<div class="card"><div class="card-head"><h3>' + t('Незавершённые кейсы') + '</h3>' +
           '<div class="tools"><span class="tag">' + num(rows.length) + "</span></div></div>" +
           '<div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-          '<thead><tr><th>Кейс</th><th>Текущий шаг</th><th class="num">Идёт</th><th class="num">Шагов до конца</th>' +
-          '<th class="num">Осталось</th><th>Ожидаемый финиш</th><th>Риск</th></tr></thead><tbody>' +
+          '<thead><tr><th>' + t('Кейс') + '</th><th>' + t('Текущий шаг') + '</th><th class="num">' + t('Идёт') + '</th><th class="num">' + t('Шагов до конца') + '</th>' +
+          '<th class="num">' + t('Осталось') + '</th><th>' + t('Ожидаемый финиш') + '</th><th>' + t('Риск') + '</th></tr></thead><tbody>' +
           (rows.length ? rows.slice(0, 100).map(function (row) {
             var tone = row.risk === "high" ? "rose" : (row.risk === "mid" ? "amber" : "green");
-            var label = row.risk === "high" ? "Высокий" : (row.risk === "mid" ? "Средний" : "Низкий");
+            var label = row.risk === "high" ? "Высокий" : (row.risk === "mid" ? "Средний" : t("Низкий"));
             return '<tr data-case="' + esc(row.id) + '" style="cursor:pointer">' +
               '<td class="strong">' + esc(row.id) + "</td>" +
               "<td>" + activityDot(row.last) + esc(row.last) + "</td>" +
               '<td class="num">' + dur(row.elapsed) + "</td>" +
               '<td class="num">' + (row.offRoute ? "—" : num(row.stepsLeft)) + "</td>" +
               '<td class="num">' + (row.offRoute ? "—" : dur(row.remaining) + (row.partial ? " *" : "")) + "</td>" +
-              "<td>" + (row.eta ? dateTime(row.eta) : "вне основного маршрута") + "</td>" +
+              "<td>" + (row.eta ? dateTime(row.eta) : t("вне основного маршрута")) + "</td>" +
               '<td><span class="tag" data-tone="' + tone + '">' + label + "</span></td></tr>";
-          }).join("") : '<tr><td colspan="7" class="empty">Все кейсы завершены</td></tr>') +
+          }).join("") : '<tr><td colspan="7" class="empty">' + t('Все кейсы завершены') + '</td></tr>') +
         "</tbody></table></div></div></div>" +
 
         (rows.some(function (r) { return r.partial; })
-          ? '<div class="note">Звёздочка: часть переходов этого кейса ни разу не встретилась в журнале, их время в сумму не вошло — оценка занижена.</div>'
+          ? '<div class="note">' + t('Звёздочка: часть переходов этого кейса ни разу не встретилась в журнале, их время в сумму не вошло — оценка занижена.') + '</div>'
           : "") +
         (rows.some(function (r) { return r.offRoute; })
-          ? '<div class="note" data-tone="warn">Часть кейсов стоит на шаге, которого нет в самом частом маршруте. ' +
-            "Оценить остаток по нему нельзя — такие строки помечены прочерком.</div>"
+          ? '<div class="note" data-tone="warn">' +
+            t("Часть кейсов стоит на шаге, которого нет в самом частом маршруте. "
+              + "Оценить остаток по нему нельзя — такие строки помечены прочерком.") + "</div>"
           : "") +
       "</section>"
     );
@@ -1944,22 +1996,23 @@
     var views = savedViews();
     return (
       '<section class="surface page">' +
-        '<div class="hero"><div><h1>Дашборды</h1>' +
-        "<p>Сохранённые наборы: журнал, алгоритм и режим карты в один клик</p></div>" +
-        '<div class="hero-tools"><button class="btn" id="saveView" type="button">' + icon("save") + " Сохранить текущий вид</button></div></div>" +
+        '<div class="hero"><div><h1>' + t('Дашборды') + '</h1>' +
+        "<p>" + t("Сохранённые наборы: журнал, алгоритм и режим карты в один клик") + "</p></div>" +
+        '<div class="hero-tools"><button class="btn" id="saveView" type="button">' + icon("save") + " " +
+        t("Сохранить текущий вид") + "</button></div></div>" +
 
         (views.length
           ? '<div class="insights">' + views.map(function (view, index) {
               var log = state.logs.filter(function (l) { return l.log_id === view.logId; })[0];
               return '<div class="insight" data-tone="violet">' +
                 '<div class="insight-head"><span class="insight-icon">' + icon("dashboards") + "</span><b>" + esc(view.name) + "</b></div>" +
-                "<p>" + esc(log ? log.name : "журнал удалён") + "<br>" + esc(algoLabel(view.algorithm)) +
-                " · " + (view.mapMode === "performance" ? "толщина по времени" : "толщина по частоте") + "</p>" +
-                '<div class="btn-row"><button class="link-btn" data-open="' + index + '" type="button">Открыть</button>' +
-                '<button class="link-btn" data-drop="' + index + '" type="button">Удалить</button></div></div>';
+                "<p>" + esc(log ? log.name : t("журнал удалён")) + "<br>" + esc(algoLabel(view.algorithm)) +
+                " · " + (view.mapMode === "performance" ? "толщина по времени" : t("толщина по частоте")) + "</p>" +
+                '<div class="btn-row"><button class="link-btn" data-open="' + index + '" type="button">' + t('Открыть') + '</button>' +
+                '<button class="link-btn" data-drop="' + index + '" type="button">' + t('Удалить') + '</button></div></div>';
             }).join("") + "</div>"
           : '<div class="card"><div class="empty-state">' + icon("dashboards") +
-            "<h3>Пока пусто</h3><p>Настройте журнал, алгоритм и режим карты, затем нажмите «Сохранить текущий вид» — набор появится здесь и будет открываться одним нажатием.</p></div></div>") +
+            "<h3>" + t("Пока пусто") + "</h3><p>" + t("Настройте журнал, алгоритм и режим карты, затем нажмите «Сохранить текущий вид» — набор появится здесь и будет открываться одним нажатием.") + "</p></div></div>") +
       "</section>"
     );
   }
@@ -1970,7 +2023,7 @@
       var log = state.logs.filter(function (l) { return l.log_id === state.logId; })[0];
       var views = savedViews();
       views.push({
-        name: (log ? log.name : "Без журнала") + " · " + algoLabel(state.algorithm),
+        name: (log ? log.name : t("Без журнала")) + " · " + algoLabel(state.algorithm),
         logId: state.logId, algorithm: state.algorithm, mapMode: state.mapMode,
       });
       saveViews(views);
@@ -2009,35 +2062,36 @@
   function pageSources() {
     return (
       '<section class="surface page">' +
-        '<div class="hero"><div><h1>Источники данных</h1>' +
-        "<p>Журналы событий, доступные этому сервису</p></div>" +
-        '<div class="hero-tools"><button class="btn secondary" id="loadSample" type="button">Загрузить пример</button>' +
-        '<button class="btn" id="pickFile" type="button">' + icon("upload") + " Загрузить файл</button></div></div>" +
+        '<div class="hero"><div><h1>' + t('Источники данных') + '</h1>' +
+        "<p>" + t("Журналы событий, доступные этому сервису") + "</p></div>" +
+        '<div class="hero-tools"><button class="btn secondary" id="loadSample" type="button">' + t('Загрузить пример') + '</button>' +
+        '<button class="btn" id="pickFile" type="button">' + icon("upload") + " " +
+        t("Загрузить файл") + "</button></div></div>" +
 
         '<div class="dropzone" id="dropzone">' + icon("upload") +
-          "<div>Перетащите CSV, XES или JSON сюда</div>" +
-          '<div style="font-size:11.5px;color:var(--faint)">Колонки case / activity / timestamp определяются автоматически</div>' +
+          "<div>" + t("Перетащите CSV, XES или JSON сюда") + "</div>" +
+          '<div style="font-size:11.5px;color:var(--faint)">' + t('Колонки case / activity / timestamp определяются автоматически') + '</div>' +
         "</div>" +
 
-        '<div class="card"><div class="card-head"><h3>Журналы</h3>' +
+        '<div class="card"><div class="card-head"><h3>' + t('Журналы') + '</h3>' +
           '<div class="tools"><span class="tag">' + num(state.logs.length) + "</span></div></div>" +
           '<div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-          '<thead><tr><th>Название</th><th class="num">Событий</th><th class="num">Кейсов</th><th class="num">Активностей</th>' +
-          "<th>Период</th><th></th></tr></thead><tbody>" +
+          '<thead><tr><th>' + t('Название') + '</th><th class="num">' + t('Событий') + '</th><th class="num">' + t('Кейсов') + '</th><th class="num">' + t('Активностей') + '</th>' +
+          "<th>" + t("Период") + "</th><th></th></tr></thead><tbody>" +
           (state.logs.length ? state.logs.map(function (log) {
             var active = log.log_id === state.logId;
             return "<tr><td class=\"strong\">" + esc(log.name) +
-              (active ? ' <span class="tag" data-tone="violet">открыт</span>' : "") +
+              (active ? ' <span class="tag" data-tone="violet">' + t('открыт') + '</span>' : "") +
               '<div style="color:var(--faint);font-size:11.5px;margin-top:2px">' + esc(log.log_id) + "</div></td>" +
               '<td class="num">' + num(log.events) + "</td>" +
               '<td class="num">' + num(log.cases) + "</td>" +
               '<td class="num">' + num(log.activities) + "</td>" +
               "<td>" + dateShort(log.start_time) + " – " + dateShort(log.end_time) + "</td>" +
               '<td class="num"><div class="btn-row" style="justify-content:flex-end">' +
-              (active ? "" : '<button class="link-btn" data-use="' + esc(log.log_id) + '" type="button">Открыть</button>') +
-              '<button class="link-btn" data-drop-log="' + esc(log.log_id) + '" type="button">Удалить</button>' +
+              (active ? "" : '<button class="link-btn" data-use="' + esc(log.log_id) + '" type="button">' + t('Открыть') + '</button>') +
+              '<button class="link-btn" data-drop-log="' + esc(log.log_id) + '" type="button">' + t('Удалить') + '</button>' +
               "</div></td></tr>";
-          }).join("") : '<tr><td colspan="6" class="empty">Журналов пока нет</td></tr>') +
+          }).join("") : '<tr><td colspan="6" class="empty">' + t('Журналов пока нет') + '</td></tr>') +
           "</tbody></table></div></div></div>" +
       "</section>"
     );
@@ -2083,7 +2137,8 @@
     document.querySelectorAll("button[data-drop-log]").forEach(function (button) {
       button.addEventListener("click", function () {
         var id = button.dataset.dropLog;
-        if (!window.confirm("Удалить журнал целиком? Событий: " + num((state.logs.filter(function (l) { return l.log_id === id; })[0] || {}).events) + ".")) return;
+        var doomed = state.logs.filter(function (l) { return l.log_id === id; })[0] || {};
+        if (!window.confirm(t("Удалить журнал целиком? Событий: {events}.", { events: num(doomed.events) }))) return;
         fetch("/api/v1/logs/" + id, { method: "DELETE", headers: api.headers() }).then(function (response) {
           if (!response.ok && response.status !== 204) throw new Error("HTTP " + response.status);
           toast("Журнал удалён", "good");
@@ -2098,9 +2153,9 @@
     var form = new FormData();
     form.append("file", file);
     form.append("name", file.name);
-    toast("Загружаем " + file.name + "…");
+    toast(t("Загружаем {name}…", { name: file.name }));
     return api.upload("/api/v1/logs/upload", form).then(function (result) {
-      toast("Готово: " + num(result.log.events) + " событий", "good");
+      toast(t("Готово: событий {count}", { count: num(result.log.events) }), "good");
       state.logId = result.log.log_id;
       store.set("pm-studio-log", state.logId);
       resetPaging();
@@ -2117,15 +2172,18 @@
     var origin = location.origin;
     return (
       '<section class="surface page">' +
-        '<div class="hero"><div><h1>Интеграции</h1>' +
-        "<p>Как подать события в этот сервис из внешней системы</p></div>" +
-        '<div class="hero-tools"><a class="btn secondary" href="/docs" target="_blank" rel="noopener">Справочник API</a>' +
-        '<button class="btn" id="openKeys" type="button">' + icon("key") + " Ключ доступа</button></div></div>" +
+        '<div class="hero"><div><h1>' + t('Интеграции') + '</h1>' +
+        "<p>" + t("Как подать события в этот сервис из внешней системы") + "</p></div>" +
+        '<div class="hero-tools"><a class="btn secondary" href="/docs" target="_blank" rel="noopener">' + t('Справочник API') + '</a>' +
+        '<button class="btn" id="openKeys" type="button">' + icon("key") + " " +
+        t("Ключ доступа") + "</button></div></div>" +
 
         '<div class="cols cols-1-1">' +
-          '<div class="card"><div class="card-head"><h3>Поток событий</h3></div><div class="card-body">' +
-            '<p style="margin:0;color:var(--muted);font-size:13px">Каждое событие — один шаг процесса. ' +
-            "Поле <code>event_id</code> делает доставку идемпотентной: повторная отправка того же события не задваивает шаг.</p>" +
+          '<div class="card"><div class="card-head"><h3>' + t('Поток событий') + '</h3></div><div class="card-body">' +
+            '<p style="margin:0;color:var(--muted);font-size:13px">' +
+            t("Каждое событие — один шаг процесса. Поле {field} делает доставку идемпотентной: "
+              + "повторная отправка того же события не задваивает шаг.",
+              { field: "<code>event_id</code>" }) + "</p>" +
             '<pre class="code">curl -X POST ' + esc(origin) + "/api/v1/logs/&lt;log_id&gt;/events \\\n" +
             '  -H "X-API-Key: &lt;ключ&gt;" \\\n  -H "Content-Type: application/json" \\\n' +
             '  -d \'{"events":[{"event_id":"e-1","case_id":"B-346",\n' +
@@ -2133,36 +2191,38 @@
             '        "resource":"line-2"}]}\'</pre>' +
           "</div></div>" +
 
-          '<div class="card"><div class="card-head"><h3>Разовый разбор файла</h3></div><div class="card-body">' +
-            '<p style="margin:0;color:var(--muted);font-size:13px">Ничего не сохраняется на сервере: файл уходит, ' +
-            "модель возвращается в ответе.</p>" +
+          '<div class="card"><div class="card-head"><h3>' + t('Разовый разбор файла') + '</h3></div><div class="card-body">' +
+            '<p style="margin:0;color:var(--muted);font-size:13px">' +
+            t("Ничего не сохраняется на сервере: файл уходит, модель возвращается в ответе.") + "</p>" +
             '<pre class="code">curl -X POST ' + esc(origin) + "/api/v1/mine \\\n" +
             '  -H "X-API-Key: &lt;ключ&gt;" \\\n  -F "file=@events.csv" \\\n  -F "algorithm=dfg_frequency"</pre>' +
           "</div></div>" +
         "</div>" +
 
-        '<div class="card"><div class="card-head"><h3>Точки подключения</h3></div>' +
+        '<div class="card"><div class="card-head"><h3>' + t('Точки подключения') + '</h3></div>' +
           '<div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-          "<thead><tr><th>Назначение</th><th>Метод</th><th>Адрес</th></tr></thead><tbody>" +
+          "<thead><tr><th>" + t("Назначение") + "</th><th>" + t("Метод") + "</th><th>" + t("Адрес") + "</th></tr></thead><tbody>" +
           [
-            ["Создать журнал из файла", "POST", "/api/v1/logs/upload"],
-            ["Досылать события", "POST", "/api/v1/logs/{log_id}/events"],
-            ["Модель процесса", "POST", "/api/v1/logs/{log_id}/discover"],
-            ["Картинка карты", "GET", "/api/v1/logs/{log_id}/map"],
-            ["Показатели", "GET", "/api/v1/logs/{log_id}/statistics"],
-            ["Маршруты", "GET", "/api/v1/logs/{log_id}/variants"],
-            ["Узкие места", "GET", "/api/v1/logs/{log_id}/bottlenecks"],
-            ["Соответствие модели", "POST", "/api/v1/logs/{log_id}/conformance"],
-            ["Профили нормализации", "GET", "/api/v1/profiles"],
-            ["Готовность сервиса", "GET", "/health/ready"],
+            [t("Создать журнал из файла"), "POST", "/api/v1/logs/upload"],
+            [t("Досылать события"), "POST", "/api/v1/logs/{log_id}/events"],
+            [t("Модель процесса"), "POST", "/api/v1/logs/{log_id}/discover"],
+            [t("Картинка карты"), "GET", "/api/v1/logs/{log_id}/map"],
+            [t("Показатели"), "GET", "/api/v1/logs/{log_id}/statistics"],
+            [t("Маршруты"), "GET", "/api/v1/logs/{log_id}/variants"],
+            [t("Узкие места"), "GET", "/api/v1/logs/{log_id}/bottlenecks"],
+            [t("Соответствие модели"), "POST", "/api/v1/logs/{log_id}/conformance"],
+            [t("Профили нормализации"), "GET", "/api/v1/profiles"],
+            [t("Готовность сервиса"), "GET", "/health/ready"],
           ].map(function (row) {
             return "<tr><td>" + esc(row[0]) + '</td><td><span class="tag">' + row[1] + "</span></td>" +
               '<td><code style="font-size:12.5px;color:var(--ink-dim)">' + esc(row[2]) + "</code></td></tr>";
           }).join("") +
           "</tbody></table></div></div></div>" +
 
-        '<div class="note">Ключ передаётся заголовком <b>X-API-Key</b> либо как <b>Authorization: Bearer</b>. ' +
-        "Консоль, открытая ссылкой из КМС, работает по временному пропуску — он действует ограниченное время и только на чтение.</div>" +
+        '<div class="note">' +
+        t("Ключ передаётся заголовком {header} либо как {bearer}. Консоль, открытая ссылкой из КМС, "
+          + "работает по временному пропуску — он действует ограниченное время и только на чтение.",
+          { header: "<b>X-API-Key</b>", bearer: "<b>Authorization: Bearer</b>" }) + "</div>" +
       "</section>"
     );
   }
@@ -2178,48 +2238,50 @@
     var dark = document.documentElement.dataset.theme !== "light";
     return (
       '<section class="surface page">' +
-        '<div class="hero"><div><h1>Настройки</h1><p>Параметры консоли и анализа</p></div></div>' +
+        '<div class="hero"><div><h1>' + t('Настройки') + '</h1><p>' + t('Параметры консоли и анализа') + '</p></div></div>' +
 
         '<div class="cols cols-1-1">' +
-          '<div class="card"><div class="card-head"><h3>Внешний вид</h3></div><div class="card-body">' +
+          '<div class="card"><div class="card-head"><h3>' + t('Внешний вид') + '</h3></div><div class="card-body">' +
             '<label class="switch"><input type="checkbox" id="setDark"' + (dark ? " checked" : "") + '><span class="track"></span>' +
-            "<span>Тёмная тема</span></label>" +
-            '<div class="field"><label for="setLocale">Формат чисел и дат</label>' +
-            '<select id="setLocale">' +
-              '<option value="ru-RU"' + (locale === "ru-RU" ? " selected" : "") + ">Русский (1 234,5)</option>" +
-              '<option value="en-US"' + (locale === "en-US" ? " selected" : "") + ">English (1,234.5)</option>" +
-              '<option value="kk-KZ"' + (locale === "kk-KZ" ? " selected" : "") + ">Қазақша</option>" +
+            "<span>" + t("Тёмная тема") + "</span></label>" +
+            '<div class="field"><label for="setLang">' + t("Язык интерфейса") + "</label>" +
+            '<select id="setLang">' +
+              i18n.supported.map(function (code) {
+                return '<option value="' + code + '"' + (i18n.lang === code ? " selected" : "") + ">" +
+                  esc(i18n.native[code]) + "</option>";
+              }).join("") +
             "</select>" +
-            '<span class="hint">Интерфейс Studio пока только на русском — переключается лишь запись чисел и дат.</span></div>' +
+            '<span class="hint">' + t("Запись чисел и дат идёт за языком.") + "</span></div>" +
           "</div></div>" +
 
-          '<div class="card"><div class="card-head"><h3>Анализ</h3></div><div class="card-body">' +
-            '<div class="field"><label for="setAlgo">Алгоритм построения модели</label>' +
+          '<div class="card"><div class="card-head"><h3>' + t('Анализ') + '</h3></div><div class="card-body">' +
+            '<div class="field"><label for="setAlgo">' + t('Алгоритм построения модели') + '</label>' +
             '<select id="setAlgo">' + algoOptions() + "</select></div>" +
-            '<div class="field"><label for="setLog">Журнал событий</label><select id="setLog">' +
+            '<div class="field"><label for="setLog">' + t('Журнал событий') + '</label><select id="setLog">' +
               (state.logs.length ? state.logs.map(function (log) {
                 return '<option value="' + esc(log.log_id) + '"' + (log.log_id === state.logId ? " selected" : "") + ">" +
                   esc(log.name) + " (" + num(log.events) + ")</option>";
-              }).join("") : "<option>нет журналов</option>") +
+              }).join("") : "<option>" + t("нет журналов") + "</option>") +
             "</select></div>" +
-            '<div class="btn-row"><button class="btn" id="applySettings" type="button">Применить</button></div>' +
+            '<div class="btn-row"><button class="btn" id="applySettings" type="button">' + t('Применить') + '</button></div>' +
           "</div></div>" +
         "</div>" +
 
-        '<div class="card"><div class="card-head"><h3>Доступ</h3></div><div class="card-body">' +
-          '<div class="field"><label for="setKey">API-ключ</label>' +
-          '<input type="password" id="setKey" value="' + esc(api.key) + '" placeholder="ключ или временный пропуск" autocomplete="off">' +
-          '<span class="hint">Хранится только в этом браузере. Пропуск из КМС начинается с «c1.» и живёт ограниченное время.</span></div>' +
-          '<div class="btn-row"><button class="btn secondary" id="saveKey" type="button">Сохранить ключ</button>' +
-          '<button class="btn danger" id="dropKey" type="button">' + icon("trash") + " Забыть ключ</button></div>" +
+        '<div class="card"><div class="card-head"><h3>' + t('Доступ') + '</h3></div><div class="card-body">' +
+          '<div class="field"><label for="setKey">' + t('API-ключ') + '</label>' +
+          '<input type="password" id="setKey" value="' + esc(api.key) + '" placeholder="' + esc(t('ключ или временный пропуск')) + '" autocomplete="off">' +
+          '<span class="hint">' + t('Хранится только в этом браузере. Пропуск из КМС начинается с «c1.» и живёт ограниченное время.') + '</span></div>' +
+          '<div class="btn-row"><button class="btn secondary" id="saveKey" type="button">' + t('Сохранить ключ') + '</button>' +
+          '<button class="btn danger" id="dropKey" type="button">' + icon("trash") + " " +
+        t("Забыть ключ") + "</button></div>" +
         "</div></div>" +
 
-        '<div class="card"><div class="card-head"><h3>О сервисе</h3></div>' +
+        '<div class="card"><div class="card-head"><h3>' + t('О сервисе') + '</h3></div>' +
           '<div class="card-body flush"><div class="stat-row" style="border-bottom:0">' +
-          "<div><b>" + esc(state.version || "—") + "</b><span>Версия сервиса</span></div>" +
-          "<div><b>" + (state.online ? "на связи" : "нет связи") + "</b><span>Состояние</span></div>" +
-          "<div><b>" + num(state.logs.length) + "</b><span>Журналов</span></div>" +
-          "<div><b>" + num(MAX_EVENTS) + "</b><span>Предел выгрузки событий</span></div>" +
+          "<div><b>" + esc(state.version || "—") + "</b><span>" + t("Версия сервиса") + "</span></div>" +
+          "<div><b>" + (state.online ? t("на связи") : t("нет связи")) + "</b><span>" + t("Состояние") + "</span></div>" +
+          "<div><b>" + num(state.logs.length) + "</b><span>" + t("Журналов") + "</span></div>" +
+          "<div><b>" + num(MAX_EVENTS) + "</b><span>" + t("Предел выгрузки событий") + "</span></div>" +
         "</div></div></div>" +
       "</section>"
     );
@@ -2229,13 +2291,12 @@
     var dark = $("setDark");
     if (dark) dark.addEventListener("change", function () { setTheme(dark.checked ? "dark" : "light"); });
 
-    var loc = $("setLocale");
-    if (loc) loc.addEventListener("change", function () {
-      locale = loc.value;
-      store.set("pm-studio-locale", locale);
-      var select = $("language");
-      if (select) select.value = locale.slice(0, 2);
+    var setLang = $("setLang");
+    if (setLang) setLang.addEventListener("change", function () {
+      i18n.setLang(setLang.value);
+      $("language").value = i18n.lang;
       render();
+      paintChat();
     });
 
     var apply = $("applySettings");
@@ -2275,9 +2336,9 @@
   function skeletonPage() {
     if (state.error) {
       return '<section class="surface page"><div class="empty-state">' + icon("alert") +
-        "<h3>Не удалось получить данные</h3><p>" + esc(state.error) + "</p>" +
-        '<div class="btn-row"><button class="btn" id="retryLoad" type="button">Повторить</button>' +
-        (state.authRequired ? '<button class="btn secondary" id="errKeys" type="button">Ввести ключ</button>' : "") +
+        "<h3>" + t("Не удалось получить данные") + "</h3><p>" + esc(state.error) + "</p>" +
+        '<div class="btn-row"><button class="btn" id="retryLoad" type="button">' + t('Повторить') + '</button>' +
+        (state.authRequired ? '<button class="btn secondary" id="errKeys" type="button">' + t('Ввести ключ') + '</button>' : "") +
         "</div></div></section>";
     }
     /* Пустой список журналов и закрытый доступ выглядят одинаково - экран без
@@ -2285,14 +2346,17 @@
      * файл человеку, которому просто нужен пропуск. */
     if (state.authRequired && !api.key) {
       return '<section class="surface page"><div class="empty-state">' + icon("key") +
-        "<h3>Нужен доступ</h3><p>Сервис закрыт ключом. Откройте консоль ссылкой «Открыть консоль» из КМС — " +
-        "она принесёт временный пропуск, вводить ничего не придётся. Либо введите ключ вручную.</p>" +
-        '<button class="btn" id="emptyKeys" type="button">' + icon("key") + " Ввести ключ</button></div></section>";
+        "<h3>" + t("Нужен доступ") + "</h3><p>" +
+        t("Сервис закрыт ключом. Откройте консоль ссылкой «Открыть консоль» из КМС — она принесёт "
+          + "временный пропуск, вводить ничего не придётся. Либо введите ключ вручную.") + "</p>" +
+        '<button class="btn" id="emptyKeys" type="button">' + icon("key") + " " +
+        t("Ввести ключ") + "</button></div></section>";
     }
     if (!state.logId && !state.loading) {
       return '<section class="surface page"><div class="empty-state">' + icon("inbox") +
-        "<h3>Нет журналов событий</h3><p>Загрузите файл в разделе «Источники данных» — карта, показатели и кейсы соберутся сами.</p>" +
-        '<button class="btn" data-goto="sources" type="button">' + icon("upload") + " Перейти к загрузке</button></div></section>";
+        "<h3>" + t("Нет журналов событий") + "</h3><p>" + t("Загрузите файл в разделе «Источники данных» — карта, показатели и кейсы соберутся сами.") + "</p>" +
+        '<button class="btn" data-goto="sources" type="button">' + icon("upload") + " " +
+        t("Перейти к загрузке") + "</button></div></section>";
     }
     var block = function (h) { return '<div class="skeleton" style="height:' + h + 'px"></div>'; };
     return '<section class="surface page"><div class="skeleton sk-value"></div>' +
@@ -2339,6 +2403,27 @@
     settings: afterSettings,
   };
 
+  /* Подписи каркаса живут в разметке и вне #view: перерисовка раздела их не
+   * трогает, поэтому проставляем сами - и при каждой отрисовке, потому что
+   * язык переключают на ходу. */
+  // [ключ в dataset, что искать, какой атрибут ставить]
+  var SHELL_LABELS = [
+    ["i18nTitle", "[data-i18n-title]", "title"],
+    ["i18nAria", "[data-i18n-aria]", "aria-label"],
+    ["i18nPlaceholder", "[data-i18n-placeholder]", "placeholder"],
+  ];
+
+  function paintShell() {
+    Array.prototype.forEach.call(document.querySelectorAll("[data-i18n]"), function (node) {
+      node.textContent = t(node.dataset.i18n);
+    });
+    SHELL_LABELS.forEach(function (row) {
+      Array.prototype.forEach.call(document.querySelectorAll(row[1]), function (node) {
+        node.setAttribute(row[2], t(node.dataset[row[0]]));
+      });
+    });
+  }
+
   function render() {
     var id = currentRoute();
     var route = routeById(id);
@@ -2358,6 +2443,7 @@
     });
 
     if (AFTER[id]) AFTER[id]();
+    paintShell();
     refreshBell();
   }
 
@@ -2386,7 +2472,7 @@
     var maxDay = bounds.end_time ? String(bounds.end_time).slice(0, 10) : "";
 
     function boxes(list, chosen, name) {
-      if (!list.length) return '<span class="hint">нет данных</span>';
+      if (!list.length) return '<span class="hint">' + t('нет данных') + '</span>';
       return '<div style="display:grid;gap:7px;max-height:190px;overflow-y:auto">' + list.map(function (value) {
         var on = chosen.indexOf(value) !== -1;
         return '<label class="switch" style="gap:9px"><input type="checkbox" data-' + name + '="' + esc(value) + '"' +
@@ -2395,24 +2481,28 @@
     }
 
     openSheet("Отбор данных", (
-      '<div class="field"><label>Период</label><div class="field-row">' +
+      '<div class="field"><label>' + t('Период') + '</label><div class="field-row">' +
         '<input type="date" id="fFrom" value="' + esc(filters.dateFrom) + '" min="' + minDay + '" max="' + maxDay + '">' +
         '<input type="date" id="fTo" value="' + esc(filters.dateTo) + '" min="' + minDay + '" max="' + maxDay + '">' +
-      '</div><span class="hint">Журнал: ' + esc(minDay || "—") + " – " + esc(maxDay || "—") + "</span></div>" +
+      '</div><span class="hint">' +
+      t("Журнал: {from} – {to}", { from: esc(minDay || "—"), to: esc(maxDay || "—") }) + "</span></div>" +
 
-      '<div class="field"><label>Активности</label>' + boxes(activities, filters.activities || [], "activity") + "</div>" +
-      (resources.length ? '<div class="field"><label>Исполнители</label>' + boxes(resources, filters.resources || [], "resource") + "</div>" : "") +
+      '<div class="field"><label>' + t('Активности') + '</label>' + boxes(activities, filters.activities || [], "activity") + "</div>" +
+      (resources.length ? '<div class="field"><label>' + t('Исполнители') + '</label>' + boxes(resources, filters.resources || [], "resource") + "</div>" : "") +
 
-      '<div class="field"><label for="fCoverage">Охват маршрутов</label><select id="fCoverage">' +
+      '<div class="field"><label for="fCoverage">' + t('Охват маршрутов') + '</label><select id="fCoverage">' +
         ['', "0.95", "0.9", "0.8", "0.5"].map(function (value) {
-          var label = value ? "самые частые маршруты до " + Math.round(value * 100) + " % кейсов" : "все маршруты";
+          var label = value
+            ? t("самые частые маршруты до {share} % кейсов", { share: Math.round(value * 100) })
+            : t("все маршруты");
           return '<option value="' + value + '"' + (String(filters.coverage) === value ? " selected" : "") + ">" + label + "</option>";
         }).join("") +
-      '</select><span class="hint">Считается на сервере: отбрасываются целые варианты. ' +
-      "Влияет на карту, маршруты и узкие места; список кейсов остаётся полным.</span></div>" +
+      '</select><span class="hint">' +
+      t("Считается на сервере: отбрасываются целые варианты. Влияет на карту, маршруты и узкие места; "
+        + "список кейсов остаётся полным.") + "</span></div>" +
 
-      '<div class="btn-row"><button class="btn" id="fApply" type="button">Применить</button>' +
-      '<button class="btn secondary" id="fReset" type="button">Сбросить</button></div>'
+      '<div class="btn-row"><button class="btn" id="fApply" type="button">' + t('Применить') + '</button>' +
+      '<button class="btn secondary" id="fReset" type="button">' + t('Сбросить') + '</button></div>'
     ));
 
     var apply = $("fApply");
@@ -2504,7 +2594,7 @@
       box.innerHTML = '<p class="empty">' +
         (hasData()
           ? "Ни узких мест, ни возвратов не нашлось — процесс идёт ровно."
-          : "Данных пока нет. Загрузите журнал, и находки появятся здесь.") + "</p>";
+          : t("Данных пока нет. Загрузите журнал, и находки появятся здесь.")) + "</p>";
     } else {
       var rows = necks.map(function (neck) {
         var problem = neckProblem(neck);
@@ -2519,7 +2609,7 @@
           fresh: isNew("r:" + item.activity),
           html: '<b>' + esc(item.activity) + "</b>" +
             '<span class="tag" data-tone="amber">×' + num(item.total_repetitions) + "</span>" +
-            "<span>повторы в " + num(item.cases_with_rework) + " кейсах</span>",
+            "<span>" + t("повторы в {cases} кейсах", { cases: num(item.cases_with_rework) }) + "</span>",
         };
       }));
 
@@ -2534,9 +2624,9 @@
       // Новое сверху и с пометкой; прежнее - ниже, под своим заголовком. Так
       // видно, что именно добавилось, не сверяясь с памятью.
       box.innerHTML =
-        (freshRows.length ? '<div class="group">Новое</div>' + draw(freshRows, " is-new") : "") +
-        (oldRows.length ? (freshRows.length ? '<div class="group">Просмотрено ранее</div>' : "") + draw(oldRows, "") : "") +
-        '<button class="foot" type="button">Открыть анализ →</button>';
+        (freshRows.length ? '<div class="group">' + t('Новое') + '</div>' + draw(freshRows, " is-new") : "") +
+        (oldRows.length ? (freshRows.length ? '<div class="group">' + t('Просмотрено ранее') + '</div>' : "") + draw(oldRows, "") : "") +
+        '<button class="foot" type="button">' + t('Открыть анализ →') + '</button>';
     }
 
     box.hidden = false;
@@ -2565,12 +2655,13 @@
 
   function openKeys() {
     openSheet("Доступ к API", (
-      '<div class="field"><label for="sheetKey">API-ключ или временный пропуск</label>' +
+      '<div class="field"><label for="sheetKey">' + t('API-ключ или временный пропуск') + '</label>' +
       '<input type="password" id="sheetKey" value="' + esc(api.key) + '" autocomplete="off" placeholder="X-API-Key"></div>' +
-      '<div class="note">Ключ хранится только в этом браузере и уходит лишь на этот сервис. ' +
-      "Ссылка из КМС приносит временный пропуск — вводить ничего не нужно.</div>" +
-      '<div class="btn-row"><button class="btn" id="sheetKeySave" type="button">Сохранить</button>' +
-      '<a class="btn secondary" href="/docs" target="_blank" rel="noopener">Справочник API</a></div>'
+      '<div class="note">' +
+      t("Ключ хранится только в этом браузере и уходит лишь на этот сервис. Ссылка из КМС приносит "
+        + "временный пропуск — вводить ничего не нужно.") + "</div>" +
+      '<div class="btn-row"><button class="btn" id="sheetKeySave" type="button">' + t('Сохранить') + '</button>' +
+      '<a class="btn secondary" href="/docs" target="_blank" rel="noopener">' + t('Справочник API') + '</a></div>'
     ));
     var save = $("sheetKeySave");
     if (save) save.addEventListener("click", function () {
@@ -2610,15 +2701,15 @@
         // где ключа нет, и молча показывала пустой экран вместо приглашения.
         state.authRequired = Boolean(payload.checks && payload.checks.auth_enabled);
         if (state.authRequired && !api.key) {
-          setStatus("auth", "Нужен ключ");
+          setStatus("auth", t("Нужен ключ"));
           return false;
         }
-        setStatus("online", "API подключен");
+        setStatus("online", t("API подключен"));
         return true;
       })
       .catch(function () {
         state.online = false;
-        setStatus("offline", "Сервис недоступен");
+        setStatus("offline", t("Сервис недоступен"));
         return false;
       });
   }
@@ -2635,7 +2726,7 @@
         state.authRequired = true;
         state.logs = [];
         state.logId = "";
-        setStatus("auth", "Нужен ключ");
+        setStatus("auth", t("Нужен ключ"));
       } else if (error) {
         state.error = error.message;
       }

@@ -46,17 +46,37 @@ window.ProcMap = (function () {
     return node;
   }
 
+
+  /* Подписи берём у словаря консоли. Карту можно подключить и отдельно от
+   * неё - тогда словаря нет, и подпись остаётся русской: пустая всплывашка
+   * была бы хуже непереведённой. */
+  function t(key, params) {
+    if (window.PMI18n) return window.PMI18n.t(key, params);
+    return String(key).replace(/\{(\w+)\}/g, function (whole, name) {
+      return params && params[name] !== undefined ? params[name] : whole;
+    });
+  }
+
+  function unit(name) {
+    if (window.PMI18n) return window.PMI18n.unit(name);
+    return { s: "с", min: "мин", h: "ч", d: "дн.", mo: "мес." }[name];
+  }
+
+  function locale() {
+    return window.PMI18n ? window.PMI18n.locale : "ru-RU";
+  }
+
   function shortDuration(seconds) {
     if (seconds === null || seconds === undefined || isNaN(seconds)) return "";
     var s = Math.max(0, Number(seconds));
     var round = function (value, digits) {
-      return value.toLocaleString("ru-RU", { maximumFractionDigits: digits });
+      return value.toLocaleString(locale(), { maximumFractionDigits: digits });
     };
-    if (s < 60) return round(s, 0) + " с";
-    if (s < 3600) return round(s / 60, 0) + " мин";
-    if (s < 86400) return round(s / 3600, 1) + " ч";
-    if (s < 86400 * 30) return round(s / 86400, 1) + " дн.";
-    return round(s / (86400 * 30), 1) + " мес.";
+    if (s < 60) return round(s, 0) + " " + unit("s");
+    if (s < 3600) return round(s / 60, 0) + " " + unit("min");
+    if (s < 86400) return round(s / 3600, 1) + " " + unit("h");
+    if (s < 86400 * 30) return round(s / 86400, 1) + " " + unit("d");
+    return round(s / (86400 * 30), 1) + " " + unit("mo");
   }
 
   function shortCount(value) {
@@ -127,8 +147,8 @@ window.ProcMap = (function () {
         finished += ends[name];
         extra.push({ source: name, target: FINISH_ID, freq: ends[name], terminal: true });
       });
-      byId[START_ID] = { id: START_ID, label: "Начало процесса", kind: "start", freq: started, cases: started };
-      byId[FINISH_ID] = { id: FINISH_ID, label: "Конец процесса", kind: "finish", freq: finished, cases: finished };
+      byId[START_ID] = { id: START_ID, label: t("Начало процесса"), kind: "start", freq: started, cases: started };
+      byId[FINISH_ID] = { id: FINISH_ID, label: t("Конец процесса"), kind: "finish", freq: finished, cases: finished };
       ids.unshift(START_ID);
       ids.push(FINISH_ID);
     }
@@ -367,9 +387,10 @@ window.ProcMap = (function () {
         "marker-end": e.terminal ? "url(#pm-arrowSoft)"
           : (heavy ? "url(#pm-arrowHot)" : "url(#pm-arrow)"),
       });
-      path.appendChild(el("title", {}, a.label + " → " + b.label +
-        ": " + shortCount(e.freq) + (e.terminal ? " кейсов" : " переходов") +
-        (e.median ? ", медиана " + shortDuration(e.median) : "")));
+      path.appendChild(el("title", {}, (e.terminal
+        ? t("{from} → {to}: {count} кейсов", { from: a.label, to: b.label, count: shortCount(e.freq) })
+        : t("{from} → {to}: {count} переходов", { from: a.label, to: b.label, count: shortCount(e.freq) })) +
+        (e.median ? t(", медиана {median}", { median: shortDuration(e.median) }) : "")));
 
       if (options.onEdge && !e.terminal) {
         path.style.cursor = "pointer";
@@ -400,7 +421,7 @@ window.ProcMap = (function () {
           ((graph.start_activities || {})[n.id] ? " is-start" : "") +
           ((graph.end_activities || {})[n.id] ? " is-end" : ""));
         group.appendChild(el("circle", { cx: n.w / 2, cy: n.h / 2, r: n.w / 2 }));
-        group.appendChild(el("title", {}, "Позиция сети Петри"));
+        group.appendChild(el("title", {}, t("Позиция сети Петри")));
         nodeLayer.appendChild(group);
         return;
       }
@@ -408,7 +429,8 @@ window.ProcMap = (function () {
       if (n.kind === "silent") {
         group.setAttribute("class", "node-box is-silent");
         group.appendChild(el("rect", { width: n.w, height: n.h, rx: 6 }));
-        group.appendChild(el("title", {}, "Невидимый переход: нужен модели, событий в журнале ему не соответствует"));
+        group.appendChild(el("title", {},
+          t("Невидимый переход: нужен модели, событий в журнале ему не соответствует")));
         nodeLayer.appendChild(group);
         return;
       }
@@ -421,7 +443,7 @@ window.ProcMap = (function () {
           : el("rect", { class: "term-icon", x: 13, y: n.h / 2 - 4, width: 8, height: 8, rx: 1.5 }));
         group.appendChild(el("text", { class: "term-label", x: 37, y: n.h / 2 - 2 }, n.label));
         group.appendChild(el("text", { class: "term-count", x: 37, y: n.h / 2 + 12 },
-          shortCount(n.cases) + " кейсов"));
+          t("{count} кейсов", { count: shortCount(n.cases) })));
         nodeLayer.appendChild(group);
         return;
       }
@@ -448,16 +470,19 @@ window.ProcMap = (function () {
       // одном столбце: у последнего шага кейса ждать нечего, так и пишем.
       group.appendChild(el("text", { class: "node-metric", x: 55, y: n.h / 2 + 14 },
         byTime
-          ? (durations[n.id] !== undefined ? shortDuration(durations[n.id]) : "нет ожидания")
-          : shortCount(n.freq) + " событий"));
+          ? (durations[n.id] !== undefined ? shortDuration(durations[n.id]) : t("нет ожидания"))
+          : t("{count} событий", { count: shortCount(n.freq) })));
 
       group.appendChild(el("title", {}, n.label +
-        " — событий: " + shortCount(n.freq) + ", кейсов: " + shortCount(n.cases) +
-        (n.loop ? ", повторов подряд: " + shortCount(n.loop.freq) : "")));
+        t(" — событий: {events}, кейсов: {cases}", {
+          events: shortCount(n.freq), cases: shortCount(n.cases),
+        }) +
+        (n.loop ? t(", повторов подряд: {loops}", { loops: shortCount(n.loop.freq) }) : "")));
 
       if (n.loop) {
         var loop = el("path", { class: "map-edge self-loop", d: loopPath(n), "marker-end": "url(#pm-arrowHot)" });
-        loop.appendChild(el("title", {}, "Шаг повторяется подряд: " + shortCount(n.loop.freq) + " раз"));
+        loop.appendChild(el("title", {},
+          t("Шаг повторяется подряд: {count} раз", { count: shortCount(n.loop.freq) })));
         nodeLayer.appendChild(loop);
         nodeLayer.appendChild(el("text", {
           class: "map-edge-label is-loop", x: n.x + n.w + 24, y: n.y - 4,
