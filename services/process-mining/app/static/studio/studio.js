@@ -42,11 +42,16 @@
 
   // ------------------------------------------------------------ форматы
 
-  var locale = store.get("pm-studio-locale", "ru-RU");
+  /* Язык и формат чисел - одно и то же решение: переключивший интерфейс на
+   * английский ждёт и «1,234.5» вместо «1 234,5». Поэтому отдельной
+   * настройки формата больше нет, она идёт за языком. */
+  var i18n = window.PMI18n;
+  var t = i18n.t;
+  var plural = i18n.plural;
 
   function num(value, digits) {
     if (value === null || value === undefined || isNaN(value)) return "—";
-    return Number(value).toLocaleString(locale, {
+    return Number(value).toLocaleString(i18n.locale, {
       minimumFractionDigits: digits || 0, maximumFractionDigits: digits === undefined ? 0 : digits,
     });
   }
@@ -56,11 +61,11 @@
   function dur(seconds) {
     if (seconds === null || seconds === undefined || isNaN(seconds)) return "—";
     var s = Math.max(0, Number(seconds));
-    if (s < 60) return num(s, 0) + " с";
-    if (s < 3600) return num(s / 60, 0) + " мин";
-    if (s < 86400) return num(s / 3600, 1) + " ч";
-    if (s < 86400 * 30) return num(s / 86400, 1) + " дн.";
-    return num(s / (86400 * 30), 1) + " мес.";
+    if (s < 60) return num(s, 0) + " " + i18n.unit("s");
+    if (s < 3600) return num(s / 60, 0) + " " + i18n.unit("min");
+    if (s < 86400) return num(s / 3600, 1) + " " + i18n.unit("h");
+    if (s < 86400 * 30) return num(s / 86400, 1) + " " + i18n.unit("d");
+    return num(s / (86400 * 30), 1) + " " + i18n.unit("mo");
   }
 
   function pct(value, digits) {
@@ -72,14 +77,14 @@
     if (!value) return "—";
     var d = value instanceof Date ? value : new Date(value);
     if (isNaN(d)) return "—";
-    return d.toLocaleDateString(locale, { day: "numeric", month: "short" });
+    return d.toLocaleDateString(i18n.locale, { day: "numeric", month: "short" });
   }
 
   function dateTime(value) {
     if (!value) return "—";
     var d = value instanceof Date ? value : new Date(value);
     if (isNaN(d)) return "—";
-    return d.toLocaleString(locale, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleString(i18n.locale, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
   }
 
   function dayKey(date) {
@@ -642,6 +647,8 @@
 
   // ================================================================ разделы
 
+  /* Названия разделов переводятся при отрисовке, а не здесь: список строится
+   * один раз, а язык переключают на ходу. */
   var ROUTES = [
     { id: "overview", label: "Обзор процессов", icon: "overview", render: pageOverview },
     { id: "map", label: "Карта процесса", icon: "map", render: pageMap },
@@ -2306,13 +2313,13 @@
   function renderNav() {
     var current = currentRoute();
     $("railNav").innerHTML = ROUTES.map(function (route) {
-      if (route.group) return '<div class="nav-group">' + esc(route.group) + "</div>";
+      if (route.group) return '<div class="nav-group">' + esc(t(route.group)) + "</div>";
       var count = "";
       if (route.id === "cases" && state.cases.length) count = '<span class="nav-count">' + num(state.cases.length) + "</span>";
       if (route.id === "events" && state.events.length) count = '<span class="nav-count">' + num(state.events.length) + "</span>";
       if (route.id === "dashboards" && savedViews().length) count = '<span class="nav-count">' + savedViews().length + "</span>";
       return '<button class="nav-item' + (route.id === current ? " is-active" : "") + '" data-goto="' + route.id + '" type="button">' +
-        icon(route.icon) + "<span>" + esc(route.label) + "</span>" + count + "</button>";
+        icon(route.icon) + "<span>" + esc(t(route.label)) + "</span>" + count + "</button>";
     }).join("");
   }
 
@@ -2340,8 +2347,8 @@
     mapControl = null;
     view.innerHTML = route.render();
     renderNav();
-    $("crumb").textContent = route.label;
-    document.title = route.label + " — Process Mining Studio";
+    $("crumb").textContent = t(route.label);
+    document.title = t(route.label) + " — Process Mining Studio";
 
     var retry = $("retryLoad");
     if (retry) retry.addEventListener("click", function () { state.error = ""; boot(); });
@@ -2661,12 +2668,13 @@
     api.key = store.get("pm-api-key", "");
 
     var languageSelect = $("language");
-    languageSelect.value = locale.slice(0, 2);
+    languageSelect.value = i18n.lang;
     languageSelect.addEventListener("change", function (event) {
-      locale = ({ ru: "ru-RU", en: "en-US", kk: "kk-KZ" })[event.target.value] || "ru-RU";
-      store.set("pm-studio-locale", locale);
-      if (event.target.value !== "ru") toast("Интерфейс Studio пока только на русском; переключён формат чисел и дат.");
+      i18n.setLang(event.target.value);
+      // Перерисовываем всё: подписи разложены по разделам, и подменять их
+      // на месте пришлось бы тем же обходом дерева, от которого ушли.
       render();
+      paintChat();
     });
 
     $("railToggle").addEventListener("click", function () {

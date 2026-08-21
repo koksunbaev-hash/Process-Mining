@@ -164,7 +164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # /classic: ссылки на неё могли разойтись по закладкам и переписке, и
         # снимать её в тот же день, когда сменился корень, незачем.
         if STUDIO_DIR.exists():
-            studio_tag = _asset_tag(STUDIO_DIR, ("studio.js", "studio.css", "procmap.js"))
+            studio_tag = _asset_tag(STUDIO_DIR, ("studio.js", "studio.css", "procmap.js", "i18n.js"))
 
             # Несколько записей, а не редирект: адрес без косой черты человек
             # наберёт руками, с косой чертой его оставит браузер после перехода
