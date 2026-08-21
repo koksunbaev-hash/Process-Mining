@@ -22,6 +22,9 @@ class AssistantRequest(Base):
     question: str = Field(..., min_length=1, max_length=1000)
     history: list[AssistantTurn] = Field(default_factory=list, max_length=12)
     filters: LogFilters | None = None
+    # Язык ответа выбран в консоли; гадать по Accept-Language, споря с этим
+    # выбором, незачем. Незнакомый код - русский, а не ошибка.
+    lang: str = Field("ru", max_length=8)
 
 
 class AssistantResponse(Base):

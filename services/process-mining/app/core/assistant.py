@@ -81,9 +81,14 @@ SYSTEM = (
     "схему для сравнения нельзя.\n"
     "\n"
     "ОБЩЕЕ:\n"
-    "- Отвечай по-русски. Коротко, но не в ущерб делу: определение - два-три "
+    "- Отвечай {language}, о чём бы ни спрашивали и на каком бы языке ни "
+    "спросили. Коротко, но не в ущерб делу: определение - два-три "
     "предложения, разбор - несколько абзацев. Без разметки и списков-звёздочек.\n"
     "- Длительности пиши так, как их вернула функция.\n"
+    "- Названия этапов, машин и номера дел не переводи: это надписи на "
+    "оборудовании, человек ищет их глазами на экране.\n"
+    "- Функции отвечают по-русски - это внутренний язык данных, а не язык "
+    "ответа. Пересказывай их содержимое {language}.\n"
     "- Не выдумывай возможностей консоли, которых не знаешь: лучше сказать, "
     "что не уверен, где это искать."
 )
@@ -432,6 +437,37 @@ TOOL_SPECS: list[dict[str, Any]] = [
 ]
 
 
+# Что говорит сам сервис, когда модель не при чём: она не настроена, молчит
+# или ходит по кругу. Это не её текст, и переводить его ей незачем.
+SERVICE_TEXT: dict[str, dict[str, str]] = {
+    "not_configured": {
+        "ru": "Помощник не настроен: в сервисе не указана языковая модель.",
+        "kk": "Көмекші бапталмаған: сервисте тілдік модель көрсетілмеген.",
+        "en": "The assistant is not configured: no language model is set for the service.",
+    },
+    "ask_something": {
+        "ru": "Задайте вопрос по журналу.",
+        "kk": "Журнал бойынша сұрақ қойыңыз.",
+        "en": "Ask a question about the log.",
+    },
+    "unavailable": {
+        "ru": "Модель сейчас недоступна. Числа и графики на других вкладках работают.",
+        "kk": "Модель қазір қолжетімсіз. Басқа беттердегі сандар мен графиктер жұмыс істеп тұр.",
+        "en": "The model is unavailable right now. Numbers and charts on the other tabs still work.",
+    },
+    "empty": {
+        "ru": "Не удалось составить ответ - попробуйте спросить иначе.",
+        "kk": "Жауап құрастыру мүмкін болмады - басқаша сұрап көріңіз.",
+        "en": "Could not put together an answer — try asking differently.",
+    },
+    "looped": {
+        "ru": "Не получилось собрать ответ за отведённые шаги. Попробуйте спросить конкретнее.",
+        "kk": "Берілген қадамдарда жауап жинақталмады. Нақтырақ сұрап көріңіз.",
+        "en": "Could not assemble an answer within the allowed steps. Try asking more precisely.",
+    },
+}
+
+
 def call_tool(frame: pd.DataFrame, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Выполнить один инструмент. Любая осечка - это данные, а не исключение.
 
@@ -467,6 +503,7 @@ def ask(
     frame: pd.DataFrame | None,
     question: str,
     history: list[dict[str, str]] | None = None,
+    lang: str = "ru",
 ) -> dict[str, Any]:
     """Ответ на вопрос. Журнала может и не быть - тогда отвечаем по предмету.
 
@@ -475,18 +512,18 @@ def ask(
     данными, а не сочиняла. Пустой список у вопроса про цифры - повод не
     верить ответу; у вопроса «что такое process mining» - норма.
     """
+    lang = analyst_mod.normalize_lang(lang)
+    told = lambda key: SERVICE_TEXT[key][lang]
+
     if not llm.configured(settings):
-        return {
-            "available": False,
-            "answer": "Помощник не настроен: в сервисе не указана языковая модель.",
-            "steps": [],
-        }
+        return {"available": False, "answer": told("not_configured"), "steps": []}
     if not (question or "").strip():
-        return {"available": True, "answer": "Задайте вопрос по журналу.", "steps": []}
+        return {"available": True, "answer": told("ask_something"), "steps": []}
 
     has_log = frame is not None and not frame.empty
+    system = SYSTEM.format(language=analyst_mod.ANSWER_IN[lang])
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM if has_log else SYSTEM + NO_LOG}
+        {"role": "system", "content": system if has_log else system + NO_LOG}
     ]
     for turn in (history or [])[-6:]:
         role = turn.get("role")
@@ -503,19 +540,11 @@ def ask(
             settings, messages, tools=TOOL_SPECS if has_log else None, thinking=False
         )
         if message is None:
-            return {
-                "available": False,
-                "answer": "Модель сейчас недоступна. Числа и графики на других вкладках работают.",
-                "steps": steps,
-            }
+            return {"available": False, "answer": told("unavailable"), "steps": steps}
         calls = message.get("tool_calls") or []
         if not calls:
             answer = (message.get("content") or "").strip()
-            return {
-                "available": True,
-                "answer": answer or "Не удалось составить ответ - попробуйте спросить иначе.",
-                "steps": steps,
-            }
+            return {"available": True, "answer": answer or told("empty"), "steps": steps}
 
         messages.append(message)
         for call in calls:
@@ -534,8 +563,4 @@ def ask(
 
     # Круг замкнулся: модель ходит за данными и не переходит к ответу.
     # Честнее сказать об этом, чем показывать пустое поле.
-    return {
-        "available": True,
-        "answer": "Не получилось собрать ответ за отведённые шаги. Попробуйте спросить конкретнее.",
-        "steps": steps,
-    }
+    return {"available": True, "answer": told("looped"), "steps": steps}

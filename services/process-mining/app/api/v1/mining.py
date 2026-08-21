@@ -249,6 +249,7 @@ async def analyst(
     narrate: bool = Query(
         False, description="Пересказать сводку языковой моделью, если она настроена"
     ),
+    lang: str = Query("ru", description="Язык сводки: ru, kk или en"),
 ) -> Any:
     record = logs.require(log_id, tenant)
     return await jobs.run_blocking(
@@ -258,6 +259,7 @@ async def analyst(
         log_id=log_id,
         log_version=record.updated_at,
         narrate=narrate,
+        lang=lang,
     )
 
 
@@ -279,6 +281,8 @@ async def assistant_general(
         None,
         payload.question,
         [turn.model_dump() for turn in payload.history],
+        None,
+        payload.lang,
     )
 
 
@@ -305,6 +309,7 @@ async def assistant(
         payload.question,
         [turn.model_dump() for turn in payload.history],
         payload.filters,
+        payload.lang,
         log_id=log_id,
     )
 

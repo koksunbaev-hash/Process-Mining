@@ -308,7 +308,7 @@
       api.get("/api/v1/logs/" + id + "/variants?limit=25" + query),
       api.get("/api/v1/logs/" + id + "/bottlenecks?limit=25" + query),
       api.get("/api/v1/logs/" + id),
-      api.get("/api/v1/logs/" + id + "/analyst" + (query ? "?" + query.slice(1) : "")),
+      api.get("/api/v1/logs/" + id + "/analyst?lang=" + i18n.lang + query),
     ]).then(function (results) {
       if (state.logId !== id) return; // пользователь успел переключить журнал
       state.graph = results[0] && results[0].graph;
@@ -1634,9 +1634,9 @@
     // на общий маршрут, где у помощника нет функций к данным и он это знает.
     var request = hasData() && state.logId
       ? api.post("/api/v1/logs/" + state.logId + "/assistant", {
-          question: question, history: history, filters: filterBody(),
+          question: question, history: history, filters: filterBody(), lang: i18n.lang,
         })
-      : api.post("/api/v1/assistant", { question: question, history: history });
+      : api.post("/api/v1/assistant", { question: question, history: history, lang: i18n.lang });
 
     request.then(function (reply) {
       chatTurns.push({
@@ -1668,7 +1668,7 @@
     if (narrated === state.logId) return;
 
     var query = filterQuery();
-    api.get("/api/v1/logs/" + state.logId + "/analyst?narrate=1" + query)
+    api.get("/api/v1/logs/" + state.logId + "/analyst?narrate=1&lang=" + i18n.lang + query)
       .then(function (report) {
         if (!report || report.narrator !== "llm" || currentRoute() !== "analyst") return;
         narrated = state.logId;
@@ -2294,6 +2294,7 @@
     var setLang = $("setLang");
     if (setLang) setLang.addEventListener("change", function () {
       i18n.setLang(setLang.value);
+      narrated = "";
       $("language").value = i18n.lang;
       render();
       paintChat();
@@ -2762,6 +2763,7 @@
     languageSelect.value = i18n.lang;
     languageSelect.addEventListener("change", function (event) {
       i18n.setLang(event.target.value);
+      narrated = "";
       // Перерисовываем всё: подписи разложены по разделам, и подменять их
       // на месте пришлось бы тем же обходом дерева, от которого ушли.
       render();

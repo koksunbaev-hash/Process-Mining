@@ -177,11 +177,12 @@ class MiningService:
         log_id: str | None = None,
         log_version: Any = None,
         narrate: bool = False,
+        lang: str = "ru",
     ) -> dict[str, Any]:
         # Пересказ моделью просят отдельно и потом: он идёт секунды, а экран
         # должен открыться сразу. Шаблонная сводка приходит первой и остаётся,
         # если модель не ответит.
-        key = self._key(log_id, log_version, "analyst", _dump(filters), narrate)
+        key = self._key(log_id, log_version, "analyst", _dump(filters), narrate, lang)
         cached = self.cache.get(key)
         if cached is not None:
             return cached
@@ -189,10 +190,10 @@ class MiningService:
         # Модель - украшение, а не условие. Молчит, отвалилась, выключена -
         # берём шаблоны и не показываем пользователю чужую поломку. Читателю
         # всё же говорим, чьими словами написано: доверие к тексту разное.
-        digest = analyst_mod.narrate(self.settings, analysis) if narrate else None
+        digest = analyst_mod.narrate(self.settings, analysis, lang) if narrate else None
         narrator = "llm" if digest else "templates"
         if not digest:
-            digest = analyst_mod.compose_digest(analysis)
+            digest = analyst_mod.compose_digest(analysis, lang)
         result = {
             "log_id": log_id,
             "digest": digest,
@@ -210,6 +211,7 @@ class MiningService:
         question: str,
         history: list[dict[str, str]] | None = None,
         filters: LogFilters | None = None,
+        lang: str = "ru",
         *,
         log_id: str | None = None,
     ) -> dict[str, Any]:
@@ -219,7 +221,7 @@ class MiningService:
         Без кэша: один и тот же вопрос, заданный дважды, - обычно уточнение,
         а не повтор, и старый ответ тут мешает."""
         scoped = apply_filters(frame, filters) if frame is not None else None
-        result = assistant_mod.ask(self.settings, scoped, question, history)
+        result = assistant_mod.ask(self.settings, scoped, question, history, lang)
         result["log_id"] = log_id
         return result
 
