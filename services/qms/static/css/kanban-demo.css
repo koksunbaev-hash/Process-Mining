@@ -133,6 +133,7 @@ body.kanban-holding .kanban-card { touch-action: none; }
   .kanban-card-actions .secondary { min-height: 44px; padding: 8px 10px; font-size: 13px; }
   .kanban-card { padding: 12px; }
   .kanban-card__id { font-size: 17px; }
+  .kanban-card__id i { font-size: 12.5px; }
   .kanban-column-search input { min-height: 40px; font-size: 15px; }
   /* 16px - порог, ниже которого Safari сам зумит страницу на фокусе поля. */
   .kanban-filters input, .kanban-filters select { min-height: 44px; font-size: 16px; }
@@ -369,13 +370,23 @@ body.kanban-dragging .kanban-lane.drop-refused { cursor: not-allowed; }
 }
 .kanban-head__load.is-full { color: #a3182a; border-color: #f0c9ce; background: #fdf1f2; }
 
-/* Номер партии и её день - одним блоком: день читается тише номера, но стоит
-   вплотную к нему, потому что порознь они партию не называют. */
-.kanban-card__id { display: inline-flex; align-items: baseline; gap: 5px; }
+/* Номер партии и её день - один знак, а не число со сноской.
+
+   Нумерация начинается заново каждый производственный день, а на доске
+   лежит вся неделя: «01» там встречается столько раз, сколько дней на
+   доске. Партию называет только пара «номер + день», поэтому они стоят в
+   одной плашке и разделены чертой - прочитать одно, не увидев второго,
+   уже нельзя. День тише числа, но не шёпотом: его должно быть видно. */
+.kanban-card__id {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 2px 8px; border-radius: 8px;
+  background: #eef1f8; border: 1px solid #e0e6f1;
+}
 .kanban-card__id b { font-weight: 700; }
 .kanban-card__id i {
-  font-style: normal; font-weight: 600; font-size: 10.5px; color: #8592ab;
+  font-style: normal; font-weight: 600; font-size: 11.5px; color: #5a6a89;
   font-variant-numeric: tabular-nums;
+  padding-left: 6px; border-left: 1px solid #ccd5e6;
 }
 .kanban-card__flags { display: flex; flex-wrap: wrap; gap: 4px; }
 .kanban-card__flag.is-demo { background: #eef1f8; color: #8a95ab; font-weight: 500; }

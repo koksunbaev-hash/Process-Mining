@@ -80,13 +80,15 @@
               текущая неделя.
               {% endcomment %}
               {% if batch.is_group %}
-                <span class="kanban-card__id" title="Технический номер: {{ batch.first_batch.batch_number }}">
+                <span class="kanban-card__id"
+                      title="Партия {{ batch.first_batch.display_batch_label }} · технический номер: {{ batch.first_batch.batch_number }}">
                   <b>{{ batch.first_batch.display_batch_number }}</b>
                   <i>{{ batch.first_batch.display_batch_date|date:"d.m" }}</i>
                 </span>
                 <span class="kanban-card__batch-ref">Заказ №{{ batch.order.order_number }} · {{ batch.batches|length }} поз.</span>
               {% else %}
-                <span class="kanban-card__id" title="Технический номер: {{ batch.batch_number }}">
+                <span class="kanban-card__id"
+                      title="Партия {{ batch.display_batch_label }} · технический номер: {{ batch.batch_number }}">
                   <b>{{ batch.display_batch_number }}</b>
                   <i>{{ batch.display_batch_date|date:"d.m" }}</i>
                 </span>
