@@ -221,6 +221,20 @@
 
       drag.card.classList.add("dragging");
       drag.card.style.width = box.width + "px";
+
+      // Рамки контейнеров снимаются один раз за перенос. Дальше они не
+      // меняются: карточка вынута из потока, её место держит пустышка, а
+      // автопрокрутка двигает содержимое, а не сам контейнер. Читать их
+      // каждый кадр - значит каждый кадр заставлять браузер пересчитывать
+      // раскладку сразу после того, как мы её тронули.
+      drag.board = document.querySelector("[data-kanban-board]");
+      drag.boardBox = drag.board ? drag.board.getBoundingClientRect() : null;
+      drag.laneBoxes = new Map();
+      drag.homeLane = drag.home.closest(".kanban-lane");
+      drag.highlight = null;
+      drag.hitX = undefined;
+      drag.hitY = undefined;
+      drag.lane = null;
       // Точка отсчёта задаётся один раз координатами, дальше карточка едет
       // трансформацией: left/top пересчитывают раскладку всей доски каждый
       // кадр, translate3d - только слой самой карточки. На доске из трёх
@@ -248,18 +262,39 @@
     const x = drag.pendingX;
     const y = drag.pendingY;
 
+    // Наклон дописан сюда же: css задаёт его на .dragging, но inline-стиль
+    // перекрывает правило целиком, и без этого карточка ехала прямой.
     drag.card.style.transform =
       "translate3d(" + (x - drag.offsetX - drag.originX) + "px," +
-      (y - drag.offsetY - drag.originY) + "px,0)";
+      (y - drag.offsetY - drag.originY) + "px,0) rotate(1deg)";
 
-    const lane = laneAt(x, y);
-    clearDropTargets(lane);
-    if (lane && lane !== drag.home.closest(".kanban-lane")) {
-      // Занятое устройство подсвечивается отказом, а не приглашением: на нём
-      // помещается одна партия, и узнать об этом лучше до броска.
-      lane.classList.add(laneRefusal(lane) ? "drop-refused" : "drop-target");
+    // Испытание точки - самая дорогая работа кадра: браузер обходит дерево и
+    // ищет, что под пальцем. Дорожки шириной в сотни пикселей, и переспрашивать
+    // на каждый пиксель незачем: пока палец не ушёл на восемь, ответ тот же.
+    // Карточка при этом едет каждый кадр - за пальцем она не отстаёт.
+    const moved = Math.abs(x - drag.hitX) + Math.abs(y - drag.hitY);
+    if (moved >= 8 || drag.hitX === undefined) {
+      drag.hitX = x;
+      drag.hitY = y;
+      drag.lane = laneAt(x, y);
     }
-    drag.target = lane;
+    const lane = drag.lane;
+    if (lane !== drag.target) {
+      // Подсветка трогается только на смене дорожки. Класс на элементе - это
+      // пересчёт стиля и перерисовка полосы с тенью; делать это шестьдесят
+      // раз в секунду, пока палец ходит внутри одной дорожки, незачем.
+      if (drag.highlight) {
+        drag.highlight.classList.remove("drop-target", "drop-refused");
+        drag.highlight = null;
+      }
+      if (lane && lane !== drag.homeLane) {
+        // Занятое устройство подсвечивается отказом, а не приглашением: на нём
+        // помещается одна партия, и узнать об этом лучше до броска.
+        lane.classList.add(laneRefusal(lane) ? "drop-refused" : "drop-target");
+        drag.highlight = lane;
+      }
+      drag.target = lane;
+    }
     updateAutoScroll(lane, x, y);
   }
 
@@ -275,24 +310,62 @@
    */
   let autoScroll = null;
 
-  function edgeSpeed(near, far, position, zone) {
-    if (position < near + zone) return -Math.ceil((near + zone - position) / 5);
-    if (position > far - zone) return Math.ceil((position - (far - zone)) / 5);
+  /* Краевая полоса и скорость - доли контейнера, а не пиксели.
+   *
+   * Семьдесят два пикселя на широкой доске - это узкая кромка, а на телефоне
+   * шириной в триста пятьдесят - почти половина экрана: палец почти всюду
+   * запускал прокрутку, и доска убегала из-под карточки. Скорость так же:
+   * пятнадцать пикселей за кадр - это девятьсот в секунду, две с половиной
+   * ширины телефона. Считаем от размера - и на любом экране прокрутка идёт
+   * примерно одинаково быстро относительно того, что человек видит.
+   */
+  function clamp(value, low, high) {
+    return Math.min(high, Math.max(low, value));
+  }
+
+  // Доли подобраны так, чтобы прокрутка проходила контейнер примерно за
+  // секунду на любом экране: и на телефоне в 347 пикселей, и на доске в
+  // 1400. Полоса - около четверти на маленьком экране и десятой части на
+  // большом; там, где экран узкий, без неё до соседней колонки не добраться.
+  function edgeZone(size) {
+    return clamp(size * 0.12, 28, 56);
+  }
+
+  function edgeSpeed(near, far, position, size) {
+    const zone = edgeZone(size);
+    const top = clamp(size * 0.015, 3, 12);
+    if (position < near + zone) {
+      return -Math.ceil((near + zone - position) / zone * top);
+    }
+    if (position > far - zone) {
+      return Math.ceil((position - (far - zone)) / zone * top);
+    }
     return 0;
+  }
+
+  function boxOf(element) {
+    // Рамка контейнера за перенос не меняется - снимаем один раз и помним.
+    if (!drag) return element.getBoundingClientRect();
+    let box = drag.laneBoxes.get(element);
+    if (!box) {
+      box = element.getBoundingClientRect();
+      drag.laneBoxes.set(element, box);
+    }
+    return box;
   }
 
   function updateAutoScroll(lane, x, y) {
     const vertical = lane ? lane.closest(".kanban-lanes") : null;
-    const board = document.querySelector("[data-kanban-board]");
+    const board = drag ? drag.board : document.querySelector("[data-kanban-board]");
     const jobs = [];
     if (vertical) {
-      const box = vertical.getBoundingClientRect();
-      const speed = edgeSpeed(box.top, box.bottom, y, 56);
+      const box = boxOf(vertical);
+      const speed = edgeSpeed(box.top, box.bottom, y, box.height);
       if (speed) jobs.push({ element: vertical, axis: "scrollTop", speed });
     }
     if (board) {
-      const box = board.getBoundingClientRect();
-      const speed = edgeSpeed(box.left, box.right, x, 72);
+      const box = drag && drag.boardBox ? drag.boardBox : board.getBoundingClientRect();
+      const speed = edgeSpeed(box.left, box.right, x, box.width);
       if (speed) jobs.push({ element: board, axis: "scrollLeft", speed });
     }
     if (!jobs.length) {
@@ -361,7 +434,7 @@
 
   async function endDrag(event) {
     if (!drag || event.pointerId !== drag.id) return;
-    const { card, home, next, target, active, frame } = drag;
+    const { card, home, next, target, active, frame, highlight } = drag;
     cancelHold();
     if (frame) cancelAnimationFrame(frame);
     drag = null;
@@ -375,6 +448,8 @@
     card.style.transform = "";
     card.style.willChange = "";
     document.body.classList.remove("kanban-dragging");
+    if (highlight) highlight.classList.remove("drop-target", "drop-refused");
+    // Подчистка на всякий случай: подсветку мог оставить прерванный перенос.
     clearDropTargets(null);
     stopAutoScroll();
 
@@ -457,6 +532,14 @@
   // ровно поверх карточки, которую в этот момент берут в руку.
   document.addEventListener("contextmenu", (event) => {
     if (drag && drag.touch && event.target.closest(".kanban-card")) event.preventDefault();
+  });
+
+  // Поворот экрана и появление клавиатуры меняют раскладку под пальцем -
+  // запомненные рамки после этого врут, и прокрутка сходит с ума.
+  window.addEventListener("resize", () => {
+    if (!drag || !drag.active) return;
+    drag.laneBoxes.clear();
+    drag.boardBox = drag.board ? drag.board.getBoundingClientRect() : null;
   });
 
   document.addEventListener("pointermove", moveDrag);
