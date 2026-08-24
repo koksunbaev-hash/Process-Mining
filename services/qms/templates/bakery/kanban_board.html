@@ -121,7 +121,12 @@
               <span class="kanban-card__who">Общий производственный блок</span>
               {% else %}
               <span class="kanban-card__who" title="Ответственный">
-                {{ batch.assigned_to.get_full_name|default:batch.assigned_to.username|default:"не назначен" }}
+                {% comment %}
+                  Аргументом default нельзя брать batch.assigned_to.username:
+                  у партии без ответственного он не разрешается, и падает не
+                  карточка, а вся доска целиком.
+                {% endcomment %}
+                {% firstof batch.assigned_to.get_full_name batch.assigned_to.username "не назначен" %}
               </span>
               {% endif %}
               {% if batch.planned_finish %}<span class="kanban-card__due">{{ batch.planned_finish|date:"d.m H:i" }}</span>{% endif %}
