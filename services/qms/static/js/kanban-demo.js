@@ -628,7 +628,31 @@
   // which looks exactly like "the command did nothing".
   window.kanbanRefresh = () => refreshBoard();
 
+  /* Перерисовка отложена, пока палец на доске.
+
+     Проверка на самом refreshBoard, а не у вызывающих: дверей к перерисовке
+     несколько - серверные события, голосовой виджет, демо-панель, - и любую
+     из них можно забыть. Ожидание короткими шагами, а не по событию: жест
+     может закончиться и переносом, и простым нажатием, и Escape - единого
+     события «палец ушёл» у них нет. */
+  let refreshWaiter = 0;
+
+  function refreshHeld() {
+    return Boolean(drag) || movesInFlight > 0;
+  }
+
   async function refreshBoard() {
+    if (refreshHeld()) {
+      if (!refreshWaiter) {
+        refreshWaiter = window.setInterval(() => {
+          if (refreshHeld()) return;
+          window.clearInterval(refreshWaiter);
+          refreshWaiter = 0;
+          refreshBoard();
+        }, 250);
+      }
+      return;
+    }
     const shell = document.querySelector("[data-kanban-board-shell]");
     if (!shell) return;
     const url = new URL("/bakery/board/partial/", window.location.origin);
@@ -813,7 +837,7 @@
         pendingRefresh = true;
         return;
       }
-      if (document.querySelector(".kanban-card.dragging")) {
+      if (drag) {
         // Не просто return: lastMarker уже сдвинут, и второй раз этот повод не
         // придёт. Отброшенное здесь обновление доска потеряла бы навсегда -
         // именно так автообновление и «иногда не работало».

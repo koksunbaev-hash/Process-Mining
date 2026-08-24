@@ -22,4 +22,9 @@
   </div>
 </div>
 <script src="{% static 'js/kanban-demo.js' %}" defer></script>
+{% comment %}
+  Замер переноса для отладки на настоящем устройстве. Скрипт сам выключен,
+  пока в адресе нет ?debug=drag, - на рабочей доске он не делает ничего.
+{% endcomment %}
+<script src="{% static 'js/kanban-debug.js' %}" defer></script>
 {% endblock %}
