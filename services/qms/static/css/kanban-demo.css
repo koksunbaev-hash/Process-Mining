@@ -91,7 +91,12 @@
   animation: kanban-in .28s ease both;
   animation-delay: calc(min(var(--card-index, 0), 12) * 28ms);
 }
-.kanban-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15,35,75,.13); }
+/* Подъём под курсором - только там, где курсор есть. На стекле :hover
+   залипает на карточке, которой коснулись, и пока палец ведёт партию мимо
+   соседей, каждая из них поднимается и опускается со своей анимацией. */
+@media (hover: hover) {
+  .kanban-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15,35,75,.13); }
+}
 /* Карточка, которую тащат, вынута из потока и едет за курсором. fixed, а не
  * absolute: колонки прокручиваются, и при прокрутке она уезжала бы вместе с
  * содержимым, отставая от пальца. */
@@ -116,6 +121,10 @@ body.kanban-dragging { user-select: none; -webkit-user-select: none; }
    стоять должен намертво: иначе доска уезжает вместе с переносимой партией. */
 body.kanban-holding { touch-action: none; overscroll-behavior: none; }
 body.kanban-holding .kanban-card { touch-action: none; }
+/* Прокручиваемые контейнеры тоже: инерция iOS доигрывает уже после того, как
+   перенос начался, и доска продолжает ехать под неподвижной карточкой. */
+body.kanban-holding [data-kanban-board],
+body.kanban-holding .kanban-lanes { touch-action: none; overscroll-behavior: contain; }
 
 /* Палец лёг - карточка отзывается сразу, ещё до того, как поедет. Без этого
    триста миллисекунд удержания читаются как «не нажалось». */

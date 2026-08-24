@@ -246,7 +246,10 @@
       document.body.classList.add("kanban-dragging");
     }
 
-    event.preventDefault();
+    // Прокрутку это не отменяет - ею занимается слушатель touchmove ниже.
+    // Здесь отмена нужна ради совместимостных событий мыши: без неё касание
+    // порождает ещё и click, и карточка на отпускании открывает партию.
+    if (event.cancelable) event.preventDefault();
     // Палец шлёт события чаще, чем экран рисует кадры, а иногда и пачками.
     // Считать подсветку и прокрутку на каждое - работа впустую: до экрана
     // доедет только последнее. Копим и применяем раз в кадр.
@@ -541,6 +544,17 @@
     drag.laneBoxes.clear();
     drag.boardBox = drag.board ? drag.board.getBoundingClientRect() : null;
   });
+
+  /* Единственный способ удержать доску на месте под пальцем.
+   *
+   * Слушатель неленивый - иначе отмена молча ничего не сделает, - и висит на
+   * документе, потому что карточка уезжает из-под пальца, а касание всё равно
+   * адресовано ей. Отменяем только вооружённый перенос: пока карточку не
+   * взяли, тем же движением доску прокручивают, и жест принадлежит браузеру.
+   */
+  document.addEventListener("touchmove", (event) => {
+    if (drag && drag.armed && event.cancelable) event.preventDefault();
+  }, { passive: false });
 
   document.addEventListener("pointermove", moveDrag);
   document.addEventListener("pointerup", endDrag);
