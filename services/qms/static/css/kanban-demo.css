@@ -126,6 +126,16 @@ body.kanban-holding .kanban-card { touch-action: none; }
 body.kanban-holding [data-kanban-board],
 body.kanban-holding .kanban-lanes { touch-action: none; overscroll-behavior: contain; }
 
+/* Прилипание колонок на время переноса выключается.
+
+   Просматривать доску с ним удобно: колонка сама встаёт на место. Но во
+   время переноса оно спорит с автопрокруткой - скрипт сдвигает доску на
+   несколько пикселей, а привязка тут же отматывает её обратно к началу
+   колонки. Внутри колонки этого не видно, потому что прокрутки нет; рвётся
+   ровно тогда, когда карточку ведут к соседней. */
+body.kanban-holding .kanban-board,
+body.kanban-holding [data-kanban-board] { scroll-snap-type: none; }
+
 /* Палец лёг - карточка отзывается сразу, ещё до того, как поедет. Без этого
    триста миллисекунд удержания читаются как «не нажалось». */
 .kanban-card.is-holding { transform: scale(0.98); transition: transform .12s ease; }

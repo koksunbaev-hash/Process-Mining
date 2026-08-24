@@ -142,6 +142,7 @@
       home: card.parentElement,
       next: card.nextElementSibling,
       active: false,
+      loop: 0,
       touch: isTouch(event),
       // Мышь вооружена сразу, палец - после удержания.
       armed: !isTouch(event),
@@ -235,6 +236,9 @@
       drag.hitX = undefined;
       drag.hitY = undefined;
       drag.lane = null;
+      drag.drawnX = undefined;
+      drag.drawnY = undefined;
+      drag.scrollRest = { x: 0, y: 0 };
       // Точка отсчёта задаётся один раз координатами, дальше карточка едет
       // трансформацией: left/top пересчитывают раскладку всей доски каждый
       // кадр, translate3d - только слой самой карточки. На доске из трёх
@@ -244,6 +248,9 @@
       drag.card.style.top = box.top + "px";
       drag.card.style.willChange = "transform";
       document.body.classList.add("kanban-dragging");
+      // Цикл заводится ниже, уже после того, как записаны координаты пальца:
+      // заведённый здесь, он успевал сделать первый кадр по пустым pendingX
+      // и pendingY - и падал на испытании точки с нечисловыми координатами.
     }
 
     // Прокрутку это не отменяет - ею занимается слушатель touchmove ниже.
@@ -255,28 +262,58 @@
     // доедет только последнее. Копим и применяем раз в кадр.
     drag.pendingX = event.clientX;
     drag.pendingY = event.clientY;
-    if (drag.frame) return;
-    drag.frame = requestAnimationFrame(applyDragFrame);
+    startDragLoop();
   }
 
-  function applyDragFrame() {
+  /* Один цикл на весь перенос.
+   *
+   * Он крутится, пока карточку держат, - даже когда палец стоит. У края
+   * доски он как раз и стоит, ожидая, пока подъедет соседняя колонка: если
+   * ждать событий движения, доска будет ехать, а попадание под пальцем
+   * считаться по старым координатам. И прокрутка, и карточка обновляются
+   * здесь, в одном кадре, - порознь они расходились.
+   */
+  function startDragLoop() {
+    if (!drag || !drag.active || drag.loop) return;
+    drag.lastFrame = 0;
+    const tick = (now) => {
+      if (!drag || !drag.active) return;
+      // Долгий кадр не должен превращаться в прыжок: вкладку свернули,
+      // браузер задумался - ограничиваем шаг четырьмя кадрами.
+      const step = drag.lastFrame ? Math.min(now - drag.lastFrame, 64) : 16;
+      drag.lastFrame = now;
+      drag.loop = requestAnimationFrame(tick);
+      applyDragFrame(step);
+    };
+    drag.loop = requestAnimationFrame(tick);
+  }
+
+  function applyDragFrame(elapsed) {
     if (!drag || !drag.active) return;
-    drag.frame = 0;
     const x = drag.pendingX;
     const y = drag.pendingY;
+    const scrolled = runAutoScroll(x, y, elapsed);
 
     // Наклон дописан сюда же: css задаёт его на .dragging, но inline-стиль
     // перекрывает правило целиком, и без этого карточка ехала прямой.
-    drag.card.style.transform =
-      "translate3d(" + (x - drag.offsetX - drag.originX) + "px," +
-      (y - drag.offsetY - drag.originY) + "px,0) rotate(1deg)";
+    // Пишем только на новых координатах: цикл крутится каждый кадр, а палец
+    // у края стоит, и переписывать одно и то же значение стиля незачем.
+    if (x !== drag.drawnX || y !== drag.drawnY) {
+      drag.drawnX = x;
+      drag.drawnY = y;
+      drag.card.style.transform =
+        "translate3d(" + (x - drag.offsetX - drag.originX) + "px," +
+        (y - drag.offsetY - drag.originY) + "px,0) rotate(1deg)";
+    }
 
     // Испытание точки - самая дорогая работа кадра: браузер обходит дерево и
     // ищет, что под пальцем. Дорожки шириной в сотни пикселей, и переспрашивать
     // на каждый пиксель незачем: пока палец не ушёл на восемь, ответ тот же.
     // Карточка при этом едет каждый кадр - за пальцем она не отстаёт.
+    // Испытывать точку заново нужно и когда доска уехала: палец на месте, а
+    // дорожки под ним - уже другие.
     const moved = Math.abs(x - drag.hitX) + Math.abs(y - drag.hitY);
-    if (moved >= 8 || drag.hitX === undefined) {
+    if (moved >= 8 || scrolled || drag.hitX === undefined) {
       drag.hitX = x;
       drag.hitY = y;
       drag.lane = laneAt(x, y);
@@ -298,7 +335,6 @@
       }
       drag.target = lane;
     }
-    updateAutoScroll(lane, x, y);
   }
 
   /* Прокрутка под курсором во время переноса.
@@ -311,8 +347,6 @@
    * Скорость растёт по мере захода в краевую полосу: у самой границы - быстро,
    * на её краю - едва заметно, чтобы можно было остановиться там, где нужно.
    */
-  let autoScroll = null;
-
   /* Краевая полоса и скорость - доли контейнера, а не пиксели.
    *
    * Семьдесят два пикселя на широкой доске - это узкая кромка, а на телефоне
@@ -334,14 +368,20 @@
     return clamp(size * 0.12, 28, 56);
   }
 
+  /* Скорость - в пикселях в секунду, а не за кадр.
+   *
+   * За кадр было удобно, пока кадры ровные. Пропущенный кадр при этом даёт
+   * рывок на двойную величину, и на слабом телефоне прокрутка идёт
+   * ступеньками. От времени - идёт ровно при любой частоте.
+   */
   function edgeSpeed(near, far, position, size) {
     const zone = edgeZone(size);
-    const top = clamp(size * 0.015, 3, 12);
+    const top = clamp(size * 0.9, 180, 720);
     if (position < near + zone) {
-      return -Math.ceil((near + zone - position) / zone * top);
+      return -((near + zone - position) / zone) * top;
     }
     if (position > far - zone) {
-      return Math.ceil((position - (far - zone)) / zone * top);
+      return ((position - (far - zone)) / zone) * top;
     }
     return 0;
   }
@@ -357,41 +397,44 @@
     return box;
   }
 
-  function updateAutoScroll(lane, x, y) {
-    const vertical = lane ? lane.closest(".kanban-lanes") : null;
-    const board = drag ? drag.board : document.querySelector("[data-kanban-board]");
-    const jobs = [];
+  /* Сдвинуть доску под пальцем. Возвращает, уехала ли она на самом деле.
+
+     Дробный остаток копится: у края полосы скорость невелика, и без него
+     каждый кадр округлялся бы в ноль - прокрутка бы просто стояла. */
+  function shift(element, axis, speed, elapsed, rest, key) {
+    const wanted = speed * elapsed / 1000 + rest[key];
+    const whole = Math.trunc(wanted);
+    rest[key] = wanted - whole;
+    if (!whole) return false;
+    const before = element[axis];
+    element[axis] = before + whole;
+    // Доска могла упереться в край - тогда ничего не двинулось, и
+    // переспрашивать попадание незачем.
+    return element[axis] !== before;
+  }
+
+  function runAutoScroll(x, y, elapsed) {
+    if (!drag) return false;
+    const rest = drag.scrollRest;
+    let moved = false;
+
+    const vertical = drag.lane ? drag.lane.closest(".kanban-lanes") : null;
     if (vertical) {
       const box = boxOf(vertical);
       const speed = edgeSpeed(box.top, box.bottom, y, box.height);
-      if (speed) jobs.push({ element: vertical, axis: "scrollTop", speed });
+      if (speed) moved = shift(vertical, "scrollTop", speed, elapsed, rest, "y") || moved;
+      else rest.y = 0;
+    } else {
+      rest.y = 0;
     }
-    if (board) {
-      const box = drag && drag.boardBox ? drag.boardBox : board.getBoundingClientRect();
-      const speed = edgeSpeed(box.left, box.right, x, box.width);
-      if (speed) jobs.push({ element: board, axis: "scrollLeft", speed });
-    }
-    if (!jobs.length) {
-      stopAutoScroll();
-      return;
-    }
-    if (autoScroll) {
-      autoScroll.jobs = jobs;
-      return;
-    }
-    autoScroll = { jobs };
-    const step = () => {
-      if (!autoScroll) return;
-      autoScroll.jobs.forEach((job) => { job.element[job.axis] += job.speed; });
-      autoScroll.frame = window.requestAnimationFrame(step);
-    };
-    autoScroll.frame = window.requestAnimationFrame(step);
-  }
 
-  function stopAutoScroll() {
-    if (!autoScroll) return;
-    window.cancelAnimationFrame(autoScroll.frame);
-    autoScroll = null;
+    if (drag.board && drag.boardBox) {
+      const box = drag.boardBox;
+      const speed = edgeSpeed(box.left, box.right, x, box.width);
+      if (speed) moved = shift(drag.board, "scrollLeft", speed, elapsed, rest, "x") || moved;
+      else rest.x = 0;
+    }
+    return moved;
   }
 
   /* Почему бросок сюда невозможен, или пустая строка. */
@@ -437,9 +480,9 @@
 
   async function endDrag(event) {
     if (!drag || event.pointerId !== drag.id) return;
-    const { card, home, next, target, active, frame, highlight } = drag;
+    const { card, home, next, target, active, loop, highlight } = drag;
     cancelHold();
-    if (frame) cancelAnimationFrame(frame);
+    if (loop) cancelAnimationFrame(loop);
     drag = null;
     card.classList.remove("is-armed");
     document.body.classList.remove("kanban-holding");
@@ -454,7 +497,6 @@
     if (highlight) highlight.classList.remove("drop-target", "drop-refused");
     // Подчистка на всякий случай: подсветку мог оставить прерванный перенос.
     clearDropTargets(null);
-    stopAutoScroll();
 
     const ghost = document.querySelector(".kanban-ghost");
     const homeLane = home.closest(".kanban-lane");
@@ -563,7 +605,9 @@
     if (event.key !== "Escape" || !drag || !drag.active) return;
     const { card, home, next } = drag;
     cancelHold();
-    if (drag.frame) cancelAnimationFrame(drag.frame);
+    if (drag.loop) cancelAnimationFrame(drag.loop);
+    // Подсветку снимает clearDropTargets ниже - отдельного цикла прокрутки,
+    // который надо было бы гасить, больше нет.
     drag = null;
     card.classList.remove("dragging", "is-armed");
     card.style.transform = "";
@@ -572,7 +616,6 @@
     card.style.left = card.style.top = card.style.width = "";
     document.body.classList.remove("kanban-dragging");
     clearDropTargets(null);
-    stopAutoScroll();
     const ghost = document.querySelector(".kanban-ghost");
     if (ghost) ghost.remove();
     if (next) home.insertBefore(card, next);
