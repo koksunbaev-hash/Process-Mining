@@ -27,6 +27,38 @@ def log_order_event(order, message, event_type="info", user=None, batch=None):
     return OrderEvent.objects.create(order=order, batch=batch, event_type=event_type, message=message, created_by=user)
 
 
+# Партия ушла с доски - её число снова свободно. Всё остальное занято:
+# завершённую и отменённую смена уже не ищет, а любую другую может.
+CLOSED_BATCH_STATUSES = ("completed", "cancelled")
+
+
+def numbers_busy_on_board(exclude_date=None, exclude_order=None):
+    """Числа, занятые незакрытыми партиями других дней.
+
+    Именно других: внутри одного дня порядок и так возрастающий, а вот
+    вчерашняя партия, не дошедшая до «Готово», честно держит своё число -
+    оно написано мелом на её тележке.
+    """
+    rows = (
+        ProductionBatch.objects.exclude(status__in=CLOSED_BATCH_STATUSES)
+        .exclude(daily_card_number=None)
+        .exclude(is_demo=True)
+    )
+    if exclude_date is not None:
+        rows = rows.exclude(card_number_date=exclude_date)
+    if exclude_order is not None:
+        rows = rows.exclude(order_item__order=exclude_order)
+    return set(rows.values_list("daily_card_number", flat=True))
+
+
+def next_free_number(current, busy):
+    """Следующее число, которого нет на доске."""
+    candidate = current + 1
+    while candidate in busy:
+        candidate += 1
+    return candidate
+
+
 def assign_daily_batch_number(order):
     """Give one visible production-party number to the whole order block.
 
@@ -88,9 +120,13 @@ def assign_batch_card_numbers(order, batches):
         .aggregate(value=Max("daily_batch_number"))["value"]
         or 0,
     )
+    # Числа, которые держат незакрытые партии прошлых дней. Свой заказ
+    # исключаем: его собственные карточки сейчас как раз перенумеровываются.
+    busy = numbers_busy_on_board(exclude_date=production_date, exclude_order=order)
+
     first_number = None
     if order.kanban_grouped:
-        current += 1
+        current = next_free_number(current, busy)
         for batch in batches:
             batch.daily_card_number = current
             batch.card_number_date = production_date
@@ -98,7 +134,7 @@ def assign_batch_card_numbers(order, batches):
         first_number = current
     else:
         for batch in batches:
-            current += 1
+            current = next_free_number(current, busy)
             batch.daily_card_number = current
             batch.card_number_date = production_date
             batch.save(update_fields=["daily_card_number", "card_number_date", "updated_at"])

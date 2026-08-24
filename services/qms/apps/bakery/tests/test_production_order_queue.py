@@ -116,23 +116,55 @@ class ProductionOrderQueueTests(TestCase):
             ProductionBatch.objects.filter(order_item__order=order).exclude(current_stage=mixing).exists()
         )
 
+    def queue_for(self, production_date):
+        self.client.post(
+            reverse("bakery:production_sheet"),
+            {
+                "date": production_date.isoformat(),
+                f"plan_{self.product.pk}": "20",
+                f"queue_quantity_{self.product.pk}": "20",
+                "queue_product": str(self.product.pk),
+            },
+        )
+
     def test_visible_batch_number_restarts_for_each_production_day(self):
+        """Вчера закрыто - завтрашний день снова начинается с 01.
+
+        Ради этого нумерация и дневная: номер называют вслух и пишут мелом,
+        и он должен оставаться двузначным.
+        """
         today = timezone.localdate()
         tomorrow = today + timedelta(days=1)
-        for production_date in (today, tomorrow):
-            self.client.post(
-                reverse("bakery:production_sheet"),
-                {
-                    "date": production_date.isoformat(),
-                    f"plan_{self.product.pk}": "20",
-                    f"queue_quantity_{self.product.pk}": "20",
-                    "queue_product": str(self.product.pk),
-                },
-            )
+
+        self.queue_for(today)
+        # Смена закончена: партии ушли с доски и освободили свои числа.
+        ProductionBatch.objects.update(status=ProductionBatch.Status.COMPLETED)
+        self.queue_for(tomorrow)
 
         orders = list(ProductionOrder.objects.order_by("batch_number_date"))
         self.assertEqual([order.display_batch_number for order in orders], ["01", "01"])
         self.assertNotEqual(orders[0].batch_number_date, orders[1].batch_number_date)
+
+    def test_a_carried_over_batch_keeps_its_number_and_the_next_day_steps_over(self):
+        """Компромисс: счёт дневной, но занятые доской числа пропускаются.
+
+        Партия, не закрытая вчера, лежит на доске и сегодня - её «01»
+        написано мелом на тележке. Если завтрашняя нумерация начнёт с того
+        же «01», на доске окажутся два одинаковых числа: путается и смена,
+        и разбор голосовых команд. Такой день начинается с 02.
+        """
+        today = timezone.localdate()
+        tomorrow = today + timedelta(days=1)
+
+        self.queue_for(today)          # вчерашняя партия остаётся в очереди
+        self.queue_for(tomorrow)
+
+        orders = list(ProductionOrder.objects.order_by("batch_number_date"))
+        self.assertEqual([order.display_batch_number for order in orders], ["01", "02"])
+
+        active = ProductionBatch.objects.exclude(status__in=("completed", "cancelled"))
+        numbers = [batch.daily_card_number for batch in active]
+        self.assertEqual(len(numbers), len(set(numbers)), f"на доске повторился номер: {numbers}")
 
     def test_board_and_lists_name_the_batch_by_its_visible_number_and_day(self):
         """Один номер на всех страницах, и рядом с ним - его день.
