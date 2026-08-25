@@ -234,6 +234,11 @@ DITTO_BASE_URL = env("DITTO_BASE_URL", default="")
 DITTO_USERNAME = env("DITTO_USERNAME", default="ditto")
 DITTO_PASSWORD = env("DITTO_PASSWORD", default="ditto")
 DITTO_TIMEOUT_SECONDS = env("DITTO_TIMEOUT_SECONDS")
+# Куда внутри фичи product писать. "flat" - свойства прямо в properties,
+# так собран локальный стенд и его 3D-сцена. "value" - весь JSON одним
+# свойством properties/value: контракт публичного контура основного стенда
+# (dt.digitalegiz.kz), на который подписан его конвейер Ditto -> InfluxDB.
+DITTO_PRODUCT_STYLE = env("DITTO_PRODUCT_STYLE", default="flat")
 
 # Поток производственных событий в общий InfluxDB (influx.digitalegiz.kz).
 # Выключено по умолчанию; телеметрию счётчиков туда пишет Telegraf своим

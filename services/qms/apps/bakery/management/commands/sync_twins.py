@@ -13,7 +13,7 @@ import json
 from django.core.management.base import BaseCommand
 
 from apps.bakery.models import ProductionUnit
-from apps.bakery.twins import push_unit, twins_enabled, unit_product_payload
+from apps.bakery.twins import push_unit, twins_enabled, unit_payload
 
 
 class Command(BaseCommand):
@@ -39,7 +39,7 @@ class Command(BaseCommand):
         sent = 0
         for unit in units:
             if options["dry_run"]:
-                payload = json.dumps(unit_product_payload(unit), ensure_ascii=False)
+                payload = json.dumps(unit_payload(unit), ensure_ascii=False)
                 self.stdout.write(f"{unit.name} -> {unit.twin_id}: {payload}")
                 continue
             if push_unit(unit):

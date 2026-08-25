@@ -108,3 +108,105 @@ class TwinSyncTests(TestCase):
             with self.captureOnCommitCallbacks(execute=True):
                 assign_batch_to_unit(self.batch, self.mixer, user=self.user)
         thread_cls.assert_not_called()
+
+
+@override_settings(
+    DITTO_ENABLED=True, DITTO_BASE_URL="http://ditto.test", DITTO_PRODUCT_STYLE="value"
+)
+class ValueStyleTests(TwinSyncTests):
+    """Контракт публичного контура основного стенда (dt.digitalegiz.kz).
+
+    Каждое поле отсюда автоматически становится полем в InfluxDB, а Influx
+    фиксирует тип поля первой записью навсегда. Поэтому проверяются не только
+    значения, но и типы: количество однажды строкой - и числом оно уже не
+    станет никогда.
+    """
+
+    # Плоские тесты родителя здесь не о чем: payload другой. Переопределяем.
+    def test_payload_free_unit(self):
+        payload = twins.unit_product_value(self.mixer)
+        self.assertEqual(payload["status"], "свободно")
+        self.assertEqual(payload["product"], "")
+        self.assertEqual(payload["quantity"], 0)
+        self.assertEqual(payload["unit"], "")
+        self.assertEqual(payload["started_at"], "")
+
+    def test_payload_occupied_unit(self):
+        self.batch.production_unit = self.mixer
+        self.batch.save(update_fields=["production_unit"])
+        payload = twins.unit_product_value(self.mixer)
+        self.assertEqual(payload["product"], "Хлеб")
+        self.assertEqual(payload["quantity"], 10.0)
+        self.assertEqual(payload["unit"], "шт")
+        self.assertEqual(payload["customer"], "Кафе")
+
+    def test_quantity_is_a_number_in_both_states(self):
+        """Правило Influx: тип не должен зависеть от того, занята ли машина."""
+        free = twins.unit_product_value(self.mixer)
+        self.batch.production_unit = self.mixer
+        self.batch.save(update_fields=["production_unit"])
+        busy = twins.unit_product_value(self.mixer)
+        self.assertIsInstance(free["quantity"], (int, float))
+        self.assertIsInstance(busy["quantity"], (int, float))
+
+    def test_both_states_carry_the_same_keys(self):
+        """Набор полей всегда полный: пустота - это "" и 0, не пропуск ключа."""
+        free = set(twins.unit_product_value(self.mixer))
+        self.batch.production_unit = self.mixer
+        self.batch.save(update_fields=["production_unit"])
+        busy = set(twins.unit_product_value(self.mixer))
+        self.assertEqual(free, busy)
+
+    def test_dates_are_iso_not_human(self):
+        self.batch.production_unit = self.mixer
+        self.batch.actual_start = timezone.now()
+        self.batch.save(update_fields=["production_unit", "actual_start"])
+        payload = twins.unit_product_value(self.mixer)
+        self.assertIn("T", payload["updated_at"])
+        self.assertIn("T", payload["started_at"])
+        self.assertNotIn(".2026 ", payload["updated_at"])
+
+    def test_put_goes_to_the_value_path(self):
+        """Конвейер основного стенда подписан на properties/value - плоский
+        путь ушёл бы мимо него молча."""
+        with mock.patch.object(twins, "_put") as put:
+            twins.put_feature_properties("digitalegiz:mixer-1", {"product": "Хлеб"})
+        put.assert_called_once()
+        url = put.call_args[0][0]
+        self.assertTrue(url.endswith("/features/product/properties/value"))
+
+    def test_missing_feature_is_created_wrapped_in_value(self):
+        import urllib.error
+
+        calls = []
+
+        def fake_put(url, payload):
+            calls.append((url, payload))
+            if len(calls) == 1:
+                raise urllib.error.HTTPError(url, 404, "no feature", {}, None)
+
+        with mock.patch.object(twins, "_put", side_effect=fake_put):
+            ok = twins.put_feature_properties("digitalegiz:mixer-1", {"product": "Хлеб"})
+        self.assertTrue(ok)
+        self.assertTrue(calls[1][0].endswith("/features/product"))
+        self.assertEqual(calls[1][1], {"properties": {"value": {"product": "Хлеб"}}})
+
+    def test_unit_payload_picks_the_style(self):
+        payload = twins.unit_payload(self.mixer)
+        self.assertEqual(payload["quantity"], 0)  # число, значит value-стиль
+
+
+@override_settings(DITTO_ENABLED=True, DITTO_BASE_URL="http://ditto.test")
+class FlatStyleStaysDefaultTests(TestCase):
+    """Локальный стенд ничего не должен заметить: по умолчанию всё как было."""
+
+    def test_default_style_is_flat(self):
+        from django.conf import settings as django_settings
+
+        self.assertEqual(django_settings.DITTO_PRODUCT_STYLE, "flat")
+
+    def test_put_goes_to_the_flat_path(self):
+        with mock.patch.object(twins, "_put") as put:
+            twins.put_feature_properties("digitalegiz:mixer-1", {"product": "Хлеб"})
+        url = put.call_args[0][0]
+        self.assertTrue(url.endswith("/features/product/properties"))

@@ -96,6 +96,55 @@ def unit_product_payload(unit):
     }
 
 
+def unit_product_value(unit):
+    """Тот же смысл, что unit_product_payload, но в контракте основного стенда.
+
+    Публичный контур dt.digitalegiz.kz кладёт JSON целиком в properties/value,
+    и оттуда каждое поле автоматически становится полем в InfluxDB. У Influx
+    тип поля фиксируется первой записью навсегда, поэтому здесь дисциплина
+    строже, чем в плоском виде: количество - всегда число (0 на свободном
+    устройстве), единица отдельно, даты в ISO, набор ключей всегда полный, а
+    пустота - это "" и 0, не прочерки. Прочерки - забота табло, не хранилища.
+    """
+    now = timezone.localtime().isoformat(timespec="seconds")
+    batches = unit_occupants(unit)
+    if not batches:
+        return {
+            "product": "",
+            "quantity": 0,
+            "unit": "",
+            "card": "",
+            "order": "",
+            "customer": "",
+            "status": "свободно" if unit.is_available else unit.get_status_display(),
+            "stage": unit.stage.name,
+            "started_at": "",
+            "updated_at": now,
+        }
+    first = batches[0]
+    order = first.order_item.order
+    quantity = sum(float(batch.actual_quantity or batch.planned_quantity) for batch in batches)
+    return {
+        "product": ", ".join(batch.product.name for batch in batches),
+        "quantity": quantity,
+        "unit": str(first.unit),
+        "card": str(first.display_batch_number),
+        "order": f"№{order.order_number}",
+        "customer": order.customer.name if order.customer_id else "",
+        "status": first.get_status_display(),
+        "stage": first.current_stage.name,
+        "started_at": timezone.localtime(first.actual_start).isoformat(timespec="seconds") if first.actual_start else "",
+        "updated_at": now,
+    }
+
+
+def unit_payload(unit):
+    """Payload по выбранному стилю - единственное место, где стиль решает."""
+    if settings.DITTO_PRODUCT_STYLE == "value":
+        return unit_product_value(unit)
+    return unit_product_payload(unit)
+
+
 # --------------------------------------------------------------------------
 # Транспорт: PUT в Ditto
 # --------------------------------------------------------------------------
@@ -118,21 +167,30 @@ def _put(url, payload):
 
 
 def put_feature_properties(thing_id, properties):
-    """Записать свойства фичи product двойника целиком.
+    """Записать состояние устройства в фичу product его двойника.
+
+    Стиль решает путь. "flat" пишет свойства прямо в properties - так собран
+    локальный стенд и его сцена. "value" кладёт весь JSON одним свойством
+    properties/value - контракт публичного контура основного стенда, на этот
+    путь подписан его конвейер Ditto -> InfluxDB, и плоская запись прошла бы
+    мимо него молча.
 
     Возвращает True при успехе. Ошибка сети или Ditto - предупреждение в логе:
     двойник отстанет от доски на одно обновление, а доска не заметит ничего.
     """
     base = f"{settings.DITTO_BASE_URL.rstrip('/')}/api/2/things/{thing_id}/features/product"
+    value_style = settings.DITTO_PRODUCT_STYLE == "value"
+    target = f"{base}/properties/value" if value_style else f"{base}/properties"
     try:
         try:
-            _put(f"{base}/properties", properties)
+            _put(target, properties)
         except urllib.error.HTTPError as exc:
             # 404 - у двойника ещё нет фичи product. Вложенный путь её не
             # создаёт, а PUT самой фичи - создаёт.
             if exc.code != 404:
                 raise
-            _put(base, {"properties": properties})
+            wrapped = {"value": properties} if value_style else properties
+            _put(base, {"properties": wrapped})
         return True
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         logger.warning("Ditto: не удалось обновить %s: %s", thing_id, exc)
@@ -143,7 +201,7 @@ def push_unit(unit):
     """Синхронно поднять состояние одного устройства в его двойник."""
     if not unit.twin_id:
         return False
-    return put_feature_properties(unit.twin_id, unit_product_payload(unit))
+    return put_feature_properties(unit.twin_id, unit_payload(unit))
 
 
 def push_units_by_id(unit_ids):
