@@ -10,3 +10,4 @@ class BakeryConfig(AppConfig):
         # Сигналы, которые держат цифровые двойники оборудования в курсе
         # происходящего на доске. Модуль подключает их при импорте.
         from . import twins  # noqa: F401
+        from . import influx  # noqa: F401

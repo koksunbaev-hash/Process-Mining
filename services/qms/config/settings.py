@@ -26,6 +26,8 @@ env = environ.Env(
     PUSHTOTALK_COMMAND_CONFIDENCE=(float, 0.90),
     DITTO_ENABLED=(bool, False),
     DITTO_TIMEOUT_SECONDS=(int, 5),
+    INFLUX_ENABLED=(bool, False),
+    INFLUX_TIMEOUT_SECONDS=(int, 5),
     SECURE_HSTS_SECONDS=(int, 0),
     SECURE_SSL_REDIRECT=(bool, False),
 )
@@ -232,6 +234,16 @@ DITTO_BASE_URL = env("DITTO_BASE_URL", default="")
 DITTO_USERNAME = env("DITTO_USERNAME", default="ditto")
 DITTO_PASSWORD = env("DITTO_PASSWORD", default="ditto")
 DITTO_TIMEOUT_SECONDS = env("DITTO_TIMEOUT_SECONDS")
+
+# Поток производственных событий в общий InfluxDB (influx.digitalegiz.kz).
+# Выключено по умолчанию; телеметрию счётчиков туда пишет Telegraf своим
+# путём, QMS добавляет только движения партий. См. apps/bakery/influx.py.
+INFLUX_ENABLED = env("INFLUX_ENABLED")
+INFLUX_URL = env("INFLUX_URL", default="")
+INFLUX_ORG = env("INFLUX_ORG", default="opentwins")
+INFLUX_BUCKET = env("INFLUX_BUCKET", default="qms")
+INFLUX_TOKEN = env("INFLUX_TOKEN", default="")
+INFLUX_TIMEOUT_SECONDS = env("INFLUX_TIMEOUT_SECONDS")
 PUSHTOTALK_API_TOKEN = env("PUSHTOTALK_API_TOKEN", default="")
 PUSHTOTALK_DEFAULT_USERNAME = env("PUSHTOTALK_DEFAULT_USERNAME", default="")
 PUSHTOTALK_COMMAND_CONFIDENCE = env("PUSHTOTALK_COMMAND_CONFIDENCE")
