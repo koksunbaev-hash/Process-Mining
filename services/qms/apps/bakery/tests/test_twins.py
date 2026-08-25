@@ -210,3 +210,63 @@ class FlatStyleStaysDefaultTests(TestCase):
             twins.put_feature_properties("digitalegiz:mixer-1", {"product": "Хлеб"})
         url = put.call_args[0][0]
         self.assertTrue(url.endswith("/features/product/properties"))
+
+
+@override_settings(
+    DITTO_ENABLED=True, DITTO_BASE_URL="http://ditto.test", DITTO_PRODUCT_STYLE="both"
+)
+class BothStyleTests(TestCase):
+    """Данные конвейеру, витрина глазам - два запроса, строгий порядок.
+
+    Основной стенд принимает строгий JSON в properties/value, но карточка в
+    интерфейсе тогда показывает один ком. Режим both дописывает те же поля
+    плоско merge-патчем - карточка снова построчная, а value не тронут, и
+    конвейер не видит лишнего события на своём пути.
+    """
+
+    def setUp(self):
+        stage = ProductionStage.objects.create(code="mixing", name="Замес", sequence=1)
+        self.mixer = ProductionUnit.objects.create(
+            stage=stage, name="Миксер 1", sequence=1, twin_id="digitalegiz:mixer-1"
+        )
+
+    def test_value_goes_first_then_the_flat_showcase(self):
+        calls = []
+        with mock.patch.object(
+            twins, "_send", side_effect=lambda url, payload, method="PUT", content_type="application/json": calls.append((method, url, payload, content_type))
+        ):
+            ok = twins.push_unit(self.mixer)
+        self.assertTrue(ok)
+        self.assertEqual(len(calls), 2)
+
+        method, url, payload, ctype = calls[0]
+        self.assertEqual(method, "PUT")
+        self.assertTrue(url.endswith("/features/product/properties/value"))
+        self.assertEqual(payload["quantity"], 0)  # строгий, типизированный
+
+        method, url, payload, ctype = calls[1]
+        self.assertEqual(method, "PATCH")
+        self.assertTrue(url.endswith("/features/product/properties"))
+        self.assertEqual(ctype, "application/merge-patch+json")
+        self.assertEqual(payload["quantity"], "—")  # человеческий, для карточки
+        # Merge-патч не смеет нести value - иначе он перетёр бы данные конвейера.
+        self.assertNotIn("value", payload)
+
+    def test_a_failed_showcase_does_not_fail_the_data(self):
+        """Витрина - украшение. Упала - в лог, а не в отказ доставки."""
+        import urllib.error
+
+        def send(url, payload, method="PUT", content_type="application/json"):
+            if method == "PATCH":
+                raise urllib.error.HTTPError(url, 500, "boom", {}, None)
+
+        with mock.patch.object(twins, "_send", side_effect=send):
+            ok = twins.push_unit(self.mixer)
+        self.assertTrue(ok)
+
+    def test_flat_and_value_styles_still_send_one_request(self):
+        for style in ("flat", "value"):
+            with override_settings(DITTO_PRODUCT_STYLE=style):
+                with mock.patch.object(twins, "_send") as send:
+                    twins.push_unit(self.mixer)
+                self.assertEqual(send.call_count, 1, style)

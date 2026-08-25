@@ -140,7 +140,7 @@ def unit_product_value(unit):
 
 def unit_payload(unit):
     """Payload по выбранному стилю - единственное место, где стиль решает."""
-    if settings.DITTO_PRODUCT_STYLE == "value":
+    if settings.DITTO_PRODUCT_STYLE in ("value", "both"):
         return unit_product_value(unit)
     return unit_product_payload(unit)
 
@@ -149,21 +149,35 @@ def unit_payload(unit):
 # Транспорт: PUT в Ditto
 # --------------------------------------------------------------------------
 
-def _put(url, payload):
+def _send(url, payload, method="PUT", content_type="application/json"):
     credentials = base64.b64encode(
         f"{settings.DITTO_USERNAME}:{settings.DITTO_PASSWORD}".encode()
     ).decode()
     request = urllib.request.Request(
         url,
         data=json.dumps(payload, ensure_ascii=False).encode(),
-        method="PUT",
+        method=method,
         headers={
-            "Content-Type": "application/json",
+            "Content-Type": content_type,
             "Authorization": f"Basic {credentials}",
         },
     )
     with urllib.request.urlopen(request, timeout=settings.DITTO_TIMEOUT_SECONDS) as response:
         response.read()
+
+
+def _put(url, payload):
+    _send(url, payload)
+
+
+def _patch_merge(url, payload):
+    """RFC 7396: дописать свойства, не трогая остальные.
+
+    Ровно этим PATCH и ценен в режиме "both": плоские поля ложатся рядом с
+    value, не перезаписывая его - а значит, конвейер основного стенда не видит
+    лишнего события на своём пути.
+    """
+    _send(url, payload, method="PATCH", content_type="application/merge-patch+json")
 
 
 def put_feature_properties(thing_id, properties):
@@ -179,7 +193,7 @@ def put_feature_properties(thing_id, properties):
     двойник отстанет от доски на одно обновление, а доска не заметит ничего.
     """
     base = f"{settings.DITTO_BASE_URL.rstrip('/')}/api/2/things/{thing_id}/features/product"
-    value_style = settings.DITTO_PRODUCT_STYLE == "value"
+    value_style = settings.DITTO_PRODUCT_STYLE in ("value", "both")
     target = f"{base}/properties/value" if value_style else f"{base}/properties"
     try:
         try:
@@ -198,10 +212,26 @@ def put_feature_properties(thing_id, properties):
 
 
 def push_unit(unit):
-    """Синхронно поднять состояние одного устройства в его двойник."""
+    """Синхронно поднять состояние одного устройства в его двойник.
+
+    В режиме "both" уходит два запроса: строгий JSON в properties/value -
+    контракт конвейера основного стенда - и следом те же поля плоско, merge-
+    патчем, только ради карточки в интерфейсе. Порядок не случаен: сначала
+    данные, потом витрина. Если витрина не долетела - конвейер уже сыт, и
+    отставшая карточка хуже отставшего графика.
+    """
     if not unit.twin_id:
         return False
-    return put_feature_properties(unit.twin_id, unit_payload(unit))
+    if settings.DITTO_PRODUCT_STYLE != "both":
+        return put_feature_properties(unit.twin_id, unit_payload(unit))
+
+    ok = put_feature_properties(unit.twin_id, unit_product_value(unit))
+    base = f"{settings.DITTO_BASE_URL.rstrip('/')}/api/2/things/{unit.twin_id}/features/product"
+    try:
+        _patch_merge(f"{base}/properties", unit_product_payload(unit))
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as exc:
+        logger.warning("Ditto: витрина %s не обновилась: %s", unit.twin_id, exc)
+    return ok
 
 
 def push_units_by_id(unit_ids):
