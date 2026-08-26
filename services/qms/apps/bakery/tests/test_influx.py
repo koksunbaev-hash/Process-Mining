@@ -119,6 +119,69 @@ class TwinTagTests(TestCase):
         self.assertNotIn("thingId", field_part)
 
 
+class UnitStateTests(TestCase):
+    """Что на машине сейчас - отдельной точкой, чтобы панель не считала это
+    сама из истории переводов."""
+
+    def setUp(self):
+        create_stage_list()
+        self.user = create_user()
+        self.oven = ProductionUnit.objects.create(
+            stage=ProductionStage.objects.get(code="queue"),
+            name="Печь 3",
+            sequence=3,
+            twin_id="digitalegiz:ESP32_Dala_Meter_001994",
+        )
+        self.batch = create_queued_batch(user=self.user)
+        self.batch.refresh_from_db()
+
+    @staticmethod
+    def _parts(line):
+        return re.split(r"(?<!\\) ", line)
+
+    def _point(self):
+        self.oven.refresh_from_db()
+        return influx.unit_state_point(self.oven)
+
+    def test_a_free_machine_says_so_instead_of_yesterdays_bread(self):
+        """В истории переводов события «партия ушла с печи» нет вовсе, и по
+        ней освободившаяся машина показывает последнюю партию вечно."""
+        line = self._point()
+        self.assertIn('status="свободно"', line)
+        self.assertIn('product=""', line)
+        self.assertIn("quantity=0", line)
+
+    def test_a_busy_machine_carries_its_order(self):
+        self.batch.production_unit = self.oven
+        self.batch.save(update_fields=["production_unit"])
+        line = self._point()
+        self.assertIn(f'order="№{self.batch.order_item.order.order_number}"', line)
+        self.assertIn(f'product="{self.batch.product.name}"', line)
+
+    def test_the_thing_id_is_there_for_the_join(self):
+        tags = self._parts(self._point())[0]
+        self.assertTrue(tags.startswith("qms_unit_state,"))
+        self.assertIn("thingId=digitalegiz:ESP32_Dala_Meter_001994", tags)
+
+    def test_the_quantity_unit_does_not_collide_with_the_machine_tag(self):
+        """Тег `unit` - имя машины, поле `unit` было бы единицей измерения, и
+        Influx их не различает."""
+        tag_part, field_part = self._parts(self._point())[:2]
+        self.assertIn("unit=Печь\\ 3", tag_part)
+        self.assertIn("quantity_unit=", field_part)
+        self.assertNotIn(",unit=", field_part)
+
+    def test_quantity_stays_a_number_on_a_free_machine(self):
+        """Тип поля Influx фиксирует первой записью навсегда."""
+        free = self._point()
+        self.batch.production_unit = self.oven
+        self.batch.save(update_fields=["production_unit"])
+        busy = self._point()
+        for line in (free, busy):
+            quantity = re.search(r"quantity=([^,]+)", line).group(1)
+            self.assertNotIn('"', quantity)
+
+
 class InlineThread:
     """Поток, работающий на месте: сигнал шлёт точку из фонового потока, и
     настоящий Thread обгонял бы проверки теста."""
@@ -170,6 +233,25 @@ class DisciplineTests(TestCase):
                 with self.captureOnCommitCallbacks(execute=True):
                     create_queued_batch(user=self.user)
             sent.assert_not_called()
+
+    def test_leaving_a_machine_rewrites_the_machine_it_left(self):
+        """Иначе покинутая печь осталась бы занятой навсегда: партия уехала, а
+        её состояние переписать некому."""
+        oven = ProductionUnit.objects.create(
+            stage=ProductionStage.objects.get(code="queue"), name="Печь 3", sequence=3
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            batch = create_queued_batch(user=self.user)
+        batch.refresh_from_db()
+        with mock.patch.object(influx, "push_unit_states_by_id") as pushed:
+            with self.captureOnCommitCallbacks(execute=True):
+                batch.production_unit = oven
+                batch.save(update_fields=["production_unit"])
+            with self.captureOnCommitCallbacks(execute=True):
+                batch.production_unit = None
+                batch.save(update_fields=["production_unit"])
+        touched = {unit_id for call in pushed.call_args_list for unit_id in call.args[0]}
+        self.assertIn(oven.pk, touched)
 
     def test_a_network_error_is_a_log_line_not_a_broken_move(self):
         """Ради этого всё и устроено как у Ditto: витрина отстанет на точку,

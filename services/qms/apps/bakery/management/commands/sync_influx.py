@@ -12,8 +12,8 @@
 
 from django.core.management.base import BaseCommand
 
-from apps.bakery.influx import history_point, influx_enabled, write_lines
-from apps.bakery.models import BatchStageHistory
+from apps.bakery.influx import history_point, influx_enabled, unit_state_point, write_lines
+from apps.bakery.models import BatchStageHistory, ProductionUnit
 
 # Пачка держит запрос коротким: сто тысяч строк одним POST - это таймаут,
 # а не переливка.
@@ -76,6 +76,31 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(summary))
         else:
             self.stdout.write(self.style.SUCCESS(summary))
+
+        self._push_unit_states(options["dry_run"])
+
+    def _push_unit_states(self, dry_run):
+        """Состояние всех машин целиком.
+
+        Без этого панель после включения интеграции стоит пустой до первого
+        движения доски: точка состояния переписывается сигналом, а сигналу
+        нужно, чтобы кто-то подвигал карточку.
+        """
+        units = list(ProductionUnit.objects.select_related("stage"))
+        if not units:
+            return
+        lines = [unit_state_point(unit) for unit in units]
+        if dry_run:
+            for line in lines[:3]:
+                self.stdout.write("  " + line)
+            if len(lines) > 3:
+                self.stdout.write(f"  … и ещё {len(lines) - 3}")
+            self.stdout.write(self.style.SUCCESS(f"Состояний машин показано: {len(lines)}"))
+            return
+        if write_lines(lines):
+            self.stdout.write(self.style.SUCCESS(f"Состояний машин отправлено: {len(lines)}"))
+        else:
+            self.stdout.write(self.style.WARNING("Состояния машин не доставлены (см. лог)."))
 
     def _flush(self, lines, sent, failed, dry_run):
         if dry_run:
