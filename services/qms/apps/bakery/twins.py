@@ -180,6 +180,41 @@ def _patch_merge(url, payload):
     _send(url, payload, method="PATCH", content_type="application/merge-patch+json")
 
 
+def fetch_things(limit=200):
+    """Каталог двойников из Ditto: список пар (thingId, человеческое имя).
+
+    Нужен затем, чтобы связь машины с двойником не набирали руками: в
+    интерфейсе OpenTwins идентификаторы обрезаны многоточием, а различаются
+    они последними символами - `..._001990` и `..._001994` на экране выглядят
+    одинаково.
+
+    Имя берётся из атрибутов - Ditto не навязывает, где ему лежать, поэтому
+    проверяются оба привычных места. Не нашлось - остаётся сам thingId.
+    """
+    url = (
+        f"{settings.DITTO_BASE_URL.rstrip('/')}/api/2/search/things"
+        f"?option=size({int(limit)})"
+    )
+    credentials = base64.b64encode(
+        f"{settings.DITTO_USERNAME}:{settings.DITTO_PASSWORD}".encode()
+    ).decode()
+    request = urllib.request.Request(
+        url, headers={"Authorization": f"Basic {credentials}"}
+    )
+    with urllib.request.urlopen(request, timeout=settings.DITTO_TIMEOUT_SECONDS) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    things = []
+    for item in payload.get("items", []):
+        thing_id = item.get("thingId", "")
+        if not thing_id:
+            continue
+        attributes = item.get("attributes") or {}
+        name = attributes.get("name") or attributes.get("displayName") or ""
+        things.append((thing_id, str(name)))
+    return things
+
+
 def put_feature_properties(thing_id, properties):
     """Записать состояние устройства в фичу product его двойника.
 

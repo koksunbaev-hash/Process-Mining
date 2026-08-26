@@ -1,0 +1,114 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_INFLUXDB",
+      "label": "InfluxDB",
+      "description": "Источник данных InfluxDB в режиме Flux (организация opentwins)",
+      "type": "datasource",
+      "pluginId": "influxdb",
+      "pluginName": "InfluxDB"
+    }
+  ],
+  "title": "Цех: что на машинах",
+  "description": "Продукт и заказ с каждой машины рядом с её телеметрией. Связь двух потоков - тег thingId.",
+  "tags": ["qms", "opentwins"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "thingId",
+        "label": "Машина (thingId)",
+        "type": "query",
+        "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"qms\", tag: \"thingId\", predicate: (r) => r._measurement == \"qms_unit_state\")",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": false,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Что на машинах сейчас",
+      "description": "Одна строка на машину. Свободная машина честно показывает «свободно», а не последнюю партию.",
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+          "query": "from(bucket: \"qms\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"qms_unit_state\")\n  |> last()\n  |> group()\n  |> keep(columns: [\"thingId\", \"unit\", \"stage\", \"_field\", \"_value\"])\n  |> pivot(rowKey: [\"thingId\", \"unit\", \"stage\"], columnKey: [\"_field\"], valueColumn: \"_value\")"
+        }
+      ],
+      "options": { "showHeader": true },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "unit" }, "properties": [{ "id": "displayName", "value": "Машина" }] },
+          { "matcher": { "id": "byName", "options": "product" }, "properties": [{ "id": "displayName", "value": "Продукт" }] },
+          { "matcher": { "id": "byName", "options": "order" }, "properties": [{ "id": "displayName", "value": "Заказ" }] },
+          { "matcher": { "id": "byName", "options": "card" }, "properties": [{ "id": "displayName", "value": "Карточка" }] },
+          { "matcher": { "id": "byName", "options": "status" }, "properties": [{ "id": "displayName", "value": "Статус" }] },
+          { "matcher": { "id": "byName", "options": "quantity" }, "properties": [{ "id": "displayName", "value": "Кол-во" }] },
+          { "matcher": { "id": "byName", "options": "quantity_unit" }, "properties": [{ "id": "displayName", "value": "Ед." }] },
+          { "matcher": { "id": "byName", "options": "stage_name" }, "properties": [{ "id": "displayName", "value": "Этап" }] },
+          { "matcher": { "id": "byName", "options": "thingId" }, "properties": [{ "id": "custom.width", "value": 320 }] }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "stage": true, "customer": true, "started_at": true },
+            "indexByName": {
+              "unit": 0,
+              "stage_name": 1,
+              "product": 2,
+              "quantity": 3,
+              "quantity_unit": 4,
+              "order": 5,
+              "card": 6,
+              "status": 7,
+              "thingId": 8
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Продукт рядом с током",
+      "description": "Два потока соединяются по thingId: телеметрия из bucket default, производство из bucket qms.",
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 10 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+          "query": "from(bucket: \"default\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => exists r.thingId)\n  |> last()\n  |> group()\n  |> keep(columns: [\"thingId\", \"_field\", \"_value\"])\n  |> pivot(rowKey: [\"thingId\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"thingId\", \"value_current_a\", \"value_voltage_v\", \"value_live_active_power_w\", \"value_status\"])"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+          "query": "from(bucket: \"qms\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"qms_unit_state\")\n  |> filter(fn: (r) => exists r.thingId)\n  |> last()\n  |> group()\n  |> keep(columns: [\"thingId\", \"unit\", \"_field\", \"_value\"])\n  |> pivot(rowKey: [\"thingId\", \"unit\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"thingId\", \"unit\", \"product\", \"order\", \"status\"])"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": { "byField": "thingId", "mode": "outer" }
+        }
+      ],
+      "options": { "showHeader": true },
+      "fieldConfig": { "defaults": { "custom": { "align": "left" } }, "overrides": [] }
+    }
+  ]
+}
