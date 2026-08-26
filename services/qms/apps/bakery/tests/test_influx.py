@@ -6,12 +6,13 @@
 записи - не ронять перемещение.
 """
 
+import re
 from unittest import mock
 
 from django.test import TestCase, override_settings
 
 from apps.bakery import influx
-from apps.bakery.models import BatchStageHistory
+from apps.bakery.models import BatchStageHistory, ProductionStage, ProductionUnit
 
 from .batch_workflow.factories import create_queued_batch, create_stage_list, create_user
 
@@ -54,6 +55,68 @@ class LineProtocolTests(TestCase):
         line = influx.history_point(self.history)
         tags = line.split(" ")[0]
         self.assertNotIn(self.batch.batch_number, tags)
+
+
+class TwinTagTests(TestCase):
+    """Ключ, по которому движение партии сходится с киловаттами своей машины.
+
+    Телеметрия счётчиков приходит в Influx от Telegraf с тегом `thingId` и
+    про имя машины ничего не знает. Пока производственная точка помечена
+    только именем, панель не может соединить два потока по машине - остаётся
+    склеивать их наугад, приписывая последнюю партию цеха всем счётчикам
+    сразу.
+    """
+
+    def setUp(self):
+        create_stage_list()
+        self.user = create_user()
+        self.oven = ProductionUnit.objects.create(
+            stage=ProductionStage.objects.get(code="queue"),
+            name="Печь 3",
+            sequence=3,
+            twin_id="digitalegiz:ESP32_Dala_Meter_001994",
+        )
+        self.batch = create_queued_batch(user=self.user)
+        self.batch.refresh_from_db()
+
+    def _line(self):
+        history = BatchStageHistory.objects.select_related(
+            "batch__product", "batch__production_unit", "batch__order_item__order",
+            "from_stage", "to_stage",
+        ).filter(batch=self.batch).latest("created_at")
+        return influx.history_point(history)
+
+    @staticmethod
+    def _parts(line):
+        """Теги и поля точки. Делить строку по любому пробелу нельзя: пробел
+        внутри «Печь\\ 3» экранирован и границей не является."""
+        return re.split(r"(?<!\\) ", line)
+
+    def test_the_point_carries_the_thing_id_of_its_machine(self):
+        self.batch.production_unit = self.oven
+        self.batch.save(update_fields=["production_unit"])
+        tags = self._parts(self._line())[0]
+        self.assertIn("thingId=digitalegiz:ESP32_Dala_Meter_001994", tags)
+        # Имя машины остаётся: по нему читают панели, написанные до двойников.
+        self.assertIn("unit=Печь\\ 3", tags)
+
+    def test_a_machine_without_a_twin_says_nothing(self):
+        """Пустое поле связи - это «двойника нет», а не пустой тег: тег без
+        значения Influx не примет, и точка ушла бы в отказ целиком."""
+        self.oven.twin_id = ""
+        self.oven.save(update_fields=["twin_id"])
+        self.batch.production_unit = self.oven
+        self.batch.save(update_fields=["production_unit"])
+        self.assertNotIn("thingId", self._line())
+
+    def test_the_thing_id_is_a_tag_not_a_field(self):
+        """Полем по нему не сгруппировать и не соединить - join в Flux сводит
+        таблицы по колонкам группировки."""
+        self.batch.production_unit = self.oven
+        self.batch.save(update_fields=["production_unit"])
+        tag_part, field_part = self._parts(self._line())[:2]
+        self.assertIn("thingId=", tag_part)
+        self.assertNotIn("thingId", field_part)
 
 
 class InlineThread:

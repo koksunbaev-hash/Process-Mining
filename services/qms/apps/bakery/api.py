@@ -37,6 +37,7 @@ from .models import (
     ProductionOrder,
     ProductionOrderItem,
     ProductionStage,
+    ProductionUnit,
     Product,
     Recipe,
     RecipeItem,
@@ -45,6 +46,7 @@ from .models import (
 )
 from .permissions import BakeryPermission, can_view_voice
 from .services import confirm_order, move_batch, next_stage_for
+from .twins import unit_payload
 from apps.process_mining.services import safe_record_process_event
 from .voice_process_mining import (
     ConflictError,
@@ -123,6 +125,42 @@ class ProductionStageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductionStage
         fields = "__all__"
+
+
+class ProductionUnitSerializer(serializers.ModelSerializer):
+    """Машина цеха вместе с её двойником.
+
+    Отдаёт наружу то, чего 3D-сцене неоткуда взять: какой `thingId` в Ditto
+    принадлежит какой машине. Без этой связи объект сцены остаётся привязанным
+    к строке, вписанной руками, и первая же смена двойника рассыпает сцену
+    молча. Рядом лежит `product` - ровно тот payload, который QMS кладёт в
+    фичу `product` двойника, чтобы сцену можно было отладить, не имея доступа
+    к Ditto.
+    """
+
+    stage_code = serializers.CharField(source="stage.code", read_only=True)
+    stage_name = serializers.CharField(source="stage.name", read_only=True)
+    is_available = serializers.BooleanField(read_only=True)
+    product = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductionUnit
+        fields = [
+            "id",
+            "name",
+            "stage",
+            "stage_code",
+            "stage_name",
+            "sequence",
+            "status",
+            "is_active",
+            "is_available",
+            "twin_id",
+            "product",
+        ]
+
+    def get_product(self, obj):
+        return unit_payload(obj)
 
 
 class BatchStageHistorySerializer(serializers.ModelSerializer):
@@ -313,6 +351,35 @@ class ProductionStageViewSet(viewsets.ModelViewSet):
     queryset = ProductionStage.objects.all()
     serializer_class = ProductionStageSerializer
     permission_classes = [BakeryPermission]
+
+
+class ProductionUnitViewSet(viewsets.ReadOnlyModelViewSet):
+    """Машины цеха и их двойники - справочник привязки для 3D-сцены.
+
+    Только чтение: связь машины с двойником заводят в админке, где её видит
+    технолог, а не через API. `?bound=1` оставляет машины с двойником,
+    `?bound=0` - те, у которых поле пустое: по второму списку и видно, чего
+    сцене не хватает.
+
+    Страниц нет намеренно: список - это оборудование цеха, десятки строк, и
+    сцене нужен он целиком, а не первая страница из двадцати пяти.
+    """
+
+    queryset = ProductionUnit.objects.select_related("stage")
+    serializer_class = ProductionUnitSerializer
+    permission_classes = [BakeryPermission]
+    pagination_class = None
+    filterset_fields = ["stage", "status", "is_active"]
+    search_fields = ["name", "twin_id"]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        bound = self.request.query_params.get("bound")
+        if bound in {"1", "true", "yes"}:
+            return queryset.exclude(twin_id="")
+        if bound in {"0", "false", "no"}:
+            return queryset.filter(twin_id="")
+        return queryset
 
 
 class BatchStageHistoryViewSet(viewsets.ReadOnlyModelViewSet):

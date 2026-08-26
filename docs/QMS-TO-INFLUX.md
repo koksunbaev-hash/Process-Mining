@@ -19,15 +19,68 @@ Telegraf. Производственная часть раньше туда не
 Каждый перевод партии на этап — одна точка `qms_batch_event`:
 
 ```
-qms_batch_event,stage=oven,from=proofing,product=MON-20260803-011,unit=Печь\ 3
+qms_batch_event,stage=oven,from=proofing,product=MON-20260803-011,unit=Печь\ 3,
+    thingId=digitalegiz:ESP32_Dala_Meter_001994
     batch="11 от 05.08.2026",case_id="REAL-20260805-011",
     stage_name="Печь",product_name="Бородинский хлеб 300гр в упаковке",
     order="REAL-20260805",quantity=106 1785909000000000000
 ```
 
 Теги (по ним группируют и фильтруют): `stage` и `from` — коды этапов,
-`product` — код продукта, `unit` — машина. Номера партий и заказов —
-поля, не теги: серия на каждую партию раздула бы базу.
+`product` — код продукта, `unit` — машина, `thingId` — её двойник. Номера
+партий и заказов — поля, не теги: серия на каждую партию раздула бы базу.
+
+`thingId` — тот же тег, которым Telegraf помечает телеметрию счётчиков, и
+написан он так же, camelCase: `join` в Flux сводит таблицы по имени колонки,
+и `thing_id` пришлось бы переименовывать в каждой панели. Тег появляется
+только у машин с заполненным `twin_id` (админка → Производственные
+устройства). Пустое поле — тега нет вовсе: тег без значения Influx отвергает
+вместе со всей точкой.
+
+## Продукт машины рядом с её киловаттами
+
+Два потока — телеметрия счётчика и движения партий — сходятся ровно по
+`thingId`, и только по нему: имя машины телеметрии неизвестно. Панель, где на
+каждой машине видно и ток, и что она сейчас печёт:
+
+```flux
+meter = from(bucket: "default")
+  |> range(start: -5m)
+  |> filter(fn: (r) => exists r.thingId)
+  |> last()
+  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> group(columns: ["thingId"])
+  |> keep(columns: ["thingId", "value_current_a", "value_voltage_v",
+                    "value_live_active_power_w", "value_status"])
+
+qms = from(bucket: "qms")
+  |> range(start: -7d)
+  |> filter(fn: (r) => r._measurement == "qms_batch_event")
+  |> filter(fn: (r) => r._field == "order" or r._field == "product_name")
+  |> filter(fn: (r) => exists r.thingId)
+  |> group(columns: ["thingId", "_field"])
+  |> last()
+  |> pivot(rowKey: ["thingId"], columnKey: ["_field"], valueColumn: "_value")
+  |> keep(columns: ["thingId", "order", "product_name"])
+
+join(tables: {m: meter, q: qms}, on: ["thingId"])
+```
+
+Ключевое здесь — `group(columns: ["thingId"])` перед `last()`: без
+группировки `last()` берёт одну последнюю точку на весь цех, и к счётчикам
+всех машин приезжает партия какой-то одной. Соединение по выдуманному
+постоянному ключу (`map(fn: (r) => ({r with join_key: 1}))`) даёт ровно ту
+же ошибку — на экране она выглядит правдоподобно, пока в цеху работает одна
+машина.
+
+Партия на машине последние 7 дней — это «что было на ней в последний раз», а
+не «что стоит сейчас»: событие пишется в момент перевода. Текущее состояние
+знает двойник (фича `product`, см. `docs/QMS-TO-GRAFANA.md`).
+
+Тег добавлен к новым точкам. У истории, записанной до него, тега нет, и
+`sync_influx` её не исправит: точка с новым набором тегов — это новая серия
+рядом со старой, а не замена. Панели за прошлые недели поэтому лучше строить
+по `unit`.
 
 Демо-партии не отправляются: общая витрина показывает завод, а не
 репетицию.

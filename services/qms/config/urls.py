@@ -20,6 +20,7 @@ from apps.bakery.api import (
     ProductionOrderItemViewSet,
     ProductionOrderViewSet,
     ProductionStageViewSet,
+    ProductionUnitViewSet,
     ProductViewSet,
     RecipeViewSet,
     VoiceCommandConfirmView,
@@ -64,6 +65,7 @@ router.register("orders", ProductionOrderViewSet, basename="order")
 router.register("order-items", ProductionOrderItemViewSet, basename="order-item")
 router.register("batches", ProductionBatchViewSet, basename="batch")
 router.register("production-stages", ProductionStageViewSet, basename="production-stage")
+router.register("production-units", ProductionUnitViewSet, basename="production-unit")
 router.register("stage-history", BatchStageHistoryViewSet, basename="stage-history")
 router.register("voice-messages", VoiceMessageViewSet, basename="voice-message")
 router.register("finished-stock", FinishedGoodsStockViewSet, basename="finished-stock")
