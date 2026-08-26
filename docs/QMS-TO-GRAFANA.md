@@ -68,11 +68,36 @@ OpenTwins печатает каждое свойство отдельной ст
 поле «цифровой двойник (thingId)»**. Пустое поле означает «у машины двойника
 нет» — такие устройства модуль молча пропускает, ошибки не будет.
 
-Узнать `thingId` можно в самом Ditto:
+Заполнять тринадцать полей руками не нужно — есть команда, которая показывает
+каталог двойников рядом со списком машин и умеет связывать их:
+
+```bash
+docker compose exec -T qms python manage.py twin_ids
+```
+
+Выводит машины QMS (кто уже связан, у кого пусто) и двойники Ditto,
+разложенные по типам оборудования — миксеры, формовщики, шкафы, печи. Связать:
+
+```bash
+docker compose exec -T qms python manage.py twin_ids \
+  --set "Печь 1=digitalegiz:ESP32_Dala_Meter_001994" \
+  --set "Миксер 1=digitalegiz:ESP32_Dala_Meter_001990"
+```
+
+Один двойник двум машинам команда не отдаст: обе писали бы в одну серию, и
+панель разъезжалась бы молча. Развязать — `--clear "Печь 1"`.
+
+Тем же способом, но глазами, `thingId` виден и в самом Ditto:
 
 ```bash
 curl -u ditto:ditto http://192.168.0.136:30525/api/2/search/things | jq '.items[].thingId'
 ```
+
+В каталоге двойников есть оборудование, которого в QMS нет вовсе —
+льдогенераторы, например. У него есть телеметрия, но нет партий, поэтому в
+списке машин оно не появляется и в `qms_unit_state` не попадает. Это не
+недоработка связи: производственных данных у такого устройства просто не
+существует, и панель должна показывать по нему только счётчик.
 
 А всю таблицу связей целиком — у самого QMS, без доступа к Ditto:
 
@@ -186,6 +211,7 @@ docker compose logs --tail=50 qms | grep -i ditto
 |---|---|
 | `services/qms/apps/bakery/twins.py` | payload, транспорт, сигналы |
 | `services/qms/apps/bakery/management/commands/sync_twins.py` | ручная переливка |
+| `services/qms/apps/bakery/management/commands/twin_ids.py` | каталог двойников и связывание машин |
 | `services/qms/apps/bakery/models.py` | поле `ProductionUnit.twin_id` |
 | `services/qms/config/settings.py` | настройки `DITTO_*` |
 | `services/qms/apps/bakery/tests/test_twins.py` | тесты |
