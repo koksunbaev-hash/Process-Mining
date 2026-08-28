@@ -580,3 +580,91 @@ def resume_batch(batch, user, comment=""):
         unit=batch.unit,
         event_data={"comment": comment},
     )
+
+
+# ---------------------------------------------------------------------------
+# Удаление с доски: ошибочная партия или целиком ошибочный заказ.
+# ---------------------------------------------------------------------------
+
+def _refuse_if_stocked(batches):
+    """Партию, дошедшую до склада, удалять нельзя - и это не наш каприз.
+
+    Складская запись держит партию защищённым ключом: на неё могли уже
+    сослаться отгрузки. Такое не «удаляют», а списывают со склада - там есть
+    кому ответить за расхождение остатков.
+    """
+    stocked = [batch for batch in batches if hasattr(batch, "stock_record")]
+    if stocked:
+        names = ", ".join(batch.display_batch_label for batch in stocked)
+        raise ValidationError(
+            f"Партия {names} уже принята на склад. Сначала спишите её со склада, "
+            "затем удаляйте."
+        )
+
+
+def _drop_unsent_events(batch_ids, order_ids=()):
+    """Убрать из очереди экспорта то, что ещё не уехало в аналитику.
+
+    Оба внешних ключа - SET_NULL: неотправленное событие удалённой партии
+    потеряло бы единственную привязку и уехало бы в карту процесса строкой-
+    сиротой. Отправленные не трогаем - их уже не вернуть, и честная история
+    «создали по ошибке и удалили» лучше дыры в журнале.
+    """
+    from apps.process_mining.models import ProcessEvent
+    from django.db.models import Q
+
+    condition = Q(batch_id__in=list(batch_ids))
+    if order_ids:
+        condition |= Q(order_id__in=list(order_ids))
+    ProcessEvent.objects.filter(condition).exclude(
+        export_status=ProcessEvent.ExportStatus.SENT
+    ).delete()
+
+
+@transaction.atomic
+def delete_batch(batch, user):
+    """Удалить одну ошибочную партию с доски.
+
+    История этапов уходит каскадом, голосовые сообщения и отправленные события
+    остаются без привязки (SET_NULL) - это след, а не мусор. Двойник машины
+    обновится сам: post_delete-сигнал в twins.py освобождает табло.
+    """
+    from apps.audit.services import write_audit
+
+    _refuse_if_stocked([batch])
+    label = batch.display_batch_label
+    write_audit(
+        "batch_deleted", batch, user=user,
+        changes={"batch": label, "stage": batch.current_stage.code if batch.current_stage_id else ""},
+    )
+    _drop_unsent_events([batch.pk])
+    batch.delete()
+    return label
+
+
+@transaction.atomic
+def delete_order_with_batches(order, user):
+    """Удалить ошибочный заказ целиком - с партиями, позициями, событиями.
+
+    Существующее удаление на странице заказа отказывает, едва созданы партии
+    (order_item - PROTECT), и ошибочный заказ, доехавший до доски, было не
+    удалить вообще. Здесь порядок обратный правильный: сначала партии, потом
+    сам заказ - и заказ уводит позиции каскадом.
+    """
+    from apps.audit.services import write_audit
+
+    batches = list(
+        ProductionBatch.objects.select_related("current_stage")
+        .filter(order_item__order=order)
+    )
+    _refuse_if_stocked(batches)
+    number = order.order_number
+    write_audit(
+        "order_deleted_with_batches", order, user=user,
+        changes={"order": number, "batches": [batch.display_batch_label for batch in batches]},
+    )
+    _drop_unsent_events([batch.pk for batch in batches], [order.pk])
+    for batch in batches:
+        batch.delete()
+    order.delete()
+    return number, len(batches)

@@ -54,6 +54,8 @@ from .models import (
 )
 from .permissions import can_manage_catalog, can_manage_orders, can_move_batch, can_view_voice, role
 from .services import (
+    delete_batch,
+    delete_order_with_batches,
     assign_batch_to_unit,
     confirm_order,
     move_batch,
@@ -241,6 +243,7 @@ def kanban_context(request):
         "products": Product.objects.filter(is_active=True),
         "statuses": ProductionBatch.Status.choices,
         "can_manage_demo": can_manage_kanban_demo(request.user),
+        "can_delete_cards": can_manage_orders(request.user),
         "demo_filter": request.GET.get("demo", "work"),
     }
     return context
@@ -397,6 +400,45 @@ def assign_only(request, batch, unit):
 
 
 @login_required
+def delete_batch_view(request, pk):
+    """Убрать с доски ошибочную партию. POST, право - как у заказов.
+
+    Кнопка существует ради одного сценария: создали не то, заметили сразу.
+    Всё, что дальше сценария, охраняют сервисы: партию со склада эта кнопка
+    не удалит, а отправленную в аналитику историю не перепишет.
+    """
+    if request.method != "POST":
+        return redirect("bakery:kanban")
+    if not can_manage_orders(request.user):
+        raise PermissionDenied("Удалять партии могут управляющие роли.")
+    batch = get_object_or_404(
+        ProductionBatch.objects.select_related("current_stage", "order_item__order"), pk=pk
+    )
+    try:
+        label = delete_batch(batch, request.user)
+    except ValidationError as exc:
+        messages.error(request, " ".join(exc.messages))
+    else:
+        messages.success(request, f"Партия {label} удалена.")
+    return redirect(request.POST.get("next") or "bakery:kanban")
+
+
+def delete_order_view(request, pk):
+    """Убрать ошибочный заказ целиком: групповая карточка доски — это заказ."""
+    if request.method != "POST":
+        return redirect("bakery:kanban")
+    if not can_manage_orders(request.user):
+        raise PermissionDenied("Удалять заказы могут управляющие роли.")
+    order = get_object_or_404(ProductionOrder, pk=pk)
+    try:
+        number, count = delete_order_with_batches(order, request.user)
+    except ValidationError as exc:
+        messages.error(request, " ".join(exc.messages))
+    else:
+        messages.success(request, f"Заказ №{number} удалён вместе с партиями ({count}).")
+    return redirect(request.POST.get("next") or "bakery:kanban")
+
+
 def move_order_group_view(request, pk):
     """Move every batch in one visible grouped card to the same stage."""
     order = get_object_or_404(ProductionOrder, pk=pk, kanban_grouped=True)

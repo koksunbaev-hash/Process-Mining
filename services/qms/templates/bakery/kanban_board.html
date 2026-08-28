@@ -152,6 +152,21 @@
               </form>
               {% endif %}
               <a class="secondary" href="{% if batch.is_group %}{% url 'bakery:order_detail' batch.order.pk %}{% else %}{% url 'bakery:batch_detail' batch.pk %}{% endif %}">Открыть</a>
+              {% if can_delete_cards %}
+              {% comment %}
+                Кнопка для одного сценария: создали не то и заметили сразу.
+                Подтверждение называет жертву по имени - «удалить что-нибудь»
+                не бывает, бывает «удалить заказ №0371 с 3 партиями». Партию,
+                дошедшую до склада, сервис откажется трогать и скажет почему.
+              {% endcomment %}
+              <form method="post" class="kanban-card-delete-form"
+                    action="{% if batch.is_group %}{% url 'bakery:delete_order' batch.order.pk %}{% else %}{% url 'bakery:delete_batch' batch.pk %}{% endif %}"
+                    onsubmit="return confirm('{% if batch.is_group %}Удалить заказ №{{ batch.order.order_number }} вместе с {{ batch.batches|length }} парт.? Действие нельзя отменить.{% else %}Удалить партию {{ batch.display_batch_label }}? Действие нельзя отменить.{% endif %}');">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ board_url }}">
+                <button class="danger kanban-card-delete" type="submit" title="Удалить с доски">Удалить</button>
+              </form>
+              {% endif %}
             </div>
           </article>
         {% empty %}
