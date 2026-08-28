@@ -289,14 +289,13 @@ window.ProcMap = (function () {
   function edgeGeometry(a, b, route) {
     route = route || {};
     if (b.layer <= a.layer) {
-      /* Возврат: сбоку, и каждому - СВОЯ дорожка. Раньше все дуги шли по
-       * одной вертикали (max правых краёв + 36): на процессе-цепочке с
-       * несколькими возвратами они ложились друг на друга вместе с цифрами,
-       * и при приближении читалась только верхняя. Дорожка выдаётся снаружи:
-       * короткие дуги - ближе к узлам, длинные - дальше, подписи разъезжаются
-       * по горизонтали сами. */
-      var side = (route.sideBase || Math.max(a.x + a.w, b.x + b.w) + 36) +
-        (route.lane || 0) * 30;
+      /* Возврат: сбоку, с размахом от длины. Дорожка «каждому свой номер»
+       * на живом графе с десятком возвратов раздувала крылья на сотни
+       * пикселей; размах от числа пройденных слоёв держит короткую дугу у
+       * колонны, длинную - чуть шире, и дуги вкладываются сами. bump -
+       * малый сдвиг для дуг одинаковой длины на пересекающихся высотах. */
+      var side = (route.sideBase || Math.max(a.x + a.w, b.x + b.w) + 28) +
+        (route.amp || 0) + (route.bump || 0);
       return {
         d: "M" + (a.x + a.w) + " " + (a.y + a.h / 2) +
           " C" + side + " " + (a.y + a.h / 2) + " " + side + " " + (b.y + b.h / 2) +
@@ -310,7 +309,7 @@ window.ProcMap = (function () {
        * между концами - вертикальная прямая по центру колонны. Уводим его
        * налево, зеркально возвратам справа: у каждого класса рёбер свой борт,
        * и они не спорят за место. */
-      var left = route.detourBase - (route.lane || 0) * 30;
+      var left = route.detourBase - (route.amp || 0) - (route.bump || 0);
       var ya = a.y + a.h / 2, yb = b.y + b.h / 2;
       return {
         d: "M" + a.x + " " + ya +
@@ -351,18 +350,49 @@ window.ProcMap = (function () {
     function span(e) {
       return Math.abs(model.byId[e.source].layer - model.byId[e.target].layer);
     }
-    backs.sort(function (x, y) { return span(x) - span(y); });
-    skips.sort(function (x, y) { return span(x) - span(y); });
+    function ys(e) {
+      var a = model.byId[e.source], b = model.byId[e.target];
+      return [Math.min(a.y, b.y), Math.max(a.y + a.h, b.y + b.h)];
+    }
+    /* Размах пропорционален длине и упирается в потолок: даже переход через
+     * весь граф не должен выгибаться дальше, чем на пол-узла вширь. Дуги
+     * одинаковой длины, живущие на пересекающихся высотах, расталкиваются
+     * малым bump - его хватает, чтобы линии и цифры не слились. */
+    function assign(list) {
+      var routes = [];
+      list.sort(function (x, y) { return span(x) - span(y); });
+      list.forEach(function (e) {
+        var amp = Math.min(18 + span(e) * 16, 110);
+        var range = ys(e);
+        var bump = 0;
+        routes.forEach(function (r) {
+          if (Math.abs(r.amp - amp) < 12 &&
+              range[0] < r.range[1] && r.range[0] < range[1] &&
+              Math.abs(r.amp + r.bump - amp - bump) < 12) {
+            bump = r.bump + 14;
+          }
+        });
+        routes.push({ edge: e, amp: amp, bump: bump, range: range });
+      });
+      return routes;
+    }
     var routes = {};
-    backs.forEach(function (e, i) {
-      routes[e.source + SEP + e.target] = { lane: i, sideBase: rightBase + 40 };
+    var maxRight = 0, maxLeft = 0;
+    assign(backs).forEach(function (r) {
+      routes[r.edge.source + SEP + r.edge.target] = {
+        amp: r.amp, bump: r.bump, sideBase: rightBase + 28,
+      };
+      if (r.amp + r.bump > maxRight) maxRight = r.amp + r.bump;
     });
-    skips.forEach(function (e, i) {
-      routes[e.source + SEP + e.target] = { lane: i, detour: true, detourBase: leftBase - 36 };
+    assign(skips).forEach(function (r) {
+      routes[r.edge.source + SEP + r.edge.target] = {
+        amp: r.amp, bump: r.bump, detour: true, detourBase: leftBase - 24,
+      };
+      if (r.amp + r.bump > maxLeft) maxLeft = r.amp + r.bump;
     });
     // Дорожки расширяют картинку - полотну надо знать, насколько.
-    model.width = Math.max(model.width, rightBase + 40 + backs.length * 30 + 60);
-    model.extraLeft = skips.length ? (36 + (skips.length - 1) * 30 + 40) : 0;
+    model.width = Math.max(model.width, rightBase + 28 + maxRight + 64);
+    model.extraLeft = skips.length ? (24 + maxLeft + 44) : 0;
     return routes;
   }
 
@@ -455,6 +485,13 @@ window.ProcMap = (function () {
     if (model.extraLeft) {
       model.nodes.forEach(function (n) { n.x += model.extraLeft; });
       model.width += model.extraLeft;
+      /* Базы дорожек считались по досдвиговым координатам - едут вместе с
+       * узлами, иначе дуги рисуются там, где колонна стояла раньше. */
+      Object.keys(routes).forEach(function (key) {
+        var r = routes[key];
+        if (r.sideBase !== undefined) r.sideBase += model.extraLeft;
+        if (r.detourBase !== undefined) r.detourBase += model.extraLeft;
+      });
     }
 
     var edgeLayer = el("g", { class: "map-edges" });
