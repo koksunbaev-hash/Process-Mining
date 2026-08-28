@@ -286,16 +286,38 @@ window.ProcMap = (function () {
     return text.length > max ? text.slice(0, max - 1) + "…" : text;
   }
 
-  function edgeGeometry(a, b) {
+  function edgeGeometry(a, b, route) {
+    route = route || {};
     if (b.layer <= a.layer) {
-      // Возврат: ведём сбоку, чтобы дуга не легла поверх прямых стрелок.
-      var side = Math.max(a.x + a.w, b.x + b.w) + 36;
+      /* Возврат: сбоку, и каждому - СВОЯ дорожка. Раньше все дуги шли по
+       * одной вертикали (max правых краёв + 36): на процессе-цепочке с
+       * несколькими возвратами они ложились друг на друга вместе с цифрами,
+       * и при приближении читалась только верхняя. Дорожка выдаётся снаружи:
+       * короткие дуги - ближе к узлам, длинные - дальше, подписи разъезжаются
+       * по горизонтали сами. */
+      var side = (route.sideBase || Math.max(a.x + a.w, b.x + b.w) + 36) +
+        (route.lane || 0) * 30;
       return {
         d: "M" + (a.x + a.w) + " " + (a.y + a.h / 2) +
           " C" + side + " " + (a.y + a.h / 2) + " " + side + " " + (b.y + b.h / 2) +
           " " + (b.x + b.w + 8) + " " + (b.y + b.h / 2),
-        label: [side - 2, (a.y + a.h / 2 + b.y + b.h / 2) / 2],
+        label: [side + 4, (a.y + a.h / 2 + b.y + b.h / 2) / 2],
         anchor: "start",
+      };
+    }
+    if ((b.layer - a.layer) > 1 && route.detour) {
+      /* Прыжок через слой в одноколоночном графе шёл бы прямо сквозь узлы
+       * между концами - вертикальная прямая по центру колонны. Уводим его
+       * налево, зеркально возвратам справа: у каждого класса рёбер свой борт,
+       * и они не спорят за место. */
+      var left = route.detourBase - (route.lane || 0) * 30;
+      var ya = a.y + a.h / 2, yb = b.y + b.h / 2;
+      return {
+        d: "M" + a.x + " " + ya +
+          " C" + left + " " + ya + " " + left + " " + yb +
+          " " + (b.x - 8) + " " + yb,
+        label: [left - 4, (ya + yb) / 2],
+        anchor: "end",
       };
     }
     var x1 = a.x + a.w / 2, y1 = a.y + a.h;
@@ -308,6 +330,67 @@ window.ProcMap = (function () {
       label: [(x1 + x2) / 2 + 8, (y1 + y2) / 2],
       anchor: "start",
     };
+  }
+
+  /* Раздать дорожки классам рёбер до отрисовки. Возвраты - справа, прыжки
+   * через слои - слева; внутри класса короткая дуга получает внутреннюю
+   * дорожку, длинная - внешнюю: так дуги вкладываются, а не пересекаются. */
+  function assignLanes(model) {
+    var rightBase = 0, leftBase = Infinity;
+    model.nodes.forEach(function (n) {
+      if (n.x + n.w > rightBase) rightBase = n.x + n.w;
+      if (n.x < leftBase) leftBase = n.x;
+    });
+    var backs = [], skips = [];
+    model.edges.forEach(function (e) {
+      var a = model.byId[e.source], b = model.byId[e.target];
+      if (!a || !b) return;
+      if (b.layer <= a.layer) backs.push(e);
+      else if (b.layer - a.layer > 1 && !e.terminal) skips.push(e);
+    });
+    function span(e) {
+      return Math.abs(model.byId[e.source].layer - model.byId[e.target].layer);
+    }
+    backs.sort(function (x, y) { return span(x) - span(y); });
+    skips.sort(function (x, y) { return span(x) - span(y); });
+    var routes = {};
+    backs.forEach(function (e, i) {
+      routes[e.source + SEP + e.target] = { lane: i, sideBase: rightBase + 40 };
+    });
+    skips.forEach(function (e, i) {
+      routes[e.source + SEP + e.target] = { lane: i, detour: true, detourBase: leftBase - 36 };
+    });
+    // Дорожки расширяют картинку - полотну надо знать, насколько.
+    model.width = Math.max(model.width, rightBase + 40 + backs.length * 30 + 60);
+    model.extraLeft = skips.length ? (36 + (skips.length - 1) * 30 + 40) : 0;
+    return routes;
+  }
+
+  /* Подписи, наехавшие друг на друга, растолкать по вертикали. Работает по
+   * факту, а не по предвидению: собираем все цифры, группируем стоящие в
+   * одном столбце и раздвигаем те, что ближе 14px. Дешевле, чем учить
+   * каждую ветку геометрии обо всех остальных. */
+  function spreadLabels(edgeLayer) {
+    var labels = [];
+    edgeLayer.querySelectorAll("text.map-edge-label").forEach(function (node) {
+      labels.push({ node: node, x: +node.getAttribute("x"), y: +node.getAttribute("y") });
+    });
+    var columns = {};
+    labels.forEach(function (item) {
+      var key = Math.round(item.x / 46);
+      (columns[key] = columns[key] || []).push(item);
+    });
+    Object.keys(columns).forEach(function (key) {
+      var column = columns[key];
+      column.sort(function (a, b) { return a.y - b.y; });
+      for (var i = 1; i < column.length; i++) {
+        var gap = column[i].y - column[i - 1].y;
+        if (gap < 14) {
+          column[i].y = column[i - 1].y + 14;
+          column[i].node.setAttribute("y", column[i].y);
+        }
+      }
+    });
   }
 
   function loopPath(n) {
@@ -366,11 +449,19 @@ window.ProcMap = (function () {
     });
     svg.appendChild(defs);
 
+    var routes = assignLanes(model);
+    /* Обходы слева уводят координаты в минус - сдвигаем весь граф вправо,
+     * SVG отрицательных координат не прощает обрезкой. */
+    if (model.extraLeft) {
+      model.nodes.forEach(function (n) { n.x += model.extraLeft; });
+      model.width += model.extraLeft;
+    }
+
     var edgeLayer = el("g", { class: "map-edges" });
     model.edges.forEach(function (e) {
       var a = model.byId[e.source], b = model.byId[e.target];
       if (!a || !b) return;
-      var geometry = edgeGeometry(a, b);
+      var geometry = edgeGeometry(a, b, routes[e.source + SEP + e.target]);
       var value = e.terminal ? 0 : (byTime ? (e.median || e.mean || 0) : e.freq);
       var weight = e.terminal ? 0 : value / maxWeight;
       var heavy = !e.terminal && !e.back && value >= heavyFrom;
@@ -410,7 +501,10 @@ window.ProcMap = (function () {
         }, caption));
       }
     });
+    spreadLabels(edgeLayer);
     svg.appendChild(edgeLayer);
+    svg.setAttribute("width", model.width);
+    svg.setAttribute("viewBox", "0 0 " + model.width + " " + model.height);
 
     var nodeLayer = el("g", { class: "map-nodes" });
     model.nodes.forEach(function (n) {
