@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
+import logging
 import mimetypes
 import os
 import time
@@ -63,6 +64,9 @@ from .services import (
     repeat_order_for_next_week,
     resume_batch,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def batch_number_query(value):
@@ -241,6 +245,7 @@ def kanban_context(request):
         "products": Product.objects.filter(is_active=True),
         "statuses": ProductionBatch.Status.choices,
         "can_manage_demo": can_manage_kanban_demo(request.user),
+        "can_delete_cards": can_manage_orders(request.user),
         "demo_filter": request.GET.get("demo", "work"),
     }
     return context
@@ -479,6 +484,89 @@ def batch_action(request, pk, action):
     except (PermissionDenied, ValidationError) as exc:
         messages.error(request, str(exc))
     return redirect("bakery:batch_detail", pk=batch.pk)
+
+
+def delete_cards(request, batches, label):
+    """Убрать с доски карточки, которых там быть не должно.
+
+    Ошибочно заведённый заказ до сих пор снимался только из админки: партия
+    держит свою строку заказа через PROTECT, поэтому кнопка «Удалить заказ» на
+    странице заказа отказывалась работать, стоило партиям появиться. Здесь тот
+    же узел развязан с другого конца - сначала партии, потом опустевший заказ.
+
+    Заказ удаляется только тогда, когда после чистки у него не осталось ни
+    одной партии. Заказ на пять позиций, из которых ошибочна одна, теряет
+    только её: остальные едут по доске дальше.
+
+    Отмена (`batch_action` со статусом «отменена») никуда не делась и остаётся
+    рабочим инструментом цеха - она обратима и сохраняет историю. Удаление
+    рядом с ней нужно для другого случая: партии, которой не должно было
+    возникнуть вовсе, в отчётах не место.
+    """
+    back = request.POST.get("next") or "bakery:kanban"
+    if not can_manage_orders(request.user):
+        messages.error(request, "Удалять карточки может диспетчер или технолог.")
+        return redirect(back)
+    if not batches:
+        messages.error(request, "Карточки уже нет на доске - возможно, её удалил кто-то другой.")
+        return redirect(back)
+
+    orders = {batch.order_item.order_id: batch.order_item.order for batch in batches}
+    numbers = sorted({batch.display_batch_label for batch in batches})
+
+    with transaction.atomic():
+        ProductionBatch.objects.filter(pk__in=[batch.pk for batch in batches]).delete()
+        # Заказ без партий - это след ошибки ввода, а не заказ. Оставленный
+        # лежать, он всплывёт в списке заказов и в отчётах пустой строкой.
+        emptied = [
+            order for order in orders.values()
+            if not ProductionBatch.objects.filter(order_item__order_id=order.pk).exists()
+        ]
+        for order in emptied:
+            order.delete()
+
+    logger.warning(
+        "Удаление с доски: пользователь %s, партии %s, заказы %s",
+        request.user.get_username(),
+        ", ".join(numbers) or "-",
+        ", ".join(order.order_number for order in emptied) or "-",
+    )
+
+    said = f"Удалено партий: {len(batches)}"
+    if emptied:
+        said += ". Заказ" + ("ы " if len(emptied) > 1 else " ")
+        said += ", ".join(f"№{order.order_number}" for order in emptied)
+        said += " удалён" + ("ы" if len(emptied) > 1 else "") + ": партий по нему не осталось"
+    messages.success(request, said + ".")
+    return redirect(back)
+
+
+@login_required
+@require_POST
+def delete_batch_view(request, pk):
+    batch = get_object_or_404(
+        ProductionBatch.objects.select_related("order_item__order"), pk=pk
+    )
+    return delete_cards(request, [batch], batch.display_batch_label)
+
+
+@login_required
+@require_POST
+def delete_order_group_view(request, pk):
+    """Сгруппированная карточка - несколько партий одного заказа на этапе.
+
+    Удаляется ровно то, что видно на карточке: партии этого заказа на этом
+    этапе. Заказ, разъехавшийся по доске, не должен исчезать целиком от
+    нажатия на одну из своих карточек.
+    """
+    order = get_object_or_404(ProductionOrder, pk=pk)
+    batches = ProductionBatch.objects.select_related("order_item__order").filter(
+        order_item__order=order
+    )
+    stage_id = request.POST.get("from_stage")
+    if stage_id:
+        batches = batches.filter(current_stage_id=stage_id)
+    return delete_cards(request, list(batches), f"заказ №{order.order_number}")
 
 
 @login_required

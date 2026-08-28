@@ -294,6 +294,21 @@ body.kanban-dragging .kanban-card { cursor: grabbing; }
   transition: background .15s ease, border-color .15s ease, color .15s ease;
 }
 .kanban-card-actions .primary { background: #eef3ff; color: #2f5bd8; }
+/* Удаление необратимо, а сосед «Дальше →» нажимается десятки раз за смену.
+ * Поэтому кнопка не тянется на равную долю строки, а занимает ровно свою
+ * ширину и краснеет только под курсором - заметная, когда её ищут, и тихая,
+ * когда возят карточки. */
+.kanban-card-actions form:has(.kanban-card-delete) { flex: 0 0 auto; }
+.kanban-card-actions .kanban-card-delete {
+  width: auto; min-height: 36px; padding: 5px 9px; border-radius: 8px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  background: #fff; border: 1px solid #e9dcdf; color: #9aa3b2;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.kanban-card-actions .kanban-card-delete:hover,
+.kanban-card-actions .kanban-card-delete:focus-visible {
+  background: rgba(208, 2, 27, .06); border-color: rgba(208, 2, 27, .35); color: var(--danger);
+}
 .kanban-card-actions .secondary {
   background: #fff; border-color: #e1e7f3; color: #61708c;
   display: inline-flex; align-items: center; justify-content: center; text-decoration: none;

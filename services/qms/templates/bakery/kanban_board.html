@@ -152,6 +152,24 @@
               </form>
               {% endif %}
               <a class="secondary" href="{% if batch.is_group %}{% url 'bakery:order_detail' batch.order.pk %}{% else %}{% url 'bakery:batch_detail' batch.pk %}{% endif %}">Открыть</a>
+              {% comment %}
+                Удаление - для карточек, которых не должно было возникнуть.
+                Штатный способ убрать партию с доски - отмена на её странице:
+                она обратима и сохраняет историю. Поэтому кнопка стоит
+                последней, показывается только тем, кто ведёт заказы, и
+                спрашивает подтверждение с номером - на доске её сосед
+                «Дальше →» нажимается десятки раз за смену.
+              {% endcomment %}
+              {% if can_delete_cards %}
+              <form method="post"
+                    action="{% if batch.is_group %}{% url 'bakery:delete_order_group' batch.order.pk %}{% else %}{% url 'bakery:delete_batch' batch.pk %}{% endif %}"
+                    onsubmit="return confirm('{% if batch.is_group %}Удалить с доски заказ №{{ batch.order.order_number }} - {{ batch.batches|length }} поз.?{% else %}Удалить партию {{ batch.display_batch_number }} - {{ batch.product.name|escapejs }}?{% endif %}\n\nЭто действие нельзя отменить. Чтобы просто снять карточку с доски, используйте отмену.');">
+                {% csrf_token %}
+                <input type="hidden" name="from_stage" value="{{ column.stage.pk }}">
+                <input type="hidden" name="next" value="{{ board_url }}">
+                <button class="danger kanban-card-delete" title="Удалить безвозвратно">Удалить</button>
+              </form>
+              {% endif %}
             </div>
           </article>
         {% empty %}
