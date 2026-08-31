@@ -1203,13 +1203,41 @@
 
   var eventPage = 0, eventQuery = "";
   var EVENTS_PER_PAGE = 50;
+  var eventSort = store.get("pm-studio-eventsort", "new");
 
   function filteredEvents() {
     var query = eventQuery.trim().toLowerCase();
-    if (!query) return state.events;
-    return state.events.filter(function (event) {
-      return (event.case_id + " " + event.activity + " " + (event.resource || "")).toLowerCase().indexOf(query) !== -1;
-    });
+    var rows = state.events;
+    if (query) {
+      rows = rows.filter(function (event) {
+        return (event.case_id + " " + event.activity + " " + (event.resource || "")).toLowerCase().indexOf(query) !== -1;
+      });
+    }
+    return sortEvents(rows);
+  }
+
+  /* Журнал приходит сгруппированным по кейсам: так его читает построитель
+   * модели - шаги одной партии подряд, по времени. Человеку на этой странице
+   * нужно обратное - что случилось в цехе последним, а не какая партия первой
+   * по алфавиту. Порядок «по кейсам» остаётся третьим пунктом: прочесть путь
+   * партии целиком иначе негде.
+   *
+   * Сортируется копия. state.events держит исходный порядок, на который
+   * опирается всё остальное - индекс кейсов, прогнозы, распределения. */
+  function sortEvents(rows) {
+    if (eventSort === "case") return rows;
+    var sign = eventSort === "old" ? 1 : -1;
+    // Метка времени разбирается один раз на событие, а не на каждое сравнение:
+    // при трёх тысячах строк это разница между мгновением и заметной паузой.
+    return rows
+      .map(function (event, index) {
+        return { event: event, at: new Date(event.timestamp).getTime(), index: index };
+      })
+      .sort(function (a, b) {
+        if (a.at !== b.at) return sign * (a.at - b.at);
+        return a.index - b.index; // одинаковое время - порядок как пришёл
+      })
+      .map(function (item) { return item.event; });
   }
 
   function pageEvents() {
@@ -1226,8 +1254,13 @@
         "<p>" + t("{shown} из {total} событий", {
           shown: num(rows.length), total: num(state.events.length),
         }) + (state.truncated ? t(" · показаны первые {limit}", { limit: num(MAX_EVENTS) }) : "") + "</p></div>" +
-        '<div class="hero-tools" style="flex:1;max-width:360px">' +
+        '<div class="hero-tools" style="flex:1;max-width:540px">' +
           '<div class="field" style="flex:1"><input type="search" id="eventSearch" placeholder="' + esc(t('Кейс, активность или исполнитель')) + '" value="' + esc(eventQuery) + '"></div>' +
+          '<div class="select-wrap" style="height:40px"><select id="eventSort" style="height:40px">' +
+            sortOption("new", t("Сначала новые")) +
+            sortOption("old", t("Сначала старые")) +
+            sortOption("case", t("По кейсам")) +
+          "</select>" + icon("chevron", "chev") + "</div>" +
         "</div></div>" +
 
         (state.truncated ? '<div class="note" data-tone="warn">' +
@@ -1236,7 +1269,9 @@
           "</div>" : "") +
 
         '<div class="card"><div class="card-body flush"><div class="tbl-wrap"><table class="tbl">' +
-          "<thead><tr><th>" + t("Время") + "</th><th>" + t("Кейс") + "</th><th>" + t("Активность") + "</th><th>" + t("Исполнитель") + "</th><th>" + t("Стадия") + "</th></tr></thead><tbody>" +
+          '<thead><tr><th class="th-sort" id="eventSortTime" title="' + esc(t('Переключить порядок')) + '">' +
+            t("Время") + '<span class="caret">' + (eventSort === "old" ? "▲" : eventSort === "new" ? "▼" : "") + "</span></th>" +
+          "<th>" + t("Кейс") + "</th><th>" + t("Активность") + "</th><th>" + t("Исполнитель") + "</th><th>" + t("Стадия") + "</th></tr></thead><tbody>" +
           (slice.length ? slice.map(function (event) {
             return "<tr><td>" + dateTime(event.timestamp) + "</td>" +
               '<td class="strong">' + esc(event.case_id) + "</td>" +
@@ -1249,6 +1284,17 @@
         pager(eventPage, pages, "eventPager")
       + "</section>"
     );
+  }
+
+  function sortOption(value, label) {
+    return '<option value="' + value + '"' + (eventSort === value ? " selected" : "") + ">" + label + "</option>";
+  }
+
+  function setEventSort(value) {
+    eventSort = value;
+    store.set("pm-studio-eventsort", value);
+    eventPage = 0; // иначе человек остаётся на седьмой странице чужого порядка
+    render();
   }
 
   function activityDot(name) {
@@ -1276,6 +1322,16 @@
         if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
       });
     }
+    var order = $("eventSort");
+    if (order) order.addEventListener("change", function (event) { setEventSort(event.target.value); });
+
+    var head = $("eventSortTime");
+    if (head) head.addEventListener("click", function () {
+      // Щелчок по «Времени» - это про время: из группировки по кейсам он
+      // выводит к новым сверху, дальше переворачивает.
+      setEventSort(eventSort === "new" ? "old" : "new");
+    });
+
     wirePager("eventPager", function (page) { eventPage = page; render(); });
   }
 

@@ -424,6 +424,12 @@ table.tbl tr:hover td { background: var(--panel-3); }
 table.tbl td.num, table.tbl th.num { text-align: right; white-space: nowrap; }
 table.tbl td.strong { font-weight: 600; }
 table.tbl .empty { color: var(--muted); text-align: center; padding: 26px 19px; }
+/* Заголовок-переключатель. Стрелка не украшение, а единственный на странице
+   ответ на вопрос «сверху новое или старое»: в столбце дат один день от
+   другого на глаз не отличить. */
+table.tbl th.th-sort { cursor: pointer; user-select: none; }
+table.tbl th.th-sort:hover { color: var(--ink); }
+table.tbl th.th-sort .caret { margin-left: 6px; font-size: 9px; color: var(--violet); }
 .card-body.flush table.tbl th { padding-top: 4px; }
 
 .path-seq { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
