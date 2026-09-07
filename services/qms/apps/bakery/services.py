@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 from django.urls import reverse
 from django.utils import timezone
 
@@ -21,10 +21,83 @@ from .models import (
     stock_expiration_for,
 )
 from .permissions import can_move_batch
+from .production_sheet import board_day_start
 
 
 def log_order_event(order, message, event_type="info", user=None, batch=None):
     return OrderEvent.objects.create(order=order, batch=batch, event_type=event_type, message=message, created_by=user)
+
+
+# ---- утренняя уборка колонки «Готово» --------------------------------------
+#
+# «Готово» - последний этап, дальше партия не едет. Без уборки колонка копит
+# карточки бесконечно, и к восьми утра смена приходит к доске, на которой
+# вчерашнее вперемешку с сегодняшним.
+#
+# Убирается только вид. Ни одна строка не удаляется: на партии висит история
+# этапов, из которой строится карта процесса, считаются столбцы смен в листе
+# заказа и уходит поток в Influx. Удалять это ради чистой доски - менять
+# отчётность на косметику.
+#
+# Механизма два, и они подстраховывают друг друга:
+#
+#   · отметка board_cleared_at - её ставит команда clear_done_board,
+#     запускаемая по расписанию в 7:55; она же пишет, что именно убрала;
+#   · граница производственного дня - доска сама не показывает то, что
+#     доехало до прошлых 8:00.
+#
+# Одной команды было бы мало: стенд ночью выключали, и доска встретила бы
+# смену грязной. Одной границы - тоже: она молчаливая, по ней не спросишь,
+# что и когда ушло. Вместе - чисто в любом случае, и есть кого спросить.
+
+
+def board_visible_done_filter(now=None):
+    """Условие «эта готовая партия ещё принадлежит доске».
+
+    Партия остаётся видимой, пока её не убрали отметкой и пока она доехала
+    после начала текущего производственного дня.
+
+    Партия без времени финиша видимой остаётся: это старая строка, и пропасть
+    молча она не должна - её уберёт команда, и в её выводе это будет видно.
+    """
+    boundary = board_day_start(now or timezone.localtime())
+    return Q(board_cleared_at__isnull=True) & (
+        Q(actual_finish__isnull=True) | Q(actual_finish__gte=boundary)
+    )
+
+
+def sweep_done_board(cutoff=None, dry_run=False):
+    """Убрать с доски всё, что в «Готово» доехало до среза.
+
+    Возвращает список убранного - команде есть что напечатать, а тесту есть
+    что проверить. Повторный запуск ничего не находит: отметка уже стоит.
+
+    updated_at двигается вручную. Массовый update() его auto_now не трогает,
+    а по нему доска у открытых смен понимает, что пора перерисоваться - без
+    этой строки карточки исчезали бы только после ручного обновления страницы.
+    """
+    cutoff = cutoff or timezone.now()
+    stale = (
+        ProductionBatch.objects.filter(current_stage__code="done", board_cleared_at__isnull=True)
+        .filter(Q(actual_finish__lt=cutoff) | Q(actual_finish__isnull=True))
+        .select_related("product", "order_item__order")
+        .order_by("actual_finish", "pk")
+    )
+    swept = [
+        {
+            "pk": batch.pk,
+            "label": batch.display_batch_label,
+            "product": batch.product.name,
+            "finished": batch.actual_finish,
+            "demo": batch.is_demo,
+        }
+        for batch in stale
+    ]
+    if swept and not dry_run:
+        ProductionBatch.objects.filter(pk__in=[row["pk"] for row in swept]).update(
+            board_cleared_at=cutoff, updated_at=timezone.now()
+        )
+    return swept
 
 
 # Партия ушла с доски - её число снова свободно. Всё остальное занято:

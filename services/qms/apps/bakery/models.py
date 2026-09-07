@@ -477,6 +477,11 @@ class ProductionBatch(TimestampedModel):
     actual_start = models.DateTimeField("факт старт", null=True, blank=True)
     planned_finish = models.DateTimeField("план финиш", null=True, blank=True)
     actual_finish = models.DateTimeField("факт финиш", null=True, blank=True)
+    # Партия убрана с доски, но никуда не делась: история этапов, склад и
+    # выпуск в листе заказа на месте. «Готово» - последний этап, и без этой
+    # отметки колонка копила бы карточки бесконечно. Проставляется утренней
+    # уборкой; смотреть партию по-прежнему можно в списке и в поиске.
+    board_cleared_at = models.DateTimeField("убрано с доски", null=True, blank=True, db_index=True)
     notes = models.TextField("примечания", blank=True)
     is_demo = models.BooleanField("демо", default=False, db_index=True)
     demo_run = models.ForeignKey(KanbanDemoRun, verbose_name="демо-запуск", on_delete=models.SET_NULL, null=True, blank=True, related_name="batches")

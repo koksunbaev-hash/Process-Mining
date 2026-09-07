@@ -57,6 +57,7 @@ from .services import (
     delete_batch,
     delete_order_with_batches,
     assign_batch_to_unit,
+    board_visible_done_filter,
     confirm_order,
     move_batch,
     next_stage_for,
@@ -175,6 +176,8 @@ def kanban_context(request):
     columns = []
     for index, stage in enumerate(stages):
         items = batches.filter(current_stage=stage)
+        if stage.code == "done":
+            items = items.filter(board_visible_done_filter())
         if column_search[stage.code]:
             items = items.filter(
                 Q(product__name__icontains=column_search[stage.code])
