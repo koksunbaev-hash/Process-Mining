@@ -1,0 +1,925 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bread, Traced — live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@600;700;900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Витрина проекта: та же система, что и в офлайн-версии презентации, но
+     все числа приходят из API этого же сервиса. Страница только читает.
+     Доска - песочница: она показывает, где партии стоят на самом деле, а
+     нажатие проигрывает следующий шаг, ничего не записывая. Иначе показ
+     на сцене засорял бы настоящий журнал выдуманными событиями. */
+
+  :root {
+    --ground:#EFF3F5; --surface:#FFFFFF; --surface-2:#F6FAFB;
+    --ink:#0F191F; --muted:#53646D; --faint:#82949D;
+    --line:#D6E0E5; --line-soft:#E6EDF0;
+    --accent:#11627B; --accent-soft:#DAEAEF;
+    --signal:#AD431B; --signal-soft:#F6E2D9;
+    --good:#2C6E49;
+
+    --con-bg:#0B1317; --con-panel:#111E25; --con-panel-2:#16262F;
+    --con-line:#21343E; --con-ink:#DCE9EF; --con-muted:#7E96A3;
+    --con-faint:#5A717D; --con-accent:#4FADCA;
+
+    --s-queue:#6B7A85; --s-mixing:#2F7C9A; --s-forming:#2E8B77;
+    --s-proofing:#6E9B3A; --s-oven:#C2761B; --s-warehouse:#7A6BA8; --s-done:#35704F;
+
+    --display:"Chivo","Helvetica Neue",Arial,sans-serif;
+    --body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#080F13; --surface:#0F1A20; --surface-2:#14232B;
+      --ink:#DFEAEF; --muted:#93A7B1; --faint:#6B808B;
+      --line:#1F2F38; --line-soft:#172630;
+      --accent:#55AFCC; --accent-soft:#12303C;
+      --signal:#DE8B5C; --signal-soft:#33200F; --good:#63B98A;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#080F13; --surface:#0F1A20; --surface-2:#14232B;
+    --ink:#DFEAEF; --muted:#93A7B1; --faint:#6B808B;
+    --line:#1F2F38; --line-soft:#172630;
+    --accent:#55AFCC; --accent-soft:#12303C;
+    --signal:#DE8B5C; --signal-soft:#33200F; --good:#63B98A;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--ground); color: var(--ink);
+    font-family: var(--body); font-size: 16px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  img { max-width: 100%; }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  .narrow { max-width: 660px; }
+
+  /* ------------------------------------------------------- connection --- */
+
+  .conn {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  .conn-in {
+    max-width: 1080px; margin: 0 auto; padding: 9px 24px;
+    display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+    font-family: var(--mono); font-size: 11px; color: var(--faint);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: 0 0 auto; }
+  .dot.live { background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent); }
+  .dot.bad { background: var(--signal); }
+  .conn b { color: var(--muted); font-weight: 500; }
+  .conn .spacer { flex: 1 1 auto; }
+  .mini {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase;
+    background: transparent; color: var(--muted); border: 1px solid var(--line);
+    border-radius: 3px; padding: 4px 10px; cursor: pointer;
+  }
+  .mini:hover, .mini:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+
+  /* ------------------------------------------------------------ gate --- */
+
+  .gate { padding: 70px 0 90px; max-width: 560px; }
+  .gate h1 { font-family: var(--display); font-weight: 700; font-size: 30px; margin: 0 0 14px; letter-spacing: -.02em; }
+  .gate p { color: var(--muted); margin: 0 0 18px; }
+  .gate form { display: flex; gap: 8px; flex-wrap: wrap; }
+  .gate input {
+    flex: 1 1 260px; height: 40px; padding: 0 13px;
+    font-family: var(--mono); font-size: 13px;
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px;
+  }
+  .gate input:focus { outline: none; border-color: var(--accent); }
+  .gate button {
+    height: 40px; padding: 0 18px; cursor: pointer; border: none; border-radius: 4px;
+    background: var(--accent); color: #fff; font-family: var(--body); font-weight: 500; font-size: 14px;
+  }
+  .gate .err { color: var(--signal); font-family: var(--mono); font-size: 12.5px; }
+
+  /* ---------------------------------------------------------- header --- */
+
+  header.top { padding: 46px 0 34px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); margin: 0 0 15px; }
+  h1.hero { font-family: var(--display); font-weight: 900; font-size: clamp(36px,6.4vw,62px); line-height: .99; letter-spacing: -.03em; text-wrap: balance; margin: 0 0 18px; }
+  .lede { font-size: 18.5px; line-height: 1.55; color: var(--muted); max-width: 58ch; margin: 0; }
+
+  .figs { display: grid; grid-template-columns: repeat(auto-fit,minmax(148px,1fr)); gap: 1px; margin-top: 32px; background: var(--line); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .fig { background: var(--surface); padding: 15px 17px; }
+  .fig b { display: block; font-family: var(--display); font-weight: 700; font-size: 29px; line-height: 1; letter-spacing: -.02em; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .fig span { display: block; margin-top: 7px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--faint); }
+
+  /* --------------------------------------------------------- sections --- */
+
+  section { padding: 42px 0; }
+  .sec-head { margin-bottom: 24px; }
+  .sec-num { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; color: var(--faint); display: block; margin-bottom: 9px; }
+  h2 { font-family: var(--display); font-weight: 700; font-size: clamp(24px,3.4vw,32px); line-height: 1.12; letter-spacing: -.02em; text-wrap: balance; margin: 0 0 11px; }
+  .sec-head p { margin: 0; color: var(--muted); max-width: 62ch; font-size: 16.5px; }
+
+  /* ---------------------------------------------------------- console --- */
+
+  .console { background: var(--con-bg); color: var(--con-ink); border-radius: 6px; padding: 19px; display: grid; grid-template-columns: 1fr 336px; gap: 17px; align-items: start; }
+  .con-label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .13em; text-transform: uppercase; color: var(--con-faint); margin: 0 0 10px; display: flex; justify-content: space-between; gap: 10px; }
+  .con-label i { font-style: normal; color: var(--con-accent); }
+
+  .board { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; }
+  .col { background: var(--con-panel); border-radius: 4px; padding: 8px 7px 10px; min-height: 128px; border-top: 2px solid var(--stage,var(--con-line)); }
+  .col h4 { font-family: var(--mono); font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--con-muted); margin: 0 0 8px; line-height: 1.3; min-height: 24px; }
+  .col h4 i { display: block; font-style: normal; color: var(--con-faint); font-size: 8.5px; }
+
+  .card { background: var(--con-panel-2); border: 1px solid var(--con-line); border-left: 2px solid var(--stage,var(--con-accent)); border-radius: 3px; padding: 7px 8px; margin-bottom: 6px; cursor: pointer; text-align: left; width: 100%; display: block; color: var(--con-ink); font-family: var(--body); font-size: 11.5px; line-height: 1.35; transition: transform .16s ease, border-color .16s ease; }
+  .card:hover, .card:focus-visible { transform: translateX(2px); border-color: var(--con-accent); outline: none; }
+  .card b { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--con-accent); font-weight: 500; }
+  .card span { display: block; color: var(--con-muted); font-size: 10.5px; margin-top: 2px; }
+  .card.moved { border-left-color: #C58A4E; }
+  .card.flash { animation: fl .8s ease; }
+  @keyframes fl { 0% { background: #1D3B49; } 100% { background: var(--con-panel-2); } }
+
+  .side { display: flex; flex-direction: column; gap: 15px; }
+  .feed { background: var(--con-panel); border-radius: 4px; padding: 9px 11px; height: 214px; overflow-y: auto; font-family: var(--mono); font-size: 10.5px; line-height: 1.5; }
+  .feed .row { display: flex; gap: 8px; padding: 3px 0 3px 6px; border-bottom: 1px solid var(--con-line); border-left: 2px solid transparent; }
+  .feed .row:last-child { border-bottom: none; }
+  .feed .row.sim { border-left-color: #C58A4E; }
+  .feed .t { color: var(--con-faint); flex: 0 0 auto; }
+  .feed .c { color: var(--con-accent); flex: 0 0 auto; }
+  .feed .a { color: var(--con-ink); }
+  .feed .r { color: var(--con-muted); }
+  .feed .row.back .a { color: #E0925F; }
+  .feed .row.sim .a { color: #D8A874; }
+  .feed .empty { color: var(--con-faint); font-style: italic; }
+
+  .twins { display: grid; grid-template-columns: repeat(2,1fr); gap: 6px; }
+  .twin { background: var(--con-panel); border-radius: 4px; padding: 8px 9px; font-family: var(--mono); font-size: 10px; line-height: 1.45; }
+  .twin b { display: block; color: var(--con-ink); font-size: 10.5px; font-weight: 500; }
+  .twin span { display: block; color: var(--con-faint); margin-top: 3px; }
+  .twin.busy { box-shadow: inset 2px 0 0 var(--con-accent); }
+  .twin.busy span { color: var(--con-accent); }
+
+  .con-foot { grid-column: 1/-1; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; border-top: 1px solid var(--con-line); padding-top: 12px; }
+  .hint { font-family: var(--mono); font-size: 10.5px; color: var(--con-faint); margin: 0; max-width: 62ch; }
+  .hint b { color: var(--con-accent); font-weight: 500; }
+  .btn { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; background: transparent; color: var(--con-muted); border: 1px solid var(--con-line); border-radius: 3px; padding: 6px 11px; cursor: pointer; }
+  .btn:hover, .btn:focus-visible { color: var(--con-ink); border-color: var(--con-accent); outline: none; }
+  .btn.warn:hover { color: #E0925F; border-color: #A9603A; }
+
+  /* ------------------------------------------------------------ voice --- */
+
+  .voice { display: grid; grid-template-columns: 1fr 1fr; gap: 17px; align-items: start; grid-column: 1/-1; }
+  .phrases { display: flex; flex-direction: column; gap: 7px; }
+  .phrase { background: var(--con-panel); border: 1px solid var(--con-line); border-radius: 4px; padding: 9px 11px; cursor: pointer; text-align: left; color: var(--con-ink); font-family: var(--body); font-size: 13px; }
+  .phrase:hover, .phrase:focus-visible { border-color: var(--con-accent); outline: none; }
+  .phrase i { display: block; font-style: normal; font-family: var(--mono); font-size: 9.5px; color: var(--con-faint); margin-top: 3px; letter-spacing: .04em; text-transform: uppercase; }
+  .parse { background: var(--con-panel); border-radius: 4px; padding: 13px 14px; font-family: var(--mono); font-size: 11px; line-height: 1.7; min-height: 168px; }
+  .parse dl { display: grid; grid-template-columns: 84px 1fr; gap: 2px 10px; margin: 0 0 11px; }
+  .parse dt { color: var(--con-faint); }
+  .parse dd { margin: 0; color: var(--con-ink); }
+  .parse dd.ok { color: var(--con-accent); }
+  .parse dd.warn { color: #E0925F; }
+  .parse .verdict { border-top: 1px solid var(--con-line); padding-top: 10px; color: var(--con-muted); font-family: var(--body); font-size: 12.5px; line-height: 1.5; }
+  .parse .idle { color: var(--con-faint); font-style: italic; font-family: var(--body); }
+  .parse .acts { display: flex; gap: 7px; margin-top: 11px; }
+
+  /* -------------------------------------------------------------- map --- */
+
+  .mapwrap { background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 17px; overflow-x: auto; }
+  .mapwrap svg { display: block; min-width: 660px; }
+  .maplegend { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--line-soft); font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+  .maplegend b { color: var(--muted); font-weight: 500; }
+
+  /* ------------------------------------------------------------- bars --- */
+
+  .bars { display: flex; flex-direction: column; gap: 2px; }
+  .bar { display: grid; grid-template-columns: 216px 1fr 76px; gap: 14px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+  .bar .name { font-size: 13.5px; line-height: 1.3; }
+  .bar .name i { display: block; font-style: normal; font-family: var(--mono); font-size: 10px; color: var(--faint); margin-top: 2px; }
+  .track { position: relative; height: 20px; background: var(--surface-2); border-radius: 2px; }
+  .p95, .med { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 2px; }
+  .p95 { background: var(--accent-soft); }
+  .med { background: var(--accent); }
+  .bar.rework .med { background: var(--signal); }
+  .bar.rework .p95 { background: var(--signal-soft); }
+  .bar .val { font-family: var(--mono); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .bar.rework .val { color: var(--signal); }
+
+  /* --------------------------------------------------------- variants --- */
+
+  .vars { display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .var { background: var(--surface); padding: 12px 15px; display: grid; grid-template-columns: 58px 1fr 96px; gap: 14px; align-items: center; }
+  .var .share { font-family: var(--display); font-weight: 700; font-size: 19px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .var .path { font-family: var(--mono); font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .var .cnt { font-family: var(--mono); font-size: 11px; color: var(--faint); text-align: right; }
+
+  /* -------------------------------------------------------- guardrail --- */
+
+  .rails { display: flex; flex-direction: column; gap: 15px; }
+  .rail { border-left: 2px solid var(--signal); padding: 1px 0 1px 17px; }
+  .rail b { display: block; font-family: var(--display); font-weight: 700; font-size: 16px; color: var(--signal); margin-bottom: 4px; }
+  .rail p { margin: 0; color: var(--muted); max-width: 62ch; font-size: 15.5px; }
+
+  footer { border-top: 1px solid var(--line); margin-top: 26px; padding: 24px 0 64px; font-family: var(--mono); font-size: 11.5px; color: var(--faint); line-height: 1.7; }
+  footer b { color: var(--muted); font-weight: 500; }
+
+  .skeleton { color: var(--faint); font-family: var(--mono); font-size: 12px; padding: 30px 0; }
+
+  @media (max-width: 900px) {
+    .console { grid-template-columns: 1fr; }
+    .board { grid-template-columns: repeat(4,1fr); }
+    .voice { grid-template-columns: 1fr; }
+    .bar { grid-template-columns: 1fr; gap: 6px; }
+    .bar .val { text-align: left; }
+  }
+  @media (max-width: 560px) {
+    .board { grid-template-columns: repeat(2,1fr); }
+    .var { grid-template-columns: 52px 1fr; }
+    .var .cnt { grid-column: 2; text-align: left; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="conn">
+  <div class="conn-in">
+    <span class="dot" id="dot"></span>
+    <span id="connstate">connecting…</span>
+    <span class="spacer"></span>
+    <span id="connmeta"></span>
+    <button class="mini" id="refresh" type="button">Refresh</button>
+  </div>
+</div>
+
+<div id="gate" class="wrap" hidden>
+  <div class="gate">
+    <h1>This page reads the live log</h1>
+    <p>Open it from KMS with the <b>Открыть консоль</b> link and it authorises itself — the pass travels in the address. Otherwise paste a deployment API key below; it is kept in this browser only.</p>
+    <form id="gateform">
+      <input type="password" id="gatekey" placeholder="X-API-Key" autocomplete="off" spellcheck="false">
+      <button type="submit">Connect</button>
+    </form>
+    <p class="err" id="gateerr"></p>
+  </div>
+</div>
+
+<main id="app" hidden>
+  <div class="wrap">
+    <header class="top">
+      <p class="eyebrow">QMS + Process Mining · reading the live log</p>
+      <h1 class="hero">Bread, Traced</h1>
+      <p class="lede">A bakery that ran on paper now writes its own event log — not because anyone types it in, but because the log is what doing the work leaves behind. Every figure below is read from the running installation, right now.</p>
+      <div class="figs" id="figs"></div>
+    </header>
+  </div>
+
+  <div class="wrap">
+    <section>
+      <div class="sec-head">
+        <span class="sec-num">01 — THE FLOOR</span>
+        <h2>Where the batches actually are, this minute</h2>
+        <p>These cards are real batches in flight, placed by the last event each one wrote. The feed beside them is the live log, newest first — if somebody moves a card in the bakery while you are talking, it appears here. Click a card to play its next move: the events it would write are shown in amber, and nothing is sent to the floor.</p>
+      </div>
+
+      <div class="console">
+        <div>
+          <p class="con-label"><span>Board · reconstructed from the log</span><i id="boardnote"></i></p>
+          <div class="board" id="board"></div>
+        </div>
+        <div class="side">
+          <div>
+            <p class="con-label"><span>Event log · live</span><i id="feednote"></i></p>
+            <div class="feed" id="feed"><p class="empty">loading…</p></div>
+          </div>
+          <div>
+            <p class="con-label"><span>Equipment twins</span></p>
+            <div class="twins" id="twins"></div>
+          </div>
+        </div>
+        <div class="con-foot">
+          <p class="hint" id="hintline">Amber rows are played here only — <b>this page never writes to the log</b>.</p>
+          <div style="display:flex;gap:8px">
+            <button class="btn warn" id="sendback" type="button">Play a send-back</button>
+            <button class="btn" id="reset" type="button">Reset board</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-head">
+        <span class="sec-num">02 — VOICE</span>
+        <h2>Hands in dough, two languages in one sentence</h2>
+        <p>A baker cannot stop to tap a screen, and the floor speaks Kazakh and Russian in the same breath. The batch numbers below are taken from the real batches in flight. Nothing moves until it is confirmed.</p>
+      </div>
+      <div class="console">
+        <div class="voice">
+          <div>
+            <p class="con-label"><span>Heard on the floor</span></p>
+            <div class="phrases" id="phrases"></div>
+          </div>
+          <div>
+            <p class="con-label"><span>What the system understood</span></p>
+            <div class="parse" id="parse"><p class="idle">Pick a phrase on the left.</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-head">
+        <span class="sec-num">03 — THE MAP</span>
+        <h2>Nobody drew this map</h2>
+        <p>The chain was discovered from the log, and the tally under each stage is how many times a batch has entered it. Those numbers are live. Your played moves are counted separately, in accent, so you can see your own clicks land in the same statistics.</p>
+      </div>
+      <div class="mapwrap">
+        <svg id="map" viewBox="0 0 980 250" role="img" aria-label="Discovered process map with live frequencies"></svg>
+        <div class="maplegend">
+          <span><b>Number under a stage</b> — times entered, live</span>
+          <span><b>+n</b> — played by you just now</span>
+          <span><b style="color:var(--signal)">Red arc</b> — send-back to a previous stage</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-head">
+        <span class="sec-num">04 — TIME</span>
+        <h2>Where the day actually goes</h2>
+        <p>Median waiting time between steps, with the 95th percentile behind it — the pale bar is how bad it gets on a bad day. Slowest first — so the row that costs the most is the one you read first.</p>
+      </div>
+      <div class="bars" id="bars"><p class="skeleton">loading…</p></div>
+    </section>
+
+    <section>
+      <div class="sec-head">
+        <span class="sec-num">05 — PATHS</span>
+        <h2>Every route the floor actually takes</h2>
+        <p>It is tempting to call this chaos. It is not. Some of these are batches still in flight, recorded only as far as they have got. What is left is genuine variation worth asking about.</p>
+      </div>
+      <div class="vars" id="vars"><p class="skeleton">loading…</p></div>
+    </section>
+
+    <section class="narrow">
+      <div class="sec-head">
+        <span class="sec-num">06 — LIMITS</span>
+        <h2>What this is not, yet</h2>
+      </div>
+      <div class="rails">
+        <div class="rail">
+          <b>This is not predictive maintenance</b>
+          <p>We can see a machine behaving unlike itself and raise a flag. A flag is a hypothesis, not a forecast. A few weeks of floor data is not a few years, and promising a two-week warning today is the fastest way to lose the room the first time an oven stops without one.</p>
+        </div>
+        <div class="rail">
+          <b>The digitised paper sheets are not in these figures</b>
+          <p>Five real production sheets were transcribed, but sheets record quantities, not clock times — theirs were reconstructed. Excellent for volumes, useless for timing, so they are kept out of this log rather than quietly averaged in.</p>
+        </div>
+        <div class="rail">
+          <b>Not every batch on the floor is in the system yet</b>
+          <p>The log covers what the board covers. Coverage grows week by week, and until it is complete these medians describe the traced part of the bakery, not all of it.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <footer>
+      <b>Live.</b> Read from this installation over its own API, refreshed every 30 seconds. <span id="prov"></span><br>
+      <b>Read-only.</b> The page holds a read pass. Moves played on the board exist in your browser and nowhere else.<br>
+      <b>Stack.</b> Django QMS on the floor · FastAPI + pm4py for discovery · NeMo FastConformer for Kazakh/Russian speech · Eclipse Ditto twins · Grafana and InfluxDB for the machines.
+    </footer>
+  </div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var KEY_STORE = "pm-api-key";       // тот же ключ, что у консоли: открыв её, откроешь и это
+  var API = "/api/v1";
+  var REFRESH_MS = 30000;
+
+  var STAGES = [
+    { code:"queue",     ru:"Очередь",   en:"Queued",    color:"var(--s-queue)",     unit:null,
+      enter:"Партия поступила в очередь" },
+    { code:"mixing",    ru:"Замес",     en:"Mixing",    color:"var(--s-mixing)",    unit:"Миксер 1",
+      enter:"Начало замеса" },
+    { code:"forming",   ru:"Формовка",  en:"Forming",   color:"var(--s-forming)",   unit:"Формовщик 1",
+      enter:"Передача на формовку" },
+    { code:"proofing",  ru:"Расстойка", en:"Proofing",  color:"var(--s-proofing)",  unit:"Шкаф 1",
+      enter:"Передача на расстойку" },
+    { code:"oven",      ru:"Печь",      en:"Oven",      color:"var(--s-oven)",      unit:"Печь 1",
+      enter:"Передача в печь" },
+    { code:"warehouse", ru:"Склад",     en:"Warehouse", color:"var(--s-warehouse)", unit:null,
+      enter:"Приём продукции на склад" },
+    { code:"done",      ru:"Готово",    en:"Done",      color:"var(--s-done)",      unit:null,
+      enter:"Завершение партии" }
+  ];
+  var BY_ENTER = {};
+  STAGES.forEach(function (s, i) { BY_ENTER[s.enter] = i; });
+  BY_ENTER["Создание производственной партии"] = 0;
+
+  var key = "", logId = "", state = {
+    stats: null, events: [], bottlenecks: [], variants: [], total: 0, fetchedAt: null
+  };
+  var batches = [], played = {}, simRows = [], hintHeld = false, hintTimer = null;
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" })[c];
+    });
+  }
+  function num(n) { return Number(n || 0).toLocaleString("en-US").replace(/,/g, " "); }
+
+  /* ------------------------------------------------------------- доступ */
+
+  function readKey() {
+    var hash = location.hash.replace(/^#\/?/, "");
+    var fromUrl = new URLSearchParams(hash).get("t");
+    if (fromUrl) {
+      try { localStorage.setItem(KEY_STORE, fromUrl); } catch (e) {}
+      history.replaceState(null, "", location.pathname + location.search);
+      return fromUrl;
+    }
+    try { return localStorage.getItem(KEY_STORE) || ""; } catch (e) { return ""; }
+  }
+
+  function get(path) {
+    return fetch(API + path, { headers: { "X-API-Key": key } }).then(function (r) {
+      if (!r.ok) {
+        var err = new Error(r.status === 401 || r.status === 403
+          ? "The pass was refused. Reopen the console from KMS, or paste a valid key."
+          : "Request failed: HTTP " + r.status);
+        err.status = r.status;
+        throw err;
+      }
+      return r.json();
+    });
+  }
+
+  function showGate(message) {
+    $("app").hidden = true;
+    $("gate").hidden = false;
+    $("gateerr").textContent = message || "";
+    setStatus("bad", "not connected");
+  }
+
+  function setStatus(kind, text, meta) {
+    $("dot").className = "dot" + (kind ? " " + kind : "");
+    $("connstate").innerHTML = text;
+    if (meta !== undefined) $("connmeta").innerHTML = meta;
+  }
+
+  /* ------------------------------------------------------------ данные */
+
+  function load(first) {
+    setStatus("", first ? "connecting…" : "refreshing…");
+    return get("/logs?limit=100").then(function (page) {
+      var items = (page && page.items) || [];
+      if (!items.length) throw new Error("No event logs on this installation yet.");
+      // Журнал партий: у него есть этапы. Журнал заказов - другой разрез.
+      var pick = items.filter(function (l) { return /batch/i.test(l.name || ""); })[0] || items[0];
+      logId = pick.log_id;
+      return Promise.all([
+        get("/logs/" + logId + "/statistics"),
+        get("/logs/" + logId + "/bottlenecks?limit=12"),
+        get("/logs/" + logId + "/variants?limit=6"),
+        get("/logs/" + logId + "/events?limit=5000")
+      ]).then(function (r) {
+        state.stats = r[0];
+        state.bottlenecks = (r[1] && r[1].bottlenecks) || [];
+        state.variants = (r[2] && r[2].items) || [];
+        state.events = (r[3] && r[3].items) || [];
+        state.total = (r[3] && r[3].total) || state.events.length;
+        state.fetchedAt = new Date();
+        state.logName = pick.name;
+        render(first);
+      });
+    }).catch(function (err) {
+      if (err.status === 401 || err.status === 403) { showGate(err.message); return; }
+      setStatus("bad", esc(err.message));
+    });
+  }
+
+  function render(first) {
+    $("gate").hidden = true;
+    $("app").hidden = false;
+
+    var t = state.fetchedAt;
+    setStatus("live", "live · <b>" + esc(state.logName || "log") + "</b>",
+      num(state.total) + " events · read " +
+      ("0" + t.getHours()).slice(-2) + ":" + ("0" + t.getMinutes()).slice(-2) + ":" + ("0" + t.getSeconds()).slice(-2));
+
+    $("prov").textContent = "Log “" + (state.logName || "") + "”, " + num(state.total) + " events.";
+
+    drawFigs();
+    if (first) { seedBoard(); drawPhrases(); }
+    else { reseedKeepingPlayed(); }
+    drawFeed(); drawTwins(); drawMap(); drawBars(); drawVars();
+  }
+
+  function drawFigs() {
+    var s = state.stats || {};
+    var back = 0;
+    (s.activity_stats || []).forEach(function (a) {
+      if (/Возврат/.test(a.activity)) back = a.occurrences;
+    });
+    var rework = state.bottlenecks.filter(function (b) { return /Возврат/.test(b.target || ""); })[0];
+    var reworkH = rework ? (rework.median_duration_seconds / 3600) : null;
+
+    $("figs").innerHTML =
+      fig(num(s.events), "events recorded") +
+      fig(num(s.cases), "batches traced") +
+      fig(num(s.variants), "paths through the floor") +
+      (reworkH ? fig(reworkH.toFixed(0) + " h", "cost of one send-back")
+               : fig(num(back), "send-backs"));
+  }
+  function fig(v, label) { return '<div class="fig"><b>' + esc(v) + "</b><span>" + esc(label) + "</span></div>"; }
+
+  /* --------------------------------------------------- доска из журнала */
+
+  function casesFromEvents() {
+    var map = {};
+    state.events.forEach(function (e) {
+      (map[e.case_id] || (map[e.case_id] = [])).push(e);
+    });
+    Object.keys(map).forEach(function (c) {
+      map[c].sort(function (a, b) { return new Date(a.timestamp) - new Date(b.timestamp); });
+    });
+    return map;
+  }
+
+  // Этап партии - последнее событие, которое означает вход в этап.
+  // «Распределение на устройство» этап не меняет: оно уточняет, на какой
+  // машине партия стоит, и приходит следом за переходом.
+  function stageOf(steps) {
+    var stage = -1;
+    steps.forEach(function (s) {
+      var i = BY_ENTER[s.activity];
+      if (i !== undefined) stage = i;
+      if (/Возврат/.test(s.activity) && stage > 0) stage -= 1;
+    });
+    return stage;
+  }
+
+  function attr(steps, name) {
+    for (var i = steps.length - 1; i >= 0; i--) {
+      var v = (steps[i].attributes || {})[name];
+      if (v) return v;
+    }
+    return "";
+  }
+
+  function seedBoard() {
+    var map = casesFromEvents();
+    var live = [];
+    Object.keys(map).forEach(function (c) {
+      var steps = map[c], st = stageOf(steps);
+      if (st < 0 || st >= STAGES.length - 1) return; // завершённые на доске не держим
+      live.push({
+        id: c, stage: st,
+        product: attr(steps, "product_name") || "—",
+        qty: String(attr(steps, "quantity") || "").replace(/\.0+$/, ""),
+        unit: attr(steps, "unit") || "шт",
+        at: steps[steps.length - 1].timestamp
+      });
+    });
+    live.sort(function (a, b) { return new Date(b.at) - new Date(a.at); });
+    batches = live.slice(0, 6);
+    played = {}; simRows = [];
+    $("boardnote").textContent = batches.length
+      ? batches.length + " in flight"
+      : "nothing in flight — showing the last finished batches";
+    if (!batches.length) {
+      // Цех может быть пуст (ночь, выходной). Показываем последние законченные,
+      // иначе доска пустая и демонстрировать нечего.
+      var done = [];
+      Object.keys(map).forEach(function (c) {
+        var steps = map[c];
+        done.push({ id: c, stage: Math.max(0, STAGES.length - 2),
+          product: attr(steps, "product_name") || "—",
+          qty: String(attr(steps, "quantity") || "").replace(/\.0+$/, ""),
+          unit: attr(steps, "unit") || "шт",
+          at: steps[steps.length - 1].timestamp });
+      });
+      done.sort(function (a, b) { return new Date(b.at) - new Date(a.at); });
+      batches = done.slice(0, 4);
+    }
+    drawBoard();
+  }
+
+  // При обновлении не стираем то, что человек проиграл на сцене.
+  function reseedKeepingPlayed() {
+    if (!simRows.length) seedBoard();
+    else drawBoard();
+  }
+
+  function drawBoard(flashId) {
+    $("board").innerHTML = STAGES.map(function (st, si) {
+      var cards = batches.filter(function (b) { return b.stage === si; }).map(function (b) {
+        var last = si === STAGES.length - 1;
+        return '<button class="card' + (b.played ? " moved" : "") + (b.id === flashId ? " flash" : "") +
+          '" data-id="' + esc(b.id) + '"' + (last ? ' disabled style="cursor:default;opacity:.72"' : "") +
+          ' aria-label="' + esc(b.id + " " + b.product) + '">' +
+          "<b>" + esc(b.id) + "</b>" + esc(b.product) +
+          "<span>" + esc(b.qty) + " " + esc(b.unit) + (last ? "" : " · play next move") + "</span></button>";
+      }).join("");
+      return '<div class="col" style="--stage:' + st.color + '">' +
+        "<h4>" + esc(st.ru) + "<i>" + esc(st.en) + "</i></h4>" + cards + "</div>";
+    }).join("");
+    Array.prototype.forEach.call($("board").querySelectorAll(".card[data-id]"), function (el) {
+      if (el.disabled) return;
+      el.addEventListener("click", function () { play(el.dataset.id); });
+    });
+  }
+
+  /* ------------------------------------------------- проигрыш хода */
+
+  function nowStamp() {
+    var d = new Date();
+    return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) + ":" + ("0" + d.getSeconds()).slice(-2);
+  }
+
+  function sim(caseId, activity, resource, kind) {
+    simRows.unshift({ t: nowStamp(), c: caseId, a: activity, r: resource, kind: kind || "" });
+    if (simRows.length > 24) simRows.pop();
+  }
+
+  function play(id) {
+    var b = batches.filter(function (x) { return x.id === id; })[0];
+    if (!b || b.stage >= STAGES.length - 1) return;
+    b.stage += 1; b.played = true;
+    var st = STAGES[b.stage];
+    sim(b.id, st.enter, "Администратор");
+    if (st.unit) sim(b.id, "Распределение на устройство", st.unit);
+    played[st.code] = (played[st.code] || 0) + 1;
+    drawBoard(b.id); drawFeed(); drawTwins(); drawMap();
+  }
+
+  function playBack() {
+    var can = batches.filter(function (b) { return b.stage > 1 && b.stage < STAGES.length - 1; });
+    if (!can.length) { flash("Play a batch past mixing first."); return; }
+    var b = can[Math.floor(Math.random() * can.length)];
+    b.stage -= 1; b.played = true;
+    sim(b.id, "Возврат партии на предыдущий этап", "Администратор", "back");
+    drawBoard(b.id); drawFeed(); drawTwins(); drawMap();
+    var r = state.bottlenecks.filter(function (x) { return /Возврат/.test(x.target || ""); })[0];
+    var h = r ? (r.median_duration_seconds / 3600).toFixed(0) : "15";
+    flash("Sent back — measured on this floor, such a batch waits a median of " + h + " hours before it moves again.");
+  }
+
+  function flash(text) {
+    hintHeld = true;
+    $("hintline").textContent = text;
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(function () {
+      hintHeld = false;
+      $("hintline").innerHTML = 'Amber rows are played here only — <b>this page never writes to the log</b>.';
+    }, 6000);
+  }
+
+  /* --------------------------------------------------------- лента и двойники */
+
+  function hhmm(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return "--:--";
+    return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+  }
+
+  function drawFeed() {
+    var real = state.events.slice().sort(function (a, b) {
+      return new Date(b.timestamp) - new Date(a.timestamp);
+    }).slice(0, 22);
+
+    $("feednote").textContent = real.length ? "newest first" : "";
+
+    var rows = simRows.map(function (e) {
+      return '<div class="row sim' + (e.kind === "back" ? " back" : "") + '">' +
+        '<span class="t">' + esc(e.t) + '</span><span class="c">' + esc(e.c) + "</span>" +
+        '<span class="a">' + esc(e.a) + '</span><span class="r">' + esc(e.r) + "</span></div>";
+    }).concat(real.map(function (e) {
+      return '<div class="row' + (/Возврат/.test(e.activity) ? " back" : "") + '">' +
+        '<span class="t">' + hhmm(e.timestamp) + '</span><span class="c">' + esc(e.case_id) + "</span>" +
+        '<span class="a">' + esc(e.activity) + '</span><span class="r">' + esc(e.resource || "") + "</span></div>";
+    }));
+
+    $("feed").innerHTML = rows.length ? rows.join("") : '<p class="empty">no events yet</p>';
+    $("feed").scrollTop = 0;
+  }
+
+  function drawTwins() {
+    var units = STAGES.filter(function (s) { return s.unit; });
+    $("twins").innerHTML = units.map(function (st) {
+      var on = batches.filter(function (b) { return STAGES[b.stage].code === st.code; })[0];
+      return '<div class="twin' + (on ? " busy" : "") + '"><b>' + esc(st.unit) + "</b><span>" +
+        (on ? esc(on.product) + " · " + esc(on.qty) : "idle") + "</span></div>";
+    }).join("");
+  }
+
+  /* ---------------------------------------------------------------- карта */
+
+  function realCounts() {
+    var by = {};
+    (state.stats && state.stats.activity_stats || []).forEach(function (a) {
+      by[a.activity] = a.occurrences;
+    });
+    var out = {};
+    STAGES.forEach(function (s) { out[s.code] = by[s.enter] || 0; });
+    return out;
+  }
+
+  function drawMap() {
+    var W = 980, pad = 26, n = STAGES.length;
+    var gap = (W - pad * 2) / n, boxW = gap - 20, y = 78, h = 52;
+    var counts = realCounts(), parts = [];
+
+    var backStat = (state.stats && state.stats.activity_stats || [])
+      .filter(function (a) { return /Возврат/.test(a.activity); })[0];
+    var backEdge = state.bottlenecks.filter(function (b) { return /Возврат/.test(b.target || ""); })[0];
+
+    STAGES.forEach(function (st, i) {
+      var x = pad + i * gap + 10, mine = played[st.code] || 0;
+      parts.push('<rect x="' + x + '" y="' + y + '" width="' + boxW + '" height="' + h +
+        '" rx="3" style="fill:var(--surface-2);stroke:' + st.color + '" stroke-width="1.5"/>');
+      parts.push('<rect x="' + x + '" y="' + y + '" width="4" height="' + h + '" style="fill:' + st.color + '"/>');
+      parts.push('<text x="' + (x + boxW / 2) + '" y="' + (y + 21) +
+        '" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12" font-weight="600" style="fill:var(--ink)">' + esc(st.ru) + "</text>");
+      parts.push('<text x="' + (x + boxW / 2) + '" y="' + (y + 36) +
+        '" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9.5" style="fill:var(--faint)">' + esc(st.en) + "</text>");
+      parts.push('<text x="' + (x + boxW / 2) + '" y="' + (y + h + 18) +
+        '" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" style="fill:var(--muted)">' + counts[st.code] + "</text>");
+      if (mine) {
+        parts.push('<text x="' + (x + boxW / 2) + '" y="' + (y + h + 32) +
+          '" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" style="fill:var(--accent)">+' + mine + "</text>");
+      }
+      if (i < n - 1) {
+        var x1 = x + boxW, x2 = pad + (i + 1) * gap + 10;
+        parts.push('<line x1="' + (x1 + 2) + '" y1="' + (y + h / 2) + '" x2="' + (x2 - 6) + '" y2="' + (y + h / 2) +
+          '" style="stroke:var(--line)" stroke-width="1.5" marker-end="url(#ah)"/>');
+      }
+    });
+
+    if (backStat && backStat.occurrences) {
+      var f = pad + 4 * gap + 10, tt = pad + 3 * gap + 10 + boxW;
+      parts.push('<path d="M ' + (f + boxW / 2) + " " + (y + h) + " C " + (f + boxW / 2) + " " + (y + h + 54) +
+        ", " + (tt - boxW / 2) + " " + (y + h + 54) + ", " + (tt - boxW / 2) + " " + (y + h) +
+        '" fill="none" style="stroke:var(--signal)" stroke-width="1.5" stroke-dasharray="4 3"/>');
+      var label = backStat.occurrences + " send-backs" +
+        (backEdge ? " · median " + (backEdge.median_duration_seconds / 3600).toFixed(0) + " h to move again" : "");
+      parts.push('<text x="' + ((f + tt) / 2) + '" y="' + (y + h + 70) +
+        '" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" style="fill:var(--signal)">' + esc(label) + "</text>");
+    }
+
+    var s = state.stats || {};
+    parts.push('<text x="' + pad + '" y="30" font-family="IBM Plex Mono, monospace" font-size="10.5" style="fill:var(--faint)">DISCOVERED FROM ' +
+      num(s.events) + " EVENTS · " + num(s.cases) + " BATCHES</text>");
+
+    $("map").innerHTML =
+      '<defs><marker id="ah" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="6" markerHeight="6" orient="auto">' +
+      '<path d="M0 1 L6 4 L0 7" fill="none" style="stroke:var(--line)" stroke-width="1.4"/></marker></defs>' + parts.join("");
+  }
+
+  /* ------------------------------------------------------------- график */
+
+  var EN = {
+    "Создание производственной партии":"Batch created",
+    "Партия поступила в очередь":"Queued",
+    "Начало замеса":"Mixing started",
+    "Передача на формовку":"Moved to forming",
+    "Передача на расстойку":"Moved to proofing",
+    "Передача в печь":"Moved to oven",
+    "Приём продукции на склад":"Warehouse receipt",
+    "Завершение партии":"Batch completed",
+    "Распределение на устройство":"Assigned to equipment",
+    "Возврат партии на предыдущий этап":"Sent back a stage"
+  };
+  function en(a) { return EN[a] || a; }
+
+  function drawBars() {
+    var rows = state.bottlenecks
+      .filter(function (b) { return b.kind === "transition" || b.source; })
+      .sort(function (a, b) { return b.median_duration_seconds - a.median_duration_seconds; })
+      .slice(0, 7);
+    if (!rows.length) { $("bars").innerHTML = '<p class="skeleton">no transitions measured yet</p>'; return; }
+    var max = 0;
+    rows.forEach(function (b) { if (b.p95_duration_seconds > max) max = b.p95_duration_seconds; });
+    $("bars").innerHTML = rows.map(function (b) {
+      var isBack = /Возврат/.test(b.target || "");
+      var med = b.median_duration_seconds, p95 = b.p95_duration_seconds;
+      var label = med >= 3600 ? (med / 3600).toFixed(1) + " h" : Math.round(med / 60) + " min";
+      return '<div class="bar' + (isBack ? " rework" : "") + '">' +
+        '<div class="name">' + esc(en(b.target)) + "<i>from " + esc(en(b.source)) + " · n=" + (b.occurrences || 0) + "</i></div>" +
+        '<div class="track"><div class="p95" style="width:' + ((p95 / max) * 100).toFixed(1) + '%"></div>' +
+        '<div class="med" style="width:' + ((med / max) * 100).toFixed(1) + '%"></div></div>' +
+        '<div class="val">' + label + "</div></div>";
+    }).join("");
+  }
+
+  function drawVars() {
+    if (!state.variants.length) { $("vars").innerHTML = '<p class="skeleton">no variants yet</p>'; return; }
+    $("vars").innerHTML = state.variants.map(function (v) {
+      var seq = (v.sequence || []).filter(function (a) { return a !== "Распределение на устройство"; });
+      var path = seq.map(en).join(" → ") || "—";
+      var note = seq.indexOf("Batch completed") !== -1 ? "runs to completion"
+        : (seq.indexOf("Warehouse receipt") !== -1 ? "baked, not booked in yet"
+                                                   : "still in flight when the log was read");
+      return '<div class="var"><div class="share">' + Math.round((v.share || 0) * 100) + "%</div>" +
+        '<div class="path">' + esc(path) +
+        '<i style="display:block;font-style:normal;color:var(--faint);margin-top:3px">' + esc(note) + "</i></div>" +
+        '<div class="cnt">' + num(v.cases) + " batches</div></div>";
+    }).join("");
+  }
+
+  /* --------------------------------------------------------------- голос */
+
+  function drawPhrases() {
+    var ids = batches.map(function (b) { return b.id; });
+    var a = ids[0] || "B-0000", b2 = ids[1] || ids[0] || "B-0000";
+    var P = [
+      { heard: "… " + digits(a) + " на расстойку", gloss: "Kazakh number, Russian stage",
+        batch: a, stage: "Расстойка", conf: .94, ok: true,
+        verdict: "Both languages in one sentence, which is how the floor actually talks. The number is Kazakh, the stage is Russian, and the parser does not mind." },
+      { heard: digits(b2) + " в печь", gloss: "Russian throughout",
+        batch: b2, stage: "Печь", conf: .96, ok: true,
+        verdict: "Matched against the batches that genuinely exist in the log right now. A number that is not there is refused rather than guessed." },
+      { heard: "… сорок один на формовку", gloss: "Mixer running · digits lost",
+        batch: null, stage: "Формовка", conf: .41, ok: false,
+        verdict: "The stage came through, the batch number did not. This is the case that matters: the system asks again instead of picking the nearest batch. A wrong entry costs far more than a repeated sentence." }
+    ];
+    window.__P = P;
+    $("phrases").innerHTML = P.map(function (p, i) {
+      return '<button class="phrase" data-p="' + i + '" type="button">“' + esc(p.heard) + '”<i>' + esc(p.gloss) + "</i></button>";
+    }).join("");
+    Array.prototype.forEach.call($("phrases").querySelectorAll(".phrase"), function (el) {
+      el.addEventListener("click", function () { showParse(Number(el.dataset.p)); });
+    });
+  }
+  function digits(id) { return String(id).replace(/^\D+/, ""); }
+
+  function showParse(i) {
+    var p = window.__P[i];
+    var target = batches.filter(function (b) { return b.id === p.batch; })[0];
+    var html = "<dl>" +
+      "<dt>heard</dt><dd>" + esc(p.heard) + "</dd>" +
+      '<dt>batch</dt><dd class="' + (p.ok ? "ok" : "warn") + '">' + (p.batch ? esc(p.batch) : "not recognised") + "</dd>" +
+      '<dt>stage</dt><dd class="ok">' + esc(p.stage) + "</dd>" +
+      '<dt>confidence</dt><dd class="' + (p.conf > .8 ? "ok" : "warn") + '">' + p.conf.toFixed(2) + "</dd></dl>" +
+      '<p class="verdict">' + esc(p.verdict) + "</p>";
+    if (p.ok && target) {
+      html += '<div class="acts"><button class="btn" id="confirm" type="button">Confirm · play it</button>' +
+        '<button class="btn" id="cancel" type="button">Cancel</button></div>';
+    } else if (!p.ok) {
+      html += '<div class="acts"><button class="btn warn" id="cancel" type="button">Ask the baker again</button></div>';
+    }
+    $("parse").innerHTML = html;
+
+    var c = $("confirm");
+    if (c) c.addEventListener("click", function () {
+      var want = STAGES.map(function (s) { return s.ru; }).indexOf(p.stage);
+      var guard = 0;
+      while (target.stage < want && target.stage < STAGES.length - 1 && guard++ < 10) play(target.id);
+      $("parse").innerHTML = '<p class="idle">Played. Board, log, twin and map all moved — from one spoken sentence.</p>';
+    });
+    var x = $("cancel");
+    if (x) x.addEventListener("click", function () {
+      $("parse").innerHTML = '<p class="idle">Nothing moved. Pick another phrase.</p>';
+    });
+  }
+
+  /* ---------------------------------------------------------------- init */
+
+  key = readKey();
+  if (!key) { showGate(""); }
+  else { load(true); }
+
+  $("gateform").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var v = $("gatekey").value.trim();
+    if (!v) return;
+    key = v;
+    try { localStorage.setItem(KEY_STORE, v); } catch (err) {}
+    $("gateerr").textContent = "";
+    load(true);
+  });
+
+  $("refresh").addEventListener("click", function () { if (key) load(false); });
+  $("reset").addEventListener("click", function () {
+    simRows = []; played = {};
+    clearTimeout(hintTimer); hintHeld = false;
+    $("hintline").innerHTML = 'Amber rows are played here only — <b>this page never writes to the log</b>.';
+    $("parse").innerHTML = '<p class="idle">Pick a phrase on the left.</p>';
+    seedBoard(); drawFeed(); drawTwins(); drawMap();
+  });
+  $("sendback").addEventListener("click", playBack);
+
+  setInterval(function () { if (key && !document.hidden) load(false); }, REFRESH_MS);
+})();
+</script>
+</body>
+</html>
