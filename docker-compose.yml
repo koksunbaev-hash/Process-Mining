@@ -164,6 +164,40 @@ services:
       qms:
         condition: service_started
 
+  # Демонстрационный поток событий для консоли процесс-майнинга.
+  #
+  # Реальный журнал наполняется только из настоящей работы, и если на стенде её
+  # нет, карта процесса замирает на дате последнего события. Этот сервис ведёт
+  # ОТДЕЛЬНЫЙ журнал, который выглядит как непрерывно работающий цех.
+  #
+  # В реальный журнал он попасть не может: log_id выводится детерминированно из
+  # пары (source, case_type), а source здесь свой. Чтобы записать в
+  # `kms_bakery · batch`, пришлось бы представиться именно kms_bakery.
+  #
+  # По умолчанию выключен - DEMO_FEED_ENABLED=1 в .env включает. Пауза на ходу,
+  # без перезапуска: touch /srv/demo-feed/PAUSED внутри контейнера.
+  # Подробности и снятые замеры - services/demo-feed/README.md.
+  demo-feed:
+    build: ./services/demo-feed
+    restart: unless-stopped
+    environment:
+      DEMO_FEED_ENABLED: ${DEMO_FEED_ENABLED:-0}
+      DEMO_FEED_PM_URL: http://process-mining:8000
+      DEMO_FEED_API_KEY: ${DEMO_FEED_API_KEY:-${PM_API_KEYS:?set PM_API_KEYS in .env}}
+      DEMO_FEED_SOURCE: ${DEMO_FEED_SOURCE:-demo_bakery}
+      DEMO_FEED_START_DATE: ${DEMO_FEED_START_DATE:-2026-09-11}
+      DEMO_FEED_INTERVAL_SECONDS: ${DEMO_FEED_INTERVAL_SECONDS:-1800}
+      DEMO_FEED_VOLUME: ${DEMO_FEED_VOLUME:-1.0}
+      DEMO_FEED_LOG_LEVEL: ${DEMO_FEED_LOG_LEVEL:-INFO}
+    volumes:
+      # Какие дни уже заведены и какие события ещё ждут своего часа. Переживает
+      # пересоздание контейнера: иначе каждый рестарт оставлял бы в журнале
+      # дыру в сутки, а дыра выдаёт синтетику быстрее всего остального.
+      - demo_feed_data:/srv/demo-feed
+    depends_on:
+      process-mining:
+        condition: service_started
+
   # Speech recognition on NeMo FastConformer, bilingual Kazakh/Russian.
   #
   # It wears the same contract as the OVOS container below - POST /stt?lang=xx
@@ -246,6 +280,7 @@ services:
       - pushtotalk
 
 volumes:
+  demo_feed_data:
   postgres_data:
   qms_static:
   qms_media:
