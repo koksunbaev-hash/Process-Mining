@@ -5,6 +5,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+from apps.accounts.navigation import SECTIONS
+
 
 class UiLanguageSwitcherTests(TestCase):
     def test_login_page_has_three_language_switcher(self):
@@ -34,6 +36,27 @@ class UiLanguageSwitcherTests(TestCase):
         stages = ("Очередь", "Замес", "Формовка", "Расстойка", "Печь", "Склад", "Готово")
         for stage in stages:
             self.assertNotIn(f'"{stage}":', source, f"этап «{stage}» попал в словарь")
+
+    def test_menu_section_translates_without_touching_the_stage(self):
+        """«Склад» в меню - раздел, «Склад» на доске - этап. Слово одно.
+
+        Словарь ключуется по русскому тексту, поэтому развести их можно только
+        явным ключом на элементе - тем же, что в gettext зовётся msgctxt. Без
+        него перевод подписи раздела утащил бы за собой и колонку доски, а та
+        обязана остаться русской: на ней завязаны голосовые команды.
+        """
+        source = (Path(settings.BASE_DIR) / "static/js/ui-i18n.js").read_text(encoding="utf-8")
+        self.assertIn('"раздел:Склад":', source, "ключ раздела пропал из словаря")
+        self.assertIn('getAttribute("data-i18n")', source, "обходчик перестал читать явный ключ")
+
+        stock = next(section for section in SECTIONS if section.key == "stock")
+        self.assertEqual(stock.label, "Склад", "русская подпись раздела менялась не должна")
+        self.assertEqual(stock.i18n_key, "раздел:Склад")
+
+        user = get_user_model().objects.create_user("stock-i18n", password="x")
+        self.client.force_login(user)
+        response = self.client.get(reverse("bakery:kanban"))
+        self.assertContains(response, 'data-i18n="раздел:Склад"')
 
     def test_the_dictionary_stays_parseable(self):
         """Словарь правят руками и скриптами, и потерянная запятая роняет

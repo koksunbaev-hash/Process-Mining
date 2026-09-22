@@ -22,7 +22,8 @@ def navigation(request):
         "active_section": section_for_route(match.view_name) if match else None,
         "nav_groups": grouped_sections(user),
         "nav_flat": [
-            {"key": section.key, "label": section.label, "url": reverse(section.url_name)}
+            {"key": section.key, "label": section.label, "url": reverse(section.url_name),
+             "i18n_key": section.i18n_key}
             for section in visible
         ],
         # У оператора пунктов меньше десятка - группировать нечего.

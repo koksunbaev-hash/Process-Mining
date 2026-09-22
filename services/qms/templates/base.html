@@ -66,7 +66,7 @@
         <div class="nav-group">
           <p class="nav-group__title">{{ group.title }}</p>
           {% for item in group.items %}
-          <a class="nav-item{% if item.key == active_section %} is-active{% endif %}" href="{% url item.url_name %}">{{ item.label }}</a>
+          <a class="nav-item{% if item.key == active_section %} is-active{% endif %}" href="{% url item.url_name %}"{% if item.i18n_key %} data-i18n="{{ item.i18n_key }}"{% endif %}>{{ item.label }}</a>
           {% endfor %}
           {% if group.title == "Система" and user.is_staff %}
           <a class="nav-item" href="/admin/auth/user/">Пользователи</a>
@@ -76,7 +76,7 @@
         {% endfor %}
       {% else %}
         {% for item in nav_flat %}
-        <a class="nav-item{% if item.key == active_section %} is-active{% endif %}" href="{{ item.url }}">{{ item.label }}</a>
+        <a class="nav-item{% if item.key == active_section %} is-active{% endif %}" href="{{ item.url }}"{% if item.i18n_key %} data-i18n="{{ item.i18n_key }}"{% endif %}>{{ item.label }}</a>
         {% endfor %}
       {% endif %}
     </nav>

@@ -55,6 +55,10 @@ class Section:
     #: посредника, а ссылки из других мест не превращаются в 404. Убрать
     #: раздел совсем значило бы открыть его всем ролям разом.
     hidden: bool = False
+    #: Явный ключ для словаря ui-i18n.js. Нужен разделу, чью подпись нельзя
+    #: перевести по тексту: «Склад» в меню - это раздел, а «Склад» на доске -
+    #: этап из базы, который остаётся русским ради голосовых команд.
+    i18n_key: str = ""
 
     @property
     def all_routes(self):
@@ -87,7 +91,7 @@ SECTIONS = [
     ),
     # Склад виден всем: отдельной роли кладовщика больше нет, а без этой
     # страницы тому, кто принимает готовую продукцию, работать не с чем.
-    Section("stock", "Склад", "bakery:stock", "Производство", EVERYONE),
+    Section("stock", "Склад", "bakery:stock", "Производство", EVERYONE, i18n_key="раздел:Склад"),
     Section(
         "products", "Продукты", "bakery:products", "Справочники", OFFICE,
         routes=("bakery:product_new", "bakery:product_detail", "bakery:product_edit", "bakery:product_disable"),

@@ -343,6 +343,8 @@
     "На расстойке": ["Ашытуда", "Proofing"],
     "В печи": ["Пеште", "In the oven"],
     "На складе": ["Қоймада", "In stock"],
+    // Ключ с контекстом: подпись раздела в меню, а не этап производства.
+    "раздел:Склад": ["Қойма", "Warehouse"],
     "Просроченные заказы": ["Мерзімі өткен тапсырыстар", "Overdue orders"],
     "Партии по этапам": ["Кезеңдер бойынша партиялар", "Batches by stage"],
     "Статусы заказов": ["Тапсырыс күйлері", "Order statuses"],
@@ -600,7 +602,14 @@
     const source = originalText.get(node);
     const trimmed = source.trim();
     if (!trimmed) return;
-    const translated = selectedTranslation(trimmed, currentLanguage);
+    // Явный ключ на родителе - то же, что msgctxt в gettext. Нужен там, где
+    // одна русская строка означает в интерфейсе разное: «Склад» в меню это
+    // раздел и переводится, «Склад» на доске это этап из базы, на который
+    // завязано голосовое управление, и он остаётся русским. Словарь ключуется
+    // по тексту, и без такого ключа развести их нечем.
+    const parent = node.parentElement;
+    const explicit = parent && parent.getAttribute && parent.getAttribute("data-i18n");
+    const translated = selectedTranslation(explicit || trimmed, currentLanguage);
     node.nodeValue = source.replace(trimmed, translated);
   }
 
