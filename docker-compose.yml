@@ -47,6 +47,13 @@ services:
       PROCESS_MINING_API_URL: ${PROCESS_MINING_API_URL:-http://process-mining:8000/api/transcriptions/}
       PROCESS_MINING_API_TOKEN: ${PM_API_KEYS:?set PM_API_KEYS in .env}
       PROCESS_MINING_SOURCE: ${PROCESS_MINING_SOURCE:-kms_bakery}
+      # Автопилот демо-доски: `kanban_autopilot` в cron ведёт демонстрационный
+      # поток партий параллельно заводскому. Выключен по умолчанию; снять
+      # совсем - `manage.py kanban_autopilot --stop`, он же убирает следы.
+      # docs/KANBAN-AUTOPILOT.md
+      KANBAN_AUTOPILOT_ENABLED: ${KANBAN_AUTOPILOT_ENABLED:-0}
+      KANBAN_AUTOPILOT_VOLUME: ${KANBAN_AUTOPILOT_VOLUME:-1.0}
+      KANBAN_AUTOPILOT_KEEP_DAYS: ${KANBAN_AUTOPILOT_KEEP_DAYS:-3}
       # Must be absolute: the analytics service POSTs the transcript here, and
       # it has no way to resolve a path relative to the QMS.
       PROCESS_MINING_CALLBACK_URL: ${PROCESS_MINING_CALLBACK_URL:-http://qms:8000/api/process-mining/callback/}
