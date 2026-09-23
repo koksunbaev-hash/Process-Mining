@@ -30,6 +30,7 @@
 """
 
 import hashlib
+import logging
 import os
 import random
 from datetime import timedelta
@@ -46,13 +47,16 @@ from apps.bakery.kanban_demo import (
     start_demo,
     stop_demo,
 )
-from apps.bakery.models import BatchStageHistory, KanbanDemoRun
+from apps.bakery.models import BatchStageHistory, KanbanDemoRun, ProductionUnit
 from apps.bakery.services import (
     assign_batch_to_unit,
     free_units_for_stage,
     move_batch,
     next_stage_for,
 )
+from apps.bakery.twins import push_units_by_id, twins_enabled
+
+logger = logging.getLogger(__name__)
 
 #: Сколько партий заводить в каждый день недели. Числа сняты с настоящего
 #: журнала этой установки за 25 августа - 10 сентября: в среднем за сутки
@@ -129,6 +133,36 @@ def dwell_for(batch_number, stage_code):
     return timedelta(minutes=base * (0.6 + digest[0] / 255 * 0.8))
 
 
+def push_twins(unit_ids=None):
+    """Довезти состояние устройств до цифровых двойников - синхронно.
+
+    Обычно это делают сигналы из twins.py, но в фоновом потоке-демоне. Из
+    веб-сервера так и надо: процесс живёт, поток успевает. А эта команда
+    короткая - cron поднял, такт прошёл, процесс вышел, - и демон умирает
+    вместе с ним, не дождавшись ответа Ditto. Так на табло 3D-сцены оставались
+    пустые печи под демо-партиями и миксер с партией, давно ушедшей в «Готово».
+    Поэтому здесь отправка ждётся до конца, тем же push_unit, что и у
+    `manage.py sync_twins`.
+
+    None - все устройства с двойником: так выравнивается и то, что разошлось
+    раньше, по любой причине.
+    """
+    if not twins_enabled():
+        return 0
+    units = ProductionUnit.objects.exclude(twin_id="")
+    if unit_ids is not None:
+        units = units.filter(pk__in=[pk for pk in unit_ids if pk])
+    ids = list(units.values_list("pk", flat=True))
+    if not ids:
+        return 0
+    try:
+        push_units_by_id(ids)
+    except Exception:  # недоступный Ditto не должен ронять такт доски
+        logger.exception("Ditto: не удалось обновить двойники %s", ids)
+        return 0
+    return len(ids)
+
+
 def waiting_since(batch):
     """Когда партия встала на нынешний этап."""
     last = BatchStageHistory.objects.filter(batch=batch).order_by("-created_at").first()
@@ -173,6 +207,20 @@ class Command(BaseCommand):
             self.stderr.write("Не найден администратор или менеджер — некому вести демо.")
             return
 
+        # Что отправить в двойники по итогам такта: затронутые машины или все.
+        # Отправка стоит в finally, чтобы ранний выход - выходной, конец смены,
+        # только что убранный прогон - не оставлял табло 3D-сцены отставшим.
+        self.touched_units = set()
+        self.sync_all = False
+        try:
+            self.tick(user, options)
+        finally:
+            if not options["dry_run"] and (self.sync_all or self.touched_units):
+                pushed = push_twins(None if self.sync_all else self.touched_units)
+                if pushed:
+                    self.stdout.write(f"двойники: обновлено {pushed}")
+
+    def tick(self, user, options):
         if options["stop"]:
             self.retire(user, keep_days=0, dry_run=options["dry_run"], everything=True)
             return
@@ -238,6 +286,9 @@ class Command(BaseCommand):
             target = next_stage_for(batch)
             if not target:
                 continue
+            # Табло обновить надо у обеих машин: той, с которой партия ушла
+            # (иначе на ней так и висит уехавший продукт), и той, куда встала.
+            self.touched_units.add(batch.production_unit_id)
             try:
                 move_batch(batch, target, user, f"DEMO: переход на этап {target.name}")
                 batch.refresh_from_db()
@@ -247,6 +298,8 @@ class Command(BaseCommand):
                 free = free_units_for_stage(batch.current_stage)
                 if free:
                     assign_batch_to_unit(batch, free[0], user)
+                    batch.refresh_from_db()
+                self.touched_units.add(batch.production_unit_id)
             except (PermissionDenied, ValidationError) as exc:
                 errors.append(f"{batch.batch_number}: {exc}")
                 continue
@@ -284,6 +337,7 @@ class Command(BaseCommand):
             number = active.pk
             stop_demo(active, user)
             result = reset_demo(active, user)
+            self.sync_all = True
             self.stdout.write(f"Вчерашний прогон {number} убран: партий {result['deleted_batches']}.")
             active = None
 
@@ -309,6 +363,9 @@ class Command(BaseCommand):
             client_request_id=f"autopilot-{now:%Y-%m-%d}",
         )
         start_demo(run, user)
+        # Раз в день - полное выравнивание табло: всё, что разошлось с доской
+        # за вчера по любой причине, догоняется здесь.
+        self.sync_all = True
         self.stdout.write(self.style.SUCCESS(f"Заведён прогон {run.pk} на {count} партий."))
         return run
 
@@ -331,6 +388,8 @@ class Command(BaseCommand):
             # и Django обнуляет pk у объекта в памяти — в лог уходило бы None.
             number = run.pk
             result = reset_demo(run, user)
+            # Убранные демо-партии стояли на машинах - их табло надо очистить.
+            self.sync_all = True
             self.stdout.write(
                 f"Убран прогон {number}: партий {result['deleted_batches']}, заказов {result['deleted_orders']}."
             )

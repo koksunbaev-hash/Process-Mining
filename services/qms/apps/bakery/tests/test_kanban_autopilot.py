@@ -13,15 +13,28 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from apps.bakery.management.commands.kanban_autopilot import MAX_MOVES_PER_TICK, dwell_for, planned_batches
-from apps.bakery.models import BatchStageHistory, KanbanDemoRun, ProductionBatch, ProductionOrder
+from apps.bakery.models import (
+    BatchStageHistory,
+    KanbanDemoRun,
+    ProductionBatch,
+    ProductionOrder,
+    ProductionStage,
+    ProductionUnit,
+)
 from apps.bakery.tests.batch_workflow.factories import create_manual_batch
 
 ON = {"KANBAN_AUTOPILOT_ENABLED": "1"}
+
+#: На стенде в .env стоит DITTO_ENABLED=True, и тесты его наследуют. Автопилот
+#: отправляет в двойники синхронно, так что без этой заглушки тест ушёл бы в
+#: НАСТОЯЩИЙ Ditto и положил на табло живых машин состояние тестовой базы.
+NO_TWINS = override_settings(DITTO_ENABLED=False)
+PUSH = "apps.bakery.management.commands.kanban_autopilot.push_units_by_id"
 
 
 def run(*args, **env):
@@ -42,6 +55,7 @@ def backdate(batch, minutes):
     )
 
 
+@NO_TWINS
 class KanbanAutopilotTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser("autopilot-admin", password="x")
@@ -194,6 +208,59 @@ class KanbanAutopilotTests(TestCase):
         self.assertLess(sum(half) / len(half), sum(full) / len(full))
 
 
+@override_settings(DITTO_ENABLED=True, DITTO_BASE_URL="http://ditto.invalid")
+class TwinPushTests(TestCase):
+    """Демо на табло 3D-сцены - и доставка туда с гарантией.
+
+    Сигналы twins.py отправляют в фоновом потоке-демоне. Автопилот - короткая
+    команда из cron, и демон умирает вместе с процессом, не дождавшись Ditto:
+    на стенде так и нашлись пустые табло печей под демо-партиями. Поэтому
+    автопилот отправляет сам и синхронно. push_units_by_id подменён - наружу
+    ничего не уходит.
+    """
+
+    def setUp(self):
+        get_user_model().objects.create_superuser("twin-admin", password="x")
+        with mock.patch(PUSH):
+            run("--force")  # заведёт этапы и прогон, первая партия уйдёт в замес
+        mixing = ProductionStage.objects.get(code="mixing")
+        self.mixer = ProductionUnit.objects.create(stage=mixing, name="Миксер Т", twin_id="test:mixer")
+        self.oven = ProductionUnit.objects.create(
+            stage=ProductionStage.objects.get(code="oven"), name="Печь Т", twin_id="test:oven"
+        )
+
+    def test_a_move_is_delivered_to_the_twin_it_lands_on(self):
+        KanbanDemoRun.objects.update(started_at=timezone.now() - timedelta(hours=1))
+        with mock.patch(PUSH) as push:
+            run("--force")
+        pushed = {pk for call in push.call_args_list for pk in call.args[0]}
+        self.assertIn(self.mixer.pk, pushed, "табло машины, куда встала партия, не обновлено")
+
+    def test_stop_clears_every_twin(self):
+        """Убранные демо-партии стояли на машинах - табло надо очистить все."""
+        with mock.patch(PUSH) as push:
+            run("--stop")
+        pushed = {pk for call in push.call_args_list for pk in call.args[0]}
+        self.assertLessEqual({self.mixer.pk, self.oven.pk}, pushed, "не все табло очищены")
+
+    def test_a_dead_ditto_does_not_break_the_board(self):
+        """Недоступный Ditto - повод записать в лог, а не встать доске."""
+        KanbanDemoRun.objects.update(started_at=timezone.now() - timedelta(hours=1))
+        before = in_queue()
+        with mock.patch(PUSH, side_effect=OSError("ditto down")):
+            run("--force")
+        self.assertEqual(in_queue(), before - 1, "такт не прошёл из-за Ditto")
+
+    @override_settings(DITTO_ENABLED=False)
+    def test_nothing_is_sent_when_integration_is_off(self):
+        KanbanDemoRun.objects.update(started_at=timezone.now() - timedelta(hours=1))
+        with mock.patch(PUSH) as push:
+            run("--force")
+            run("--stop")
+        push.assert_not_called()
+
+
+@NO_TWINS
 class BoardVisibilityTests(TestCase):
     """Как демо попадает на экран.
 
