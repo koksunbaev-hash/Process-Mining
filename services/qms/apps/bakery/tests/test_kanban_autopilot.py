@@ -6,6 +6,7 @@
 """
 
 import os
+import re
 from datetime import date, timedelta
 from io import StringIO
 from unittest import mock
@@ -16,7 +17,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.bakery.management.commands.kanban_autopilot import dwell_for, planned_batches
+from apps.bakery.management.commands.kanban_autopilot import MAX_MOVES_PER_TICK, dwell_for, planned_batches
 from apps.bakery.models import BatchStageHistory, KanbanDemoRun, ProductionBatch, ProductionOrder
 from apps.bakery.tests.batch_workflow.factories import create_manual_batch
 
@@ -81,6 +82,50 @@ class KanbanAutopilotTests(TestCase):
         run("--force")
         moving.refresh_from_db()
         self.assertNotEqual(moving.current_stage_id, stage_before, "выдержка вышла, а партия стоит")
+
+    def test_an_overdue_queue_is_released_one_at_a_time(self):
+        """Отставшее расписание нагоняется по одной партии, а не залпом.
+
+        Отставание бывает не только теоретически: простой контейнера,
+        перезапуск сервера, первый день после включения."""
+        run("--force")
+        demo_run = KanbanDemoRun.objects.get()
+        KanbanDemoRun.objects.filter(pk=demo_run.pk).update(started_at=timezone.now() - timedelta(hours=10))
+        before = in_queue()
+        run("--force")
+        self.assertEqual(in_queue(), before - 1, "очередь ушла залпом")
+
+    def test_the_morning_after_does_not_move_everything_at_once(self):
+        """Ночью партии стоят на этапах, и к утру выдержка просрочена у всех
+        сразу. Без предела на такт они сдвинулись бы в одну секунду - ровно то,
+        от чего доска и должна была уйти."""
+        run("--force")
+        demo_run = KanbanDemoRun.objects.get()
+        KanbanDemoRun.objects.filter(pk=demo_run.pk).update(started_at=timezone.now() - timedelta(hours=10))
+        for _ in range(6):
+            run("--force")
+        in_work = ProductionBatch.objects.filter(is_demo=True).exclude(current_stage__code="queue")
+        self.assertGreaterEqual(in_work.count(), 6)
+
+        BatchStageHistory.objects.filter(batch__is_demo=True).update(created_at=timezone.now() - timedelta(hours=16))
+        moved = int(re.search(r"сдвинуто (\d+)", run("--force")).group(1))
+        self.assertGreaterEqual(moved, 2)
+        self.assertLessEqual(moved, MAX_MOVES_PER_TICK)
+
+    def test_yesterdays_run_gives_way_to_todays(self):
+        """Недоехавший вчерашний прогон не должен держать доску: пока он
+        активен, create_demo_run не заведёт сегодняшний, и утренней очереди
+        не будет вовсе."""
+        run("--force")
+        yesterday = timezone.now() - timedelta(days=1)
+        old = KanbanDemoRun.objects.get()
+        KanbanDemoRun.objects.filter(pk=old.pk).update(started_at=yesterday, created_at=yesterday)
+
+        run("--force")
+        self.assertFalse(KanbanDemoRun.objects.filter(pk=old.pk).exists(), "вчерашний прогон остался")
+        today = KanbanDemoRun.objects.get()
+        self.assertEqual(timezone.localtime(today.created_at).date(), timezone.localdate())
+        self.assertFalse(ProductionBatch.objects.filter(is_demo=True, demo_run_id=old.pk).exists())
 
     def test_dwell_is_stable_but_different_per_batch(self):
         """Команду будит cron - каждый раз новый процесс. Случайная выдержка

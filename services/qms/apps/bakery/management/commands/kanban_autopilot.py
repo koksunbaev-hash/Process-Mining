@@ -78,6 +78,15 @@ SHIFT_END_HOUR = 17
 #: значило бы гарантированно не довести её до «Готово».
 RELEASE_WINDOW_SHARE = 0.6
 
+#: Больше переходов за один такт не бывает - при любых обстоятельствах.
+#: Выдержка на этапе сама по себе рассыпает переходы по времени, но только пока
+#: такты идут подряд. После ночи, простоя или перезапуска контейнера у всех
+#: партий, что стояли на этапах, выдержка оказывается просрочена одновременно,
+#: и без этого предела они сдвинулись бы в одну секунду. В обычный день
+#: переходов около двух-трёх за пять минут, так что предел не мешает, а только
+#: страхует.
+MAX_MOVES_PER_TICK = 4
+
 #: Завершённые прогоны старше этого срока убираются: доска не должна зарастать,
 #: а «Готово» и так подметается каждое утро `clear_done_board`.
 KEEP_DAYS = 3
@@ -211,10 +220,14 @@ class Command(BaseCommand):
             .order_by("id")  # очередь: кто раньше заведён, тот раньше и пойдёт
         )
         started = run.total_batches - sum(1 for batch in batches if batch.current_stage.code == "queue")
-        allowance = releases_due(run, now) - started
+        # Из очереди - не больше одной за такт, даже если расписание отстало:
+        # отставание нагоняется по одной партии каждые пять минут, а не залпом.
+        allowance = min(1, releases_due(run, now) - started)
 
         moved, errors = [], []
         for batch in batches:
+            if len(moved) >= MAX_MOVES_PER_TICK:
+                break
             code = batch.current_stage.code
             if code == "queue":
                 if allowance <= 0:
@@ -258,6 +271,22 @@ class Command(BaseCommand):
             .order_by("-created_at")
             .first()
         )
+        if active and timezone.localtime(active.started_at or active.created_at).date() < now.date():
+            # Вчерашний прогон не доехал до «Готово» - так бывает, если он начался
+            # поздно или смена кончилась раньше последней партии. Тянуть его
+            # дальше нельзя: create_demo_run держит один активный прогон, и пока
+            # вчерашний идёт, сегодняшняя очередь не появится вовсе. Доску
+            # каждое утро и так начинают заново - в 7:55 clear_done_board
+            # подметает «Готово», - демо живёт в том же ритме.
+            if dry_run:
+                self.stdout.write(f"dry-run: убрал бы вчерашний прогон {active.pk} и завёл сегодняшний.")
+                return None
+            number = active.pk
+            stop_demo(active, user)
+            result = reset_demo(active, user)
+            self.stdout.write(f"Вчерашний прогон {number} убран: партий {result['deleted_batches']}.")
+            active = None
+
         if active:
             if active.status != KanbanDemoRun.Status.RUNNING and not dry_run:
                 start_demo(active, user)
