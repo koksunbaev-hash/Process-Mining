@@ -13,20 +13,28 @@
   потому что из журнала событие уже не отозвать, а партию с доски удалить можно;
 * удаляется по одному прогону - `reset_demo()` сносит ровно свой.
 
+Двигает партии команда сама, а не через `tick_demo`. Тот берёт семь самых
+продвинутых партий и двигает их разом на этап вперёд - для запуска демо
+вручную это то, что нужно, но на доске, идущей весь день, выглядит неправдой:
+головная группа пролетает до «Готово» за несколько тактов, пока остальные стоят
+в очереди, и переходы случаются пачками в одну секунду. Здесь у каждой партии
+своя выдержка на каждом этапе, а в работу они уходят по одной.
+
 Команда одноразовая и идемпотентная, как `clear_done_board`: ставится в cron
-и вызывается раз в полчаса. Пропущенный запуск не беда - следующий продолжит
-с того же места. Двух прогонов за день не заведётся: на день создаётся ровно
-один, и повторный вызов это проверяет.
+и вызывается раз в несколько минут. Пропущенный запуск не беда - следующий
+продолжит с того же места.
 
     python manage.py kanban_autopilot             # один такт
     python manage.py kanban_autopilot --dry-run   # посмотреть, не трогая
     python manage.py kanban_autopilot --stop      # остановить и убрать всё демо
 """
 
+import hashlib
 import os
 import random
 from datetime import timedelta
 
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -37,9 +45,14 @@ from apps.bakery.kanban_demo import (
     reset_demo,
     start_demo,
     stop_demo,
-    tick_demo,
 )
-from apps.bakery.models import KanbanDemoRun
+from apps.bakery.models import BatchStageHistory, KanbanDemoRun
+from apps.bakery.services import (
+    assign_batch_to_unit,
+    free_units_for_stage,
+    move_batch,
+    next_stage_for,
+)
 
 #: Сколько партий заводить в каждый день недели. Числа сняты с настоящего
 #: журнала этой установки за 25 августа - 10 сентября: в среднем за сутки
@@ -47,11 +60,23 @@ from apps.bakery.models import KanbanDemoRun
 #: воскресений в журнале нет вовсе - цех по ним не работает, и демо тоже молчит.
 BATCHES_BY_WEEKDAY = {0: 17, 1: 25, 2: 26, 3: 13, 4: 12}
 
+#: Сколько партия стоит на этапе, минут. Медианы из того же журнала: переход
+#: «Распределение на устройство -> следующий этап» занимал 27, 27, 28 и 33
+#: минуты. Итого партия проходит доску примерно за два с половиной часа - при
+#: настоящем среднем 2 часа 11 минут.
+DWELL_MINUTES = {"mixing": 25, "forming": 25, "proofing": 27, "oven": 28, "warehouse": 33}
+DEFAULT_DWELL_MINUTES = 25
+
 #: Граница смены по местному времени цеха (TIME_ZONE = Asia/Qyzylorda).
 #: Настоящие партии заводятся с 9 до 17 - демо держится тех же часов, иначе
-#: на карте появится производство в три часа ночи.
+#: на доске появится производство в три часа ночи.
 SHIFT_START_HOUR = 9
 SHIFT_END_HOUR = 17
+
+#: Какую долю смены занимает запуск партий в работу. Не всю: партия идёт по
+#: доске ещё два с половиной часа после запуска, и выпускать последнюю в 16:50
+#: значило бы гарантированно не довести её до «Готово».
+RELEASE_WINDOW_SHARE = 0.6
 
 #: Завершённые прогоны старше этого срока убираются: доска не должна зарастать,
 #: а «Готово» и так подметается каждое утро `clear_done_board`.
@@ -79,6 +104,45 @@ def planned_batches(day, volume):
     # Ровное число каждую среду выдало бы генератор с первого взгляда: в
     # настоящих данных разброс за сутки от 7 до 40.
     return max(1, int(round(base * volume * random.uniform(0.7, 1.3))))
+
+
+def dwell_for(batch_number, stage_code):
+    """Сколько эта партия стоит на этом этапе.
+
+    Считается детерминированно от пары (партия, этап), а не случайно: команду
+    будит cron, каждый раз это новый процесс, и случайное значение означало бы,
+    что партия то «пора двигать», то «ещё рано». От хеша же она получает свою
+    выдержку раз и навсегда - и соседние партии на одном этапе стоят
+    по-разному, как в цеху.
+    """
+    base = DWELL_MINUTES.get(stage_code, DEFAULT_DWELL_MINUTES)
+    digest = hashlib.sha256(f"{batch_number}|{stage_code}".encode("utf-8")).digest()
+    return timedelta(minutes=base * (0.6 + digest[0] / 255 * 0.8))
+
+
+def waiting_since(batch):
+    """Когда партия встала на нынешний этап."""
+    last = BatchStageHistory.objects.filter(batch=batch).order_by("-created_at").first()
+    return last.created_at if last else batch.created_at
+
+
+def releases_due(run, now):
+    """Сколько партий уже должно было уйти из очереди в работу.
+
+    Запуск размазан по смене: иначе два десятка партий снимаются с очереди
+    разом и дальше идут одной толпой, а это первое, что видно на доске.
+
+    Отсчёт идёт от старта прогона, а не от начала смены. От смены считать
+    нельзя: прогон, заведённый в середине дня - после простоя, перезапуска или
+    в первый день - оказался бы «отставшим на четыре часа», и догонял бы
+    расписание, выпустив всю очередь разом. Ровно то, чего эта функция и
+    должна не допускать.
+    """
+    started = run.started_at or run.created_at
+    elapsed = max(0.0, (now - started).total_seconds() / 60)
+    window = (SHIFT_END_HOUR - SHIFT_START_HOUR) * 60 * RELEASE_WINDOW_SHARE
+    step = max(window / max(run.total_batches, 1), 1.0)
+    return int(elapsed / step) + 1
 
 
 class Command(BaseCommand):
@@ -122,23 +186,69 @@ class Command(BaseCommand):
         run = self.run_for_today(user, now, volume, dry_run=options["dry_run"])
         if not run:
             return
-
         if options["dry_run"]:
             status = demo_status(run)
             self.stdout.write(f"dry-run: такт по прогону {run.pk}, готово {status['completed_batches']}/{status['total_batches']}")
             return
 
-        status = tick_demo(run, user)
-        moved = ", ".join(item["batch_number"] for item in status["changed_batches"][:6])
+        moved, errors = self.advance(run, user, now)
+        status = demo_status(run)
         self.stdout.write(
             f"прогон {run.pk}: {status['completed_batches']}/{status['total_batches']} "
-            f"({status['progress_percent']}%), сдвинуто {len(status['changed_batches'])}"
-            + (f": {moved}" if moved else "")
+            f"({status['progress_percent']}%), сдвинуто {len(moved)}"
+            + (": " + ", ".join(moved) if moved else "")
         )
-        for error in status["errors"][:3]:
-            self.stderr.write(f"  {error['batch']}: {error['error']}")
+        for line in errors[:3]:
+            self.stderr.write("  " + line)
 
     # ------------------------------------------------------------------
+
+    def advance(self, run, user, now):
+        """Продвинуть тех, чьё время на этапе вышло. Из очереди - по одной."""
+        batches = list(
+            run.batches.exclude(current_stage__code="done")
+            .select_related("current_stage", "order_item__order", "product")
+            .order_by("id")  # очередь: кто раньше заведён, тот раньше и пойдёт
+        )
+        started = run.total_batches - sum(1 for batch in batches if batch.current_stage.code == "queue")
+        allowance = releases_due(run, now) - started
+
+        moved, errors = [], []
+        for batch in batches:
+            code = batch.current_stage.code
+            if code == "queue":
+                if allowance <= 0:
+                    continue
+            elif now - waiting_since(batch) < dwell_for(batch.batch_number, code):
+                continue
+
+            target = next_stage_for(batch)
+            if not target:
+                continue
+            try:
+                move_batch(batch, target, user, f"DEMO: переход на этап {target.name}")
+                batch.refresh_from_db()
+                # Партия не должна висеть в «Не распределено»: на доске это
+                # выглядит как затор, которого нет. Свободного устройства нет -
+                # значит и в демо она ждёт, ровно как ждала бы в цеху.
+                free = free_units_for_stage(batch.current_stage)
+                if free:
+                    assign_batch_to_unit(batch, free[0], user)
+            except (PermissionDenied, ValidationError) as exc:
+                errors.append(f"{batch.batch_number}: {exc}")
+                continue
+            except Exception as exc:  # доска не должна вставать из-за одной партии
+                errors.append(f"{batch.batch_number}: {exc}")
+                continue
+
+            if code == "queue":
+                allowance -= 1
+            moved.append(batch.batch_number)
+
+        if errors:
+            run.last_error = "; ".join(errors[:3])
+            run.save(update_fields=["last_error", "updated_at"])
+        return moved, errors
 
     def run_for_today(self, user, now, volume, dry_run):
         """Прогон на сегодня: идущий продолжаем, нового за день не заводим дважды."""
@@ -166,9 +276,7 @@ class Command(BaseCommand):
             user=user,
             count=count,
             name=f"Демо-поток {now:%d.%m.%Y}",
-            # Волнами: партии двигаются группами, как настоящая смена. По одной
-            # доска ползла бы слишком ровно, а FAST пролетел бы день за час.
-            mode=KanbanDemoRun.Mode.WAVE,
+            mode=KanbanDemoRun.Mode.SEQUENTIAL,
             client_request_id=f"autopilot-{now:%Y-%m-%d}",
         )
         start_demo(run, user)
@@ -190,7 +298,10 @@ class Command(BaseCommand):
                 continue
             if everything and run.status == KanbanDemoRun.Status.RUNNING:
                 stop_demo(run, user)
+            # Номер запоминается до вызова: reset_demo удаляет сам прогон,
+            # и Django обнуляет pk у объекта в памяти — в лог уходило бы None.
+            number = run.pk
             result = reset_demo(run, user)
             self.stdout.write(
-                f"Убран прогон {run.pk}: партий {result['deleted_batches']}, заказов {result['deleted_orders']}."
+                f"Убран прогон {number}: партий {result['deleted_batches']}, заказов {result['deleted_orders']}."
             )

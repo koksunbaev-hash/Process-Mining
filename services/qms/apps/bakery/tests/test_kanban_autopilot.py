@@ -1,12 +1,12 @@
 """Автопилот демо-доски.
 
 Проверяется не «красиво ли выглядит», а то, ради чего его вообще можно держать
-на боевом стенде: он не трогает заводские данные, не заводит лишних прогонов и
-выключается насовсем.
+на боевом стенде: он не трогает заводские данные, не заводит лишних прогонов,
+двигает партии по одной с выдержкой на этапе и выключается насовсем.
 """
 
 import os
-from datetime import date
+from datetime import date, timedelta
 from io import StringIO
 from unittest import mock
 
@@ -14,9 +14,10 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
-from apps.bakery.management.commands.kanban_autopilot import planned_batches
-from apps.bakery.models import KanbanDemoRun, ProductionBatch, ProductionOrder
+from apps.bakery.management.commands.kanban_autopilot import dwell_for, planned_batches
+from apps.bakery.models import BatchStageHistory, KanbanDemoRun, ProductionBatch, ProductionOrder
 from apps.bakery.tests.batch_workflow.factories import create_manual_batch
 
 ON = {"KANBAN_AUTOPILOT_ENABLED": "1"}
@@ -27,6 +28,17 @@ def run(*args, **env):
     with mock.patch.dict(os.environ, {**ON, **env}):
         call_command("kanban_autopilot", *args, stdout=out, stderr=out)
     return out.getvalue()
+
+
+def in_queue():
+    return ProductionBatch.objects.filter(is_demo=True, current_stage__code="queue").count()
+
+
+def backdate(batch, minutes):
+    """Сдвинуть последнюю запись истории в прошлое - как будто партия отстояла."""
+    BatchStageHistory.objects.filter(batch=batch).update(
+        created_at=timezone.now() - timedelta(minutes=minutes)
+    )
 
 
 class KanbanAutopilotTests(TestCase):
@@ -42,23 +54,48 @@ class KanbanAutopilotTests(TestCase):
         self.assertIn("выключено", out.getvalue())
         self.assertFalse(KanbanDemoRun.objects.exists())
 
-    def test_creates_one_run_and_moves_batches(self):
+    def test_batches_leave_the_queue_one_at_a_time(self):
+        """Главная жалоба к прежнему поведению: партии снимались с очереди
+        пачкой по семь и шли дальше толпой. Запуск размазан по смене."""
         run("--force")
         demo_run = KanbanDemoRun.objects.get()
-        self.assertEqual(demo_run.status, KanbanDemoRun.Status.RUNNING)
-        batches = ProductionBatch.objects.filter(is_demo=True)
-        self.assertEqual(batches.count(), demo_run.total_batches)
-        self.assertTrue(all(batch.demo_run_id == demo_run.pk for batch in batches))
+        self.assertGreater(demo_run.total_batches, 3)
+        self.assertEqual(in_queue(), demo_run.total_batches - 1, "из очереди ушла не одна партия")
 
-        before = list(batches.values_list("pk", "current_stage__sequence"))
         run("--force")
-        after = dict(batches.values_list("pk", "current_stage__sequence"))
-        moved = [pk for pk, sequence in before if after[pk] > sequence]
-        self.assertTrue(moved, "такт не сдвинул ни одной партии")
+        run("--force")
+        self.assertGreaterEqual(in_queue(), demo_run.total_batches - 2,
+                                "очередь опустошается быстрее расписания")
+
+    def test_a_batch_waits_on_its_stage(self):
+        """Партия должна отстоять на этапе, а не пролетать доску за такт."""
+        run("--force")
+        moving = ProductionBatch.objects.filter(is_demo=True).exclude(current_stage__code="queue").get()
+        stage_before = moving.current_stage_id
+
+        run("--force")
+        moving.refresh_from_db()
+        self.assertEqual(moving.current_stage_id, stage_before, "партия ушла, не отстояв этап")
+
+        backdate(moving, 240)
+        run("--force")
+        moving.refresh_from_db()
+        self.assertNotEqual(moving.current_stage_id, stage_before, "выдержка вышла, а партия стоит")
+
+    def test_dwell_is_stable_but_different_per_batch(self):
+        """Команду будит cron - каждый раз новый процесс. Случайная выдержка
+        означала бы, что партия то «пора двигать», то «ещё рано»."""
+        self.assertEqual(dwell_for("DEMO-B-0001", "oven"), dwell_for("DEMO-B-0001", "oven"))
+        self.assertNotEqual(dwell_for("DEMO-B-0001", "oven"), dwell_for("DEMO-B-0002", "oven"))
+        self.assertNotEqual(dwell_for("DEMO-B-0001", "oven"), dwell_for("DEMO-B-0001", "mixing"))
+        for stage in ("mixing", "forming", "proofing", "oven", "warehouse"):
+            minutes = dwell_for("DEMO-B-0001", stage).total_seconds() / 60
+            self.assertGreater(minutes, 10)
+            self.assertLess(minutes, 60)
 
     def test_a_second_run_is_not_started_the_same_day(self):
-        """Команда стоит в cron и вызывается раз в полчаса. Если бы каждый
-        вызов заводил прогон, к вечеру доска была бы завалена."""
+        """Команда стоит в cron и вызывается раз в несколько минут. Если бы
+        каждый вызов заводил прогон, к вечеру доска была бы завалена."""
         run("--force")
         run("--force")
         run("--force")
@@ -71,6 +108,7 @@ class KanbanAutopilotTests(TestCase):
         stage_before, status_before = real.current_stage_id, real.status
 
         run("--force")
+        backdate(real, 600)  # даже «отстоявшую» заводскую двигать нельзя
         run("--force")
         run("--stop")
 
