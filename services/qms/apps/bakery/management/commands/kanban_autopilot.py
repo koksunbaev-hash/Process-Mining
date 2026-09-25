@@ -54,9 +54,17 @@ from apps.bakery.services import (
     move_batch,
     next_stage_for,
 )
+from apps.bakery.influx import history_point, influx_enabled, write_lines
 from apps.bakery.twins import push_units_by_id, twins_enabled
 
 logger = logging.getLogger(__name__)
+
+#: Куда в Influx идут демо-переводы. Рядом с настоящей историей
+#: `qms_batch_event`, в том же бакете и в той же схеме, но не в неё: по
+#: настоящей строятся графики выработки, и демо их бы завысило. 3D-сцена
+#: выбирает источник переменной дашборда - «работа», «демо» или «всё», - так
+#: же, как доска выбирает параметром `?demo=`.
+DEMO_MEASUREMENT = "qms_batch_event_demo"
 
 #: Сколько партий заводить в каждый день недели. Числа сняты с настоящего
 #: журнала этой установки за 25 августа - 10 сентября: в среднем за сутки
@@ -212,6 +220,7 @@ class Command(BaseCommand):
         # только что убранный прогон - не оставлял табло 3D-сцены отставшим.
         self.touched_units = set()
         self.sync_all = False
+        self.influx_lines = []
         try:
             self.tick(user, options)
         finally:
@@ -219,6 +228,12 @@ class Command(BaseCommand):
                 pushed = push_twins(None if self.sync_all else self.touched_units)
                 if pushed:
                     self.stdout.write(f"двойники: обновлено {pushed}")
+            if not options["dry_run"] and self.influx_lines and influx_enabled():
+                # write_lines сам ловит сетевые ошибки и пишет их в лог, а
+                # отправляет синхронно - здесь это и нужно, по той же причине,
+                # что и с двойниками: демон-поток короткой команды не доживает.
+                if write_lines(self.influx_lines):
+                    self.stdout.write(f"influx: {DEMO_MEASUREMENT} +{len(self.influx_lines)}")
 
     def tick(self, user, options):
         if options["stop"]:
@@ -300,6 +315,7 @@ class Command(BaseCommand):
                     assign_batch_to_unit(batch, free[0], user)
                     batch.refresh_from_db()
                 self.touched_units.add(batch.production_unit_id)
+                self.remember_for_influx(batch)
             except (PermissionDenied, ValidationError) as exc:
                 errors.append(f"{batch.batch_number}: {exc}")
                 continue
@@ -315,6 +331,25 @@ class Command(BaseCommand):
             run.last_error = "; ".join(errors[:3])
             run.save(update_fields=["last_error", "updated_at"])
         return moved, errors
+
+    def remember_for_influx(self, batch):
+        """Точка истории демо-перевода - уже с машиной, на которую партия встала.
+
+        Строится после постановки на устройство, а не в момент перевода:
+        табло 3D-сцены находит машину по тегу `unit`, а в момент самого
+        перевода партия ещё ни на чём не стоит. Время у точки - момент
+        перевода, его history_point берёт из записи истории.
+        """
+        history = (
+            BatchStageHistory.objects.select_related(
+                "batch__product", "batch__production_unit", "batch__order_item__order", "from_stage", "to_stage"
+            )
+            .filter(batch=batch)
+            .order_by("-created_at")
+            .first()
+        )
+        if history:
+            self.influx_lines.append(history_point(history, measurement=DEMO_MEASUREMENT))
 
     def run_for_today(self, user, now, volume, dry_run):
         """Прогон на сегодня: идущий продолжаем, нового за день не заводим дважды."""

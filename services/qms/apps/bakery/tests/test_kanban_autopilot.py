@@ -30,11 +30,13 @@ from apps.bakery.tests.batch_workflow.factories import create_manual_batch
 
 ON = {"KANBAN_AUTOPILOT_ENABLED": "1"}
 
-#: На стенде в .env стоит DITTO_ENABLED=True, и тесты его наследуют. Автопилот
-#: отправляет в двойники синхронно, так что без этой заглушки тест ушёл бы в
-#: НАСТОЯЩИЙ Ditto и положил на табло живых машин состояние тестовой базы.
-NO_TWINS = override_settings(DITTO_ENABLED=False)
+#: На стенде в .env стоят DITTO_ENABLED=True и INFLUX_ENABLED=True, и тесты их
+#: наследуют. Автопилот отправляет в двойники и в Influx синхронно, так что без
+#: этой заглушки тест ушёл бы в НАСТОЯЩИЙ Ditto и в общий InfluxDB и положил бы
+#: туда состояние тестовой базы.
+NO_TWINS = override_settings(DITTO_ENABLED=False, INFLUX_ENABLED=False)
 PUSH = "apps.bakery.management.commands.kanban_autopilot.push_units_by_id"
+WRITE = "apps.bakery.management.commands.kanban_autopilot.write_lines"
 
 
 def run(*args, **env):
@@ -208,7 +210,7 @@ class KanbanAutopilotTests(TestCase):
         self.assertLess(sum(half) / len(half), sum(full) / len(full))
 
 
-@override_settings(DITTO_ENABLED=True, DITTO_BASE_URL="http://ditto.invalid")
+@override_settings(DITTO_ENABLED=True, DITTO_BASE_URL="http://ditto.invalid", INFLUX_ENABLED=False)
 class TwinPushTests(TestCase):
     """Демо на табло 3D-сцены - и доставка туда с гарантией.
 
@@ -258,6 +260,57 @@ class TwinPushTests(TestCase):
             run("--force")
             run("--stop")
         push.assert_not_called()
+
+
+@override_settings(
+    DITTO_ENABLED=False, INFLUX_ENABLED=True, INFLUX_URL="http://influx.invalid", INFLUX_TOKEN="test"
+)
+class InfluxDemoTests(TestCase):
+    """Демо в 3D-сцене - параллельно настоящей истории, а не вместо неё.
+
+    Табло сцены берёт заказ, продукт и количество из `qms_batch_event` - истории
+    переводов. Настоящую историю демо трогать не должно: по ней строятся
+    графики выработки. Поэтому демо-переводы идут в `qms_batch_event_demo`, а
+    дашборд выбирает источник переменной, как доска - параметром `?demo=`.
+    write_lines подменён - в общий Influx ничего не уходит.
+    """
+
+    def setUp(self):
+        get_user_model().objects.create_superuser("influx-admin", password="x")
+        with mock.patch(WRITE, return_value=True):
+            run("--force")
+        self.mixer = ProductionUnit.objects.create(
+            stage=ProductionStage.objects.get(code="mixing"), name="Миксер Т", twin_id="test:mixer"
+        )
+        KanbanDemoRun.objects.update(started_at=timezone.now() - timedelta(hours=1))
+
+    def written(self, write):
+        return [line for call in write.call_args_list for line in call.args[0]]
+
+    def test_a_demo_move_lands_on_its_machine_in_the_demo_measurement(self):
+        with mock.patch(WRITE, return_value=True) as write:
+            run("--force")
+        lines = self.written(write)
+        on_mixer = [line for line in lines if "Миксер" in line and "unit=" in line]
+        self.assertTrue(on_mixer, "точки с машиной нет - табло не найдёт, куда её поставить")
+        self.assertIn('order="DEMO-O-', on_mixer[0])
+        self.assertIn("product_name=", on_mixer[0])
+        self.assertIn("quantity=", on_mixer[0])
+
+    def test_the_real_history_is_not_touched(self):
+        """Ни одной точки в настоящую `qms_batch_event` - только рядом."""
+        with mock.patch(WRITE, return_value=True) as write:
+            run("--force")
+        lines = self.written(write)
+        self.assertTrue(lines)
+        for line in lines:
+            self.assertTrue(line.startswith("qms_batch_event_demo,"), line[:60])
+
+    @override_settings(INFLUX_ENABLED=False)
+    def test_nothing_is_written_when_influx_is_off(self):
+        with mock.patch(WRITE) as write:
+            run("--force")
+        write.assert_not_called()
 
 
 @NO_TWINS

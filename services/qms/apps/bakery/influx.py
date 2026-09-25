@@ -68,11 +68,15 @@ def _field_str(value):
     return f'"{escaped}"'
 
 
-def history_point(history):
+def history_point(history, measurement="qms_batch_event"):
     """Одна строка line protocol из одной записи истории этапов.
 
     Время - момент перевода, с точностью до наносекунд: у двух переводов в
     одну и ту же секунду разные микросекунды, и точки не затирают друг друга.
+
+    `measurement` меняет только автопилот демо-доски: демо-переводы идут в
+    `qms_batch_event_demo`, рядом с настоящей историей, но не в неё - по
+    `qms_batch_event` строятся графики выработки, и демо их бы завысило.
     """
     batch = history.batch
     product = batch.product
@@ -110,7 +114,7 @@ def history_point(history):
     tag_part = ",".join(f"{key}={_tag(value)}" for key, value in tags)
     field_part = ",".join(f"{key}={value}" for key, value in fields)
     stamp = int(history.created_at.timestamp() * 1_000_000_000)
-    return f"qms_batch_event,{tag_part} {field_part} {stamp}"
+    return f"{measurement},{tag_part} {field_part} {stamp}"
 
 
 def unit_state_point(unit, at=None):
