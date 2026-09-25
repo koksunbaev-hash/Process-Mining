@@ -609,7 +609,16 @@
     // по тексту, и без такого ключа развести их нечем.
     const parent = node.parentElement;
     const explicit = parent && parent.getAttribute && parent.getAttribute("data-i18n");
-    const translated = selectedTranslation(explicit || trimmed, currentLanguage);
+    let translated;
+    if (explicit) {
+      // Ключ - не подпись. По-русски selectedTranslation возвращает свой вход
+      // как есть, и на экран вместо «Склад» выходило «раздел:Склад». Нет
+      // перевода или язык русский - остаётся исходный текст.
+      const moved = selectedTranslation(explicit, currentLanguage);
+      translated = moved === explicit ? trimmed : moved;
+    } else {
+      translated = selectedTranslation(trimmed, currentLanguage);
+    }
     node.nodeValue = source.replace(trimmed, translated);
   }
 
