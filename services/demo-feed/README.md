@@ -21,7 +21,10 @@
 и любой внешний источник — [EVENT-LOG-INTAKE.md](../process-mining/docs/EVENT-LOG-INTAKE.md).
 
 **Не может попасть в реальный журнал.** `log_id` выводится детерминированно из
-пары `(source, case_type)`, а `source` здесь всегда свой — `demo_bakery`.
+пары `(source, case_type)`, а `source` здесь свой — на стенде `bakery_line`.
+Имя нейтральное, поэтому генератор сверяет его с настоящим источником
+(`DEMO_FEED_REAL_SOURCE`, в compose — из `PROCESS_MINING_SOURCE`) и при
+совпадении отказывается работать: иначе демо легло бы в настоящий журнал.
 Это не соглашение, а свойство интейка: чтобы записать в `kms_bakery · batch`,
 пришлось бы представиться именно `kms_bakery`.
 
@@ -103,7 +106,8 @@ curl -X DELETE "http://127.0.0.1:8001/api/v1/logs/<log_id>" -H "X-API-Key: $PM_A
 |---|---|---|
 | `DEMO_FEED_ENABLED` | `0` | `1` включает генерацию |
 | `DEMO_FEED_API_KEY` | — | Ключ аналитики, обычно `PM_API_KEYS` |
-| `DEMO_FEED_SOURCE` | `demo_bakery` | Имя источника; оно же определяет журнал |
+| `DEMO_FEED_SOURCE` | `demo_bakery` | Имя источника; оно же определяет журнал. На стенде `bakery_line` |
+| `DEMO_FEED_REAL_SOURCE` | `kms_bakery` | Имя настоящего источника — под ним генератор не запустится |
 | `DEMO_FEED_START_DATE` | `2026-09-11` | С какого дня заполнять |
 | `DEMO_FEED_INTERVAL_SECONDS` | `1800` | Период такта |
 | `DEMO_FEED_VOLUME` | `1.0` | Множитель объёма: `0.5` — вдвое меньше партий |

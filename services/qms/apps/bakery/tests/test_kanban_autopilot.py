@@ -20,7 +20,9 @@ from django.utils import timezone
 from apps.bakery.management.commands.kanban_autopilot import MAX_MOVES_PER_TICK, dwell_for, planned_batches
 from apps.bakery.models import (
     BatchStageHistory,
+    Customer,
     KanbanDemoRun,
+    Product,
     ProductionBatch,
     ProductionOrder,
     ProductionStage,
@@ -293,7 +295,8 @@ class InfluxDemoTests(TestCase):
         lines = self.written(write)
         on_mixer = [line for line in lines if "Миксер" in line and "unit=" in line]
         self.assertTrue(on_mixer, "точки с машиной нет - табло не найдёт, куда её поставить")
-        self.assertIn('order="DEMO-O-', on_mixer[0])
+        # Номер заказа - обычный, как у настоящих: табло сцены его показывает.
+        self.assertRegex(on_mixer[0], r'order="\d{4,}"')
         self.assertIn("product_name=", on_mixer[0])
         self.assertIn("quantity=", on_mixer[0])
 
@@ -311,6 +314,56 @@ class InfluxDemoTests(TestCase):
         with mock.patch(WRITE) as write:
             run("--force")
         write.assert_not_called()
+
+
+@NO_TWINS
+class PresentedLikeProductionTests(TestCase):
+    """На экране демо-поток - как работающий цех. Внутри - по-прежнему демо.
+
+    Снимается только то, что видно: метка и рамка на карточке, «D-8», номер
+    заказа «DEMO-O-…», клиент «DEMO клиент…». Флаг is_demo, ссылка на прогон и
+    технический номер DEMO-B-… остаются: на них держится отделение от
+    настоящих данных и голосовое «D-8».
+    """
+
+    def setUp(self):
+        get_user_model().objects.create_superuser("present-admin", password="x")
+        Customer.objects.get_or_create(name="Производство", defaults={"is_active": True})
+        run("--force")
+        self.orders = ProductionOrder.objects.filter(is_demo=True)
+        self.batches = ProductionBatch.objects.filter(is_demo=True)
+
+    def test_orders_look_like_real_ones_and_stay_demo(self):
+        self.assertTrue(self.orders.exists())
+        for order in self.orders:
+            self.assertRegex(order.order_number, r"^\d{4,}$")
+            self.assertEqual(order.customer.name, "Производство")
+            self.assertTrue(order.is_demo, "заказ перестал быть демо - он уйдёт в отчёты")
+
+    def test_batch_shows_a_plain_number_but_keeps_its_voice_address(self):
+        batch = self.batches.order_by("id").first()
+        self.assertRegex(batch.display_batch_number, r"^\d{2,}$")
+        self.assertTrue(batch.batch_number.startswith("DEMO-B-"))
+        # Адрес для голоса - «D-1»: на нём держатся голосовые тесты и разбор.
+        self.assertTrue(ProductionBatch.short_number_for(batch.batch_number).startswith("D-"))
+
+    def test_the_board_shows_no_demo_marks(self):
+        self.client.force_login(get_user_model().objects.get(username="present-admin"))
+        html = self.client.get(reverse("bakery:kanban"), {"demo": "all"}).content.decode("utf-8")
+        for mark in ("kanban-card-demo", ">demo<", "Заказ №DEMO", "DEMO клиент", "технический номер: DEMO"):
+            self.assertNotIn(mark, html, f"на доске видно «{mark}»")
+
+    def test_demo_products_have_plain_codes(self):
+        """В справочнике «Продукты» виден код - DEMO-PROD-… выдавал бы демо."""
+        self.assertFalse(Product.objects.filter(code__startswith="DEMO-PROD-").exists())
+        self.assertTrue(Product.objects.filter(code="BATON", name="Батон").exists())
+
+    def test_a_rerun_changes_nothing(self):
+        """Автопилот зовёт поправку каждый такт - второй раз ей делать нечего."""
+        before = list(self.orders.order_by("id").values_list("order_number", flat=True))
+        run("--force")
+        after = list(self.orders.order_by("id").values_list("order_number", flat=True))
+        self.assertEqual(before, after)
 
 
 @NO_TWINS

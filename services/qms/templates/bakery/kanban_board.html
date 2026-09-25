@@ -46,7 +46,7 @@
 
         <div class="kanban-cards">
         {% for batch in lane.cards %}
-          <article class="kanban-card{% if batch.is_demo %} kanban-card-demo{% endif %}{% if batch.has_blocking_problem %} is-blocked{% endif %}"
+          <article class="kanban-card{% if batch.has_blocking_problem %} is-blocked{% endif %}"
                    {% comment %}
                    draggable убран намеренно: перенос сделан на указателях, а
                    встроенный механизм браузера перехватывал бы нажатие и рисовал
@@ -81,14 +81,14 @@
               {% endcomment %}
               {% if batch.is_group %}
                 <span class="kanban-card__id"
-                      title="Партия {{ batch.first_batch.display_batch_label }} · технический номер: {{ batch.first_batch.batch_number }}">
+                      title="Партия {{ batch.first_batch.display_batch_label }}{% if not batch.first_batch.is_demo %} · технический номер: {{ batch.first_batch.batch_number }}{% endif %}">
                   <b>{{ batch.first_batch.display_batch_number }}</b>
                   <i>{{ batch.first_batch.display_batch_date|date:"d.m" }}</i>
                 </span>
                 <span class="kanban-card__batch-ref">Заказ №{{ batch.order.order_number }} · {{ batch.batches|length }} поз.</span>
               {% else %}
                 <span class="kanban-card__id"
-                      title="Партия {{ batch.display_batch_label }} · технический номер: {{ batch.batch_number }}">
+                      title="Партия {{ batch.display_batch_label }}{% if not batch.is_demo %} · технический номер: {{ batch.batch_number }}{% endif %}">
                   <b>{{ batch.display_batch_number }}</b>
                   <i>{{ batch.display_batch_date|date:"d.m" }}</i>
                 </span>

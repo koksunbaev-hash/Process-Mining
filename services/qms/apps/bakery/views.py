@@ -128,8 +128,9 @@ def card_flags(card):
         flags.append({"kind": "urgent", "text": order.get_priority_display()})
     if card.has_blocking_problem:
         flags.append({"kind": "critical", "text": "проблема"})
-    if card.is_demo:
-        flags.append({"kind": "demo", "text": "demo"})
+    # Метки «demo» на карточке нет: демо показывают как работающий цех. От
+    # настоящих партий оно по-прежнему отделено - is_demo, скрыто на доске по
+    # умолчанию (?demo=work), не попадает в отчёты и в аналитику.
     return flags
 
 

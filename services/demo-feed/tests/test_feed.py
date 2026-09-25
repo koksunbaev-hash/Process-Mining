@@ -132,6 +132,17 @@ def test_pause_file_stops_everything(config, profile):
     assert not config.state_path.exists(), "на паузе состояние не трогается"
 
 
+def test_refuses_the_real_source_name(monkeypatch, tmp_path):
+    """Нейтральное имя источника не должно совпасть с настоящим: log_id
+    выводится из (source, case_type), и демо легло бы в настоящий журнал."""
+    monkeypatch.setenv("DEMO_FEED_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setenv("DEMO_FEED_REAL_SOURCE", "kms_bakery")
+    monkeypatch.setenv("DEMO_FEED_SOURCE", "KMS_Bakery ")
+    assert feed.source_is_safe(feed.Config()) is False
+    monkeypatch.setenv("DEMO_FEED_SOURCE", "bakery_line")
+    assert feed.source_is_safe(feed.Config()) is True
+
+
 def test_disabled_by_default(monkeypatch, tmp_path):
     """Свежий клон репозитория не должен начать писать выдуманные события."""
     monkeypatch.delenv("DEMO_FEED_ENABLED", raising=False)

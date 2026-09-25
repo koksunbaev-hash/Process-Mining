@@ -47,7 +47,14 @@ from apps.bakery.kanban_demo import (
     start_demo,
     stop_demo,
 )
-from apps.bakery.models import BatchStageHistory, KanbanDemoRun, ProductionUnit
+from apps.bakery.models import (
+    BatchStageHistory,
+    Customer,
+    KanbanDemoRun,
+    Product,
+    ProductionOrder,
+    ProductionUnit,
+)
 from apps.bakery.services import (
     assign_batch_to_unit,
     free_units_for_stage,
@@ -169,6 +176,60 @@ def push_twins(unit_ids=None):
         logger.exception("Ditto: не удалось обновить двойники %s", ids)
         return 0
     return len(ids)
+
+
+#: Клиент демо-заказов на экране - тот же, что у настоящих: цех печёт по
+#: собственному плану, и заказы на доске подписаны «Производство».
+PRESENTED_CUSTOMER = "Производство"
+
+#: Коды для продуктов, которые create_demo_run заводит как DEMO-PROD-01…06.
+PRESENTED_PRODUCT_CODES = {
+    "Хлеб «Деревенский»": "DEREVENSKII",
+    "Батон": "BATON",
+    "Бородинский хлеб": "BORODINSKII",
+    "Формовой хлеб": "FORMOVOI",
+    "Булочка": "BULOCHKA",
+    "Багет": "BAGET",
+}
+
+
+def present_like_production(run):
+    """Заказы прогона - на экране как настоящие. Возвращает, сколько поправлено.
+
+    create_demo_run подписывает заказы «DEMO-O-0008» и клиентом «DEMO клиент
+    хлебозавода» - для ручного демо так и надо. Демо-поток автопилота
+    показывают как работающий цех, поэтому здесь номер становится обычным
+    четырёхзначным, а клиент - тем же, что у настоящих заказов.
+
+    Номер берётся из собственного id заказа. С настоящими он не пересекается:
+    настоящий номер - это «наибольший id + 1» в момент создания, он никогда не
+    больше своего id, а демо-заказ, созданный позже, получает id больше. На
+    всякий случай занятый номер пропускается - заказ остаётся с DEMO-номером.
+
+    Флаг is_demo, ссылка на прогон и номера партий DEMO-B-… не трогаются:
+    на них держится отделение от настоящих данных и голосовое «D-8».
+    """
+    # Коды демо-продуктов видны в справочнике «Продукты» - «DEMO-PROD-02 Батон».
+    # Настоящие коды - латиницей по названию («BAGUETTE», «VILLAGE»), так же
+    # и здесь. Занятый код пропускается: коды уникальны.
+    for product in Product.objects.filter(code__startswith="DEMO-PROD-"):
+        code = PRESENTED_PRODUCT_CODES.get(product.name)
+        if code and not Product.objects.filter(code=code).exclude(pk=product.pk).exists():
+            product.code = code
+            product.save(update_fields=["code"])
+
+    customer = Customer.objects.filter(name=PRESENTED_CUSTOMER).first()
+    fixed = 0
+    for order in run.orders.filter(is_demo=True, order_number__startswith="DEMO-O-"):
+        candidate = f"{order.pk:04d}"
+        if ProductionOrder.objects.filter(order_number=candidate).exclude(pk=order.pk).exists():
+            continue
+        order.order_number = candidate
+        if customer:
+            order.customer = customer
+        order.save()
+        fixed += 1
+    return fixed
 
 
 def waiting_since(batch):
@@ -379,6 +440,9 @@ class Command(BaseCommand):
         if active:
             if active.status != KanbanDemoRun.Status.RUNNING and not dry_run:
                 start_demo(active, user)
+            if not dry_run:
+                # Идемпотентно: у уже поправленного прогона DEMO-номеров нет.
+                present_like_production(active)
             return active
 
         if KanbanDemoRun.objects.filter(created_at__date=now.date()).exists():
@@ -398,6 +462,7 @@ class Command(BaseCommand):
             client_request_id=f"autopilot-{now:%Y-%m-%d}",
         )
         start_demo(run, user)
+        present_like_production(run)
         # Раз в день - полное выравнивание табло: всё, что разошлось с доской
         # за вчера по любой причине, догоняется здесь.
         self.sync_all = True

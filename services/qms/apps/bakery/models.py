@@ -520,6 +520,17 @@ class ProductionBatch(TimestampedModel):
     def display_batch_number(self):
         if self.daily_card_number is not None:
             return format_daily_number(self.daily_card_number)
+        if self.is_demo:
+            # На экране демо-партия выглядит как настоящая - «08», а не «D-8».
+            # Только показ: в базе остаётся DEMO-B-0008, и голос по-прежнему
+            # находит её как «D-8» через short_number_for. Дневной номер
+            # (daily_card_number) демо не выдаётся нарочно: настоящая
+            # нумерация дня берёт максимум по всем партиям, а голосовой поиск
+            # «партия 8» идёт по нему же - демо сдвинуло бы номера цеха и
+            # могло бы перехватить команду, сказанную про настоящую партию.
+            demo_match = re.fullmatch(r"DEMO-B-0*(\d+)", (self.batch_number or "").strip().upper())
+            if demo_match:
+                return format_daily_number(int(demo_match.group(1)))
         return self.short_batch_number
 
     @property

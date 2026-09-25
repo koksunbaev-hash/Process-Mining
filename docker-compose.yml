@@ -192,6 +192,8 @@ services:
       DEMO_FEED_PM_URL: http://process-mining:8000
       DEMO_FEED_API_KEY: ${DEMO_FEED_API_KEY:-${PM_API_KEYS:?set PM_API_KEYS in .env}}
       DEMO_FEED_SOURCE: ${DEMO_FEED_SOURCE:-demo_bakery}
+      # Имя НАСТОЯЩЕГО источника - генератор откажется работать под ним.
+      DEMO_FEED_REAL_SOURCE: ${PROCESS_MINING_SOURCE:-kms_bakery}
       DEMO_FEED_START_DATE: ${DEMO_FEED_START_DATE:-2026-09-11}
       DEMO_FEED_INTERVAL_SECONDS: ${DEMO_FEED_INTERVAL_SECONDS:-1800}
       DEMO_FEED_VOLUME: ${DEMO_FEED_VOLUME:-1.0}

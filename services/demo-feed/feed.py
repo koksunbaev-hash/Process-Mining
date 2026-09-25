@@ -63,6 +63,9 @@ class Config:
         self.pm_url = env("DEMO_FEED_PM_URL", "http://process-mining:8000")
         self.api_key = env("DEMO_FEED_API_KEY", "")
         self.source = env("DEMO_FEED_SOURCE", "demo_bakery")
+        # Имя настоящего источника. log_id выводится из (source, case_type), и
+        # совпадение имён значило бы запись демо прямо в настоящий журнал.
+        self.real_source = env("DEMO_FEED_REAL_SOURCE", "kms_bakery")
         self.runtime_dir = Path(env("DEMO_FEED_RUNTIME_DIR", "/srv/demo-feed"))
         self.profile_path = Path(env("DEMO_FEED_PROFILE", str(HERE / "profile.json")))
         self.state_path = Path(env("DEMO_FEED_STATE", str(self.runtime_dir / "state.json")))
@@ -351,6 +354,12 @@ def main():
     if not config.api_key:
         LOG.error("DEMO_FEED_API_KEY не задан - генерация невозможна, простаиваю")
         return 2 if once else _idle(config)
+    if not source_is_safe(config):
+        LOG.error(
+            "DEMO_FEED_SOURCE=%r совпадает с настоящим источником %r - демо легло бы "
+            "в настоящий журнал. Отказываюсь, простаиваю.", config.source, config.real_source,
+        )
+        return 2 if once else _idle(config)
 
     raw = json.loads(config.profile_path.read_text(encoding="utf-8"))
     profile = Profile(raw, "batch")
@@ -365,6 +374,16 @@ def main():
         if once:
             return 0
         time.sleep(config.interval)
+
+
+def source_is_safe(config):
+    """Имя демо-источника не должно совпадать с настоящим.
+
+    Пока источник назывался demo_bakery, спутать было невозможно. Имя можно
+    сменить на нейтральное - и тогда одна опечатка отправила бы выдуманные
+    события в настоящий журнал, откуда их уже не отозвать.
+    """
+    return config.source.strip().lower() != config.real_source.strip().lower()
 
 
 def _idle(config):
